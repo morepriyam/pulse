@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   },
   stepContainer: {
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 8,
     paddingHorizontal: 24,
     padding: 16,
     borderRadius: 12,
@@ -147,7 +147,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 24,
     alignSelf: "stretch",
-    marginTop: 16,
+    marginTop: "auto",
+    marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
