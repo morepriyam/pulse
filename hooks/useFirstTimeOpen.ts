@@ -7,7 +7,7 @@ export const useFirstTimeOpen = () => {
   React.useEffect(() => {
     async function checkFirstTimeOpen() {
         try {
-            const firstTimeOpen = await AsyncStorage.getItem('firstTimeOpen');
+            const firstTimeOpen = await AsyncStorage.getItem('onboardingComplete');
            
             if(firstTimeOpen === null) {
                 setIsFirstTimeOpen(true);

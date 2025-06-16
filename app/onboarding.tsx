@@ -1,10 +1,14 @@
 import React from "react";
-import { StyleSheet, TouchableOpacity } from "react-native";
+import { Alert, StyleSheet, TouchableOpacity } from "react-native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
-import { useThemeColor } from "@/hooks/useThemeColor";
+import { Colors } from "@/constants/Colors";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { Image } from "expo-image";
+import { usePermissions } from "expo-media-library";
+import { router } from "expo-router";
 import { useEffect } from "react";
 import Animated, {
   useAnimatedStyle,
@@ -15,8 +19,40 @@ import Animated, {
 
 export default function OnboardingScreen() {
   const scale = useSharedValue(1);
-  const buttonColor = useThemeColor({}, "appPrimary");
-  const backgroundColor = useThemeColor({}, "background");
+  const [cameraPermissions, requestCameraPermissions] = useCameraPermissions();
+  const [microphonePermissions, requestMicrophonePermissions] =
+    useMicrophonePermissions();
+  const [mediaLibraryPermissions, requestMediaLibraryPermissions] =
+    usePermissions();
+
+  async function handleContinue() {
+    const allPermissionsGranted = await requestAllPermissions();
+    if (allPermissionsGranted) {
+      router.replace("/(tabs)");
+    } else {
+      Alert.alert("All permissions are required");
+    }
+  }
+
+  async function requestAllPermissions() {
+    const cameraStatus = await requestCameraPermissions();
+    if (!cameraStatus.granted) {
+      Alert.alert("Error", "Camera Permission Denied");
+      return false;
+    }
+    const microphoneStatus = await requestMicrophonePermissions();
+    if (!microphoneStatus.granted) {
+      Alert.alert("Error", "Microphone Permission Denied");
+      return false;
+    }
+    const mediaLibraryStatus = await requestMediaLibraryPermissions();
+    if (!mediaLibraryStatus.granted) {
+      Alert.alert("Error", "Media Library Permission Denied");
+      return false;
+    }
+    await AsyncStorage.setItem("onboardingComplete", "true");
+    return true;
+  }
 
   useEffect(() => {
     scale.value = withRepeat(withTiming(1.1, { duration: 1000 }), -1, true);
@@ -61,11 +97,14 @@ export default function OnboardingScreen() {
           </ThemedText>
         </ThemedView>
         <TouchableOpacity
-          style={[styles.getStartedButton, { backgroundColor: buttonColor }]}
-          onPress={() => console.log("Get Started pressed")}
+          style={[
+            styles.getStartedButton,
+            { backgroundColor: Colors.light.appPrimary },
+          ]}
+          onPress={handleContinue}
         >
           <ThemedText
-            style={[styles.buttonText, { color: backgroundColor }]}
+            style={[styles.buttonText, { color: Colors.light.background }]}
             type="defaultSemiBold"
           >
             Get Started
