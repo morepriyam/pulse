@@ -1,10 +1,10 @@
+import React from "react";
 import { StyleSheet, TouchableOpacity } from "react-native";
 
-import { HelloWave } from "@/components/HelloWave";
-import ParallaxScrollView from "@/components/ParallaxScrollView";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useThemeColor } from "@/hooks/useThemeColor";
+import { Image } from "expo-image";
 import { useEffect } from "react";
 import Animated, {
   useAnimatedStyle,
@@ -15,7 +15,7 @@ import Animated, {
 
 export default function OnboardingScreen() {
   const scale = useSharedValue(1);
-  const tintColor = useThemeColor({}, "appPrimary");
+  const buttonColor = useThemeColor({}, "appPrimary");
   const backgroundColor = useThemeColor({}, "background");
 
   useEffect(() => {
@@ -26,88 +26,102 @@ export default function OnboardingScreen() {
     transform: [{ scale: scale.value }],
   }));
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#FFFFFF", dark: "#0F0F0F" }}
-      headerImage={
-        <Animated.Image
+    <ThemedView style={styles.view}>
+      <Animated.View style={animatedStyle}>
+        <Image
           source={require("@/assets/images/pulse-logo.png")}
-          style={[styles.pulseLogo, animatedStyle]}
+          style={styles.pulseLogo}
         />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome to Pulse!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Create Short Videos</ThemedText>
-        <ThemedText>
-          Hold to record 60-second shorts with flip camera and segmented
-          recording.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Watch & Share</ThemedText>
-        <ThemedText>
-          Scroll through shorts with adaptive playback. Like, comment, and share
-          securely.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Cloud Integration</ThemedText>
-        <ThemedText>
-          Videos are processed with HLS for optimal playback on all devices.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Get Started</ThemedText>
-        <ThemedText>
-          Grant camera and mic permissions to start recording.
-        </ThemedText>
-      </ThemedView>
-
-      <TouchableOpacity
-        style={[styles.getStartedButton, { backgroundColor: tintColor }]}
-        onPress={() => console.log("Get Started pressed")}
-      >
-        <ThemedText
-          style={[styles.buttonText, { color: backgroundColor }]}
-          type="defaultSemiBold"
+      </Animated.View>
+      <ThemedView style={styles.contentContainer}>
+        <ThemedView style={styles.stepContainer}>
+          <ThemedText type="subtitle">Create Short Videos</ThemedText>
+          <ThemedText>
+            Hold to record 60-second shorts with flip camera and segmented
+            recording.
+          </ThemedText>
+        </ThemedView>
+        <ThemedView style={styles.stepContainer}>
+          <ThemedText type="subtitle">Watch & Share</ThemedText>
+          <ThemedText>
+            Scroll through shorts with adaptive playback. Like, comment, and
+            share securely.
+          </ThemedText>
+        </ThemedView>
+        <ThemedView style={styles.stepContainer}>
+          <ThemedText type="subtitle">Cloud Integration</ThemedText>
+          <ThemedText>
+            Videos are processed with HLS for optimal playback on all devices.
+          </ThemedText>
+        </ThemedView>
+        <ThemedView style={styles.stepContainer}>
+          <ThemedText type="subtitle">Get Started</ThemedText>
+          <ThemedText>
+            Grant camera and mic permissions to start recording.
+          </ThemedText>
+        </ThemedView>
+        <TouchableOpacity
+          style={[styles.getStartedButton, { backgroundColor: buttonColor }]}
+          onPress={() => console.log("Get Started pressed")}
         >
-          Get Started
-        </ThemedText>
-      </TouchableOpacity>
-    </ParallaxScrollView>
+          <ThemedText
+            style={[styles.buttonText, { color: backgroundColor }]}
+            type="defaultSemiBold"
+          >
+            Get Started
+          </ThemedText>
+        </TouchableOpacity>
+      </ThemedView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 3,
-    marginBottom: 8,
+  view: {
+    display: "flex",
+    flex: 1,
   },
   pulseLogo: {
-    height: 200,
-    width: 400,
-    bottom: -30,
-    left: -80,
-    position: "absolute",
+    height: 180,
+    width: 320,
+    resizeMode: "contain",
+    alignSelf: "center",
+    marginTop: "15%",
+    marginBottom: "5%",
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: "space-between",
+    paddingBottom: 20,
+  },
+  stepContainer: {
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 24,
+    padding: 16,
+    borderRadius: 12,
+    marginHorizontal: 16,
   },
   getStartedButton: {
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 16,
-    alignItems: "center",
+    marginHorizontal: 24,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignSelf: "stretch",
+    marginTop: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: "bold",
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
 });
