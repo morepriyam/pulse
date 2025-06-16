@@ -18,12 +18,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-            "permissions": [
-              "android.permission.CAMERA",
-              "android.permission.RECORD_AUDIO",
-              "android.permission.READ_EXTERNAL_STORAGE",
-              "android.permission.WRITE_EXTERNAL_STORAGE",
-              "android.permission.ACCESS_MEDIA_LOCATION"
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION"
       ],
       "package": "com.morepriyam.pulse"
     },
