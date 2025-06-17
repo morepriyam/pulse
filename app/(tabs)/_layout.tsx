@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 
 import { HapticTab } from "@/components/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
+import PulseLogoIcon from "@/components/ui/PulseLogoIcon";
 import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
@@ -49,6 +50,61 @@ export default function TabLayout() {
           title: "Explore",
           tabBarIcon: ({ color }) => (
             <IconSymbol size={28} name="paperplane.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="shorts"
+        options={{
+          title: "Shorts",
+          tabBarIcon: ({ focused }) => (
+            <PulseLogoIcon
+              size={32}
+              style={{
+                opacity: focused ? 1 : 0.6,
+                marginBottom: 0,
+                alignSelf: "center",
+              }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="create"
+        options={{
+          title: "",
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol
+              size={28}
+              name="plus.circle.fill"
+              color={color}
+              style={{
+                marginBottom: 0,
+                alignSelf: "center",
+              }}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="subscriptions"
+        options={{
+          title: "Subscriptions",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol
+              size={28}
+              name="rectangle.stack.person.crop.fill"
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="person.crop.circle" color={color} />
           ),
         }}
       />
