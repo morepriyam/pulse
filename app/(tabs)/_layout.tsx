@@ -44,7 +44,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Entypo name="home" size={24} color={color} />
           ),
         }}
@@ -53,7 +53,7 @@ export default function TabLayout() {
         name="shorts"
         options={{
           title: "Shorts",
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons name="pulse" size={24} color={color} />
           ),
         }}
@@ -84,7 +84,7 @@ export default function TabLayout() {
         name="subscriptions"
         options={{
           title: "Subscriptions",
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="subscriptions" size={24} color={color} />
           ),
         }}
@@ -93,7 +93,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons name="person-circle-outline" size={24} color={color} />
           ),
         }}

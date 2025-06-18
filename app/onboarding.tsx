@@ -72,6 +72,8 @@ export default function OnboardingScreen() {
             Share your videos securely with adaptive playback for all devices.
           </ThemedText>
         </ThemedView>
+      </ThemedView>
+      <ThemedView style={styles.bottomContainer}>
         <ThemedView style={styles.poweredByContainer}>
           <ThemedText style={styles.poweredByText}>Powered by</ThemedText>
           <ThemedText style={[styles.mieText, { color: Colors.light.success }]}>
@@ -106,12 +108,11 @@ const styles = StyleSheet.create({
     height: 180,
     width: 320,
     alignSelf: "center",
-    marginTop: "25%",
+    marginTop: "15%",
     marginBottom: "5%",
   },
   contentContainer: {
     flex: 1,
-    justifyContent: "space-between",
     paddingBottom: 20,
     marginTop: 20,
   },
@@ -164,8 +165,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: "auto",
-    marginBottom: 8,
   },
   poweredByText: {
     fontSize: 14,
@@ -175,5 +174,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     marginLeft: 4,
+  },
+  bottomContainer: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
   },
 });
