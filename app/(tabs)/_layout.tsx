@@ -1,4 +1,4 @@
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, router } from "expo-router";
 import React from "react";
 import { Platform, View } from "react-native";
 
@@ -28,7 +28,6 @@ export default function TabLayout() {
         tabBarInactiveTintColor:
           Colors[colorScheme ?? "light"].tabBarButtonColor,
         headerShown: false,
-        tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarStyle: Platform.select({
           ios: {
@@ -44,6 +43,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <Entypo name="home" size={24} color={color} />
           ),
@@ -53,16 +53,17 @@ export default function TabLayout() {
         name="shorts"
         options={{
           title: "Shorts",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name="pulse" size={24} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="create"
+        name="dummy-create"
         options={{
           title: "",
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ color }) => (
             <View
               style={{
                 width: 40,
@@ -75,8 +76,24 @@ export default function TabLayout() {
                 marginTop: 12,
               }}
             >
-              <AntDesign name="plus" size={24} color={color} />
+              <AntDesign
+                name="plus"
+                size={24}
+                color={color}
+                onPress={() => {
+                  router.push("/camera");
+                }}
+              />
             </View>
+          ),
+          // Prevent routing to a screen
+          tabBarButton: (props) => (
+            <HapticTab
+              {...props}
+              onPress={() => {
+                router.push("/camera");
+              }}
+            />
           ),
         }}
       />
@@ -84,6 +101,7 @@ export default function TabLayout() {
         name="subscriptions"
         options={{
           title: "Subscriptions",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name="subscriptions" size={24} color={color} />
           ),
@@ -93,6 +111,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
+          tabBarButton: HapticTab,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name="person-circle-outline" size={24} color={color} />
           ),
