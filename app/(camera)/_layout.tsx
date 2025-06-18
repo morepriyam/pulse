@@ -42,8 +42,8 @@ export default function CameraLayout() {
           >
             <ThemedText
               type="defaultSemiBold"
-              lightColor="#ccc"
-              darkColor="#ccc"
+              lightColor={active === tab ? "#ffffff" : "#8E8E93"}
+              darkColor={active === tab ? "#ffffff" : "#8E8E93"}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </ThemedText>
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   nav: {
     flexDirection: "row",
     justifyContent: "space-around",
-    paddingVertical: 10,
+    paddingVertical: 8,
     backgroundColor: "#000",
     position: "absolute",
     left: 0,
