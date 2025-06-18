@@ -40,6 +40,14 @@ export default function RootLayout() {
             animation: "fade",
           }}
         />
+        <Stack.Screen
+          name="camera"
+          options={{
+            headerShown: false,
+            presentation: "fullScreenModal",
+            animation: "slide_from_bottom",
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
       <PermissionMonitor />
