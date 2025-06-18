@@ -13,8 +13,12 @@ import {
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors } from "@/constants/Colors";
+import { useColorScheme } from "@/hooks/useColorScheme";
 
 export function PermissionMonitor() {
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
+
   const [showMonitor, setShowMonitor] = useState(false);
   const [cameraPermissions, requestCameraPermissions] = useCameraPermissions();
   const [microphonePermissions, requestMicrophonePermissions] =
@@ -91,8 +95,25 @@ export function PermissionMonitor() {
   if (!showMonitor) return null;
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedView style={styles.content}>
+    <ThemedView
+      style={[styles.container, { backgroundColor: "rgba(0, 0, 0, 0.5)" }]}
+    >
+      <ThemedView
+        style={[
+          styles.content,
+          {
+            backgroundColor: colors.background,
+            shadowColor: "#FFFFFF",
+            shadowOffset: {
+              width: 1,
+              height: 1,
+            },
+            shadowOpacity: 0.3,
+            shadowRadius: 10,
+            elevation: 8,
+          },
+        ]}
+      >
         <ThemedView style={styles.header}>
           <ThemedText type="title" style={styles.title}>
             Permissions Required
@@ -103,7 +124,17 @@ export function PermissionMonitor() {
           </ThemedText>
         </ThemedView>
 
-        <ThemedView style={styles.permissionContainer}>
+        <ThemedView
+          style={[
+            styles.permissionContainer,
+            {
+              backgroundColor:
+                colorScheme === "dark"
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "rgba(0, 0, 0, 0.05)",
+            },
+          ]}
+        >
           <ThemedText type="subtitle">Camera Access</ThemedText>
           <ThemedText>Required for recording videos</ThemedText>
           <ThemedText
@@ -111,8 +142,8 @@ export function PermissionMonitor() {
               styles.permissionStatus,
               {
                 color: cameraPermissions?.granted
-                  ? Colors.light.success
-                  : Colors.light.error,
+                  ? colors.success
+                  : colors.error,
               },
             ]}
           >
@@ -120,7 +151,17 @@ export function PermissionMonitor() {
           </ThemedText>
         </ThemedView>
 
-        <ThemedView style={styles.permissionContainer}>
+        <ThemedView
+          style={[
+            styles.permissionContainer,
+            {
+              backgroundColor:
+                colorScheme === "dark"
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "rgba(0, 0, 0, 0.05)",
+            },
+          ]}
+        >
           <ThemedText type="subtitle">Microphone Access</ThemedText>
           <ThemedText>Required for recording audio</ThemedText>
           <ThemedText
@@ -128,8 +169,8 @@ export function PermissionMonitor() {
               styles.permissionStatus,
               {
                 color: microphonePermissions?.granted
-                  ? Colors.light.success
-                  : Colors.light.error,
+                  ? colors.success
+                  : colors.error,
               },
             ]}
           >
@@ -137,7 +178,17 @@ export function PermissionMonitor() {
           </ThemedText>
         </ThemedView>
 
-        <ThemedView style={styles.permissionContainer}>
+        <ThemedView
+          style={[
+            styles.permissionContainer,
+            {
+              backgroundColor:
+                colorScheme === "dark"
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "rgba(0, 0, 0, 0.05)",
+            },
+          ]}
+        >
           <ThemedText type="subtitle">Media Library Access</ThemedText>
           <ThemedText>Required for saving videos</ThemedText>
           <ThemedText
@@ -145,8 +196,8 @@ export function PermissionMonitor() {
               styles.permissionStatus,
               {
                 color: mediaLibraryPermissions?.granted
-                  ? Colors.light.success
-                  : Colors.light.error,
+                  ? colors.success
+                  : colors.error,
               },
             ]}
           >
@@ -155,11 +206,11 @@ export function PermissionMonitor() {
         </ThemedView>
 
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: Colors.light.appPrimary }]}
+          style={[styles.button, { backgroundColor: colors.appPrimary }]}
           onPress={handleUpdatePermissions}
         >
           <ThemedText
-            style={[styles.buttonText, { color: Colors.light.background }]}
+            style={[styles.buttonText, { color: "#FFFFFF" }]}
             type="defaultSemiBold"
           >
             Update Permissions
@@ -177,18 +228,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 1000,
   },
   content: {
-    backgroundColor: Colors.light.background,
     borderRadius: 16,
     padding: 24,
-    margin: 24,
+    marginHorizontal: 20,
     maxWidth: 500,
-    width: "100%",
   },
   header: {
     marginBottom: 24,
@@ -204,7 +252,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
     borderRadius: 12,
-    backgroundColor: "rgba(0, 0, 0, 0.05)",
   },
   permissionStatus: {
     marginTop: 8,
