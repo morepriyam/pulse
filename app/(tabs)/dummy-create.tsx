@@ -1,16 +1,22 @@
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet } from "react-native";
 
 export default function CreateTab() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab Placeholder</Text>
-      <Text style={styles.subtitle}>This screen should not be visible</Text>
-      <Text style={styles.description}>
+    <ThemedView style={styles.container}>
+      <ThemedText style={styles.title} type="title">
+        Tab Placeholder
+      </ThemedText>
+      <ThemedText style={styles.subtitle} type="subtitle">
+        This screen should not be visible
+      </ThemedText>
+      <ThemedText style={styles.description}>
         The + button in the tab bar should navigate to the camera screen, not
         this placeholder screen.
-      </Text>
-    </View>
+      </ThemedText>
+    </ThemedView>
   );
 }
 
@@ -19,22 +25,14 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f0f0f0",
   },
   title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
     marginBottom: 10,
   },
   subtitle: {
-    fontSize: 16,
-    color: "#666",
     marginBottom: 20,
   },
   description: {
-    fontSize: 14,
-    color: "#999",
     textAlign: "center",
     paddingHorizontal: 20,
   },
