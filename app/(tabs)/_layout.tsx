@@ -76,14 +76,7 @@ export default function TabLayout() {
                 marginTop: 12,
               }}
             >
-              <AntDesign
-                name="plus"
-                size={24}
-                color={color}
-                onPress={() => {
-                  router.push("/camera");
-                }}
-              />
+              <AntDesign name="plus" size={24} color={color} />
             </View>
           ),
           // Prevent routing to a screen
@@ -91,7 +84,7 @@ export default function TabLayout() {
             <HapticTab
               {...props}
               onPress={() => {
-                router.push("/camera");
+                router.push("/(camera)/shorts");
               }}
             />
           ),
