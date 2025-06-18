@@ -41,7 +41,7 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen
-          name="camera"
+          name="(camera)"
           options={{
             headerShown: false,
             presentation: "fullScreenModal",

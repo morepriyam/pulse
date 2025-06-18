@@ -3,19 +3,12 @@ import { ThemedView } from "@/components/ThemedView";
 import React from "react";
 import { StyleSheet } from "react-native";
 
-export default function CameraScreen() {
+export default function ShortsScreen() {
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText style={styles.title} type="title">
-        📷 Camera Screen
-      </ThemedText>
-      <ThemedText style={styles.subtitle} type="subtitle">
-        Fullscreen - No Tab Bar
-      </ThemedText>
-      <ThemedText style={styles.description}>
-        This is where your camera functionality will go. This screen opens when
-        you tap the + button in the tab bar.
-      </ThemedText>
+    <ThemedView
+      style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+    >
+      <ThemedText type="title">Shorts Page</ThemedText>
     </ThemedView>
   );
 }
