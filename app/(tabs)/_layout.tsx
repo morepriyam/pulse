@@ -1,14 +1,16 @@
 import { Redirect, Tabs } from "expo-router";
 import React from "react";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 
 import { HapticTab } from "@/components/HapticTab";
-import { IconSymbol } from "@/components/ui/IconSymbol";
-import PulseLogoIcon from "@/components/ui/PulseLogoIcon";
 import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useFirstTimeOpen } from "@/hooks/useFirstTimeOpen";
+import AntDesign from "@expo/vector-icons/AntDesign";
+import Entypo from "@expo/vector-icons/Entypo";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -22,7 +24,9 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
+        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tabBarButtonColor,
+        tabBarInactiveTintColor:
+          Colors[colorScheme ?? "light"].tabBarButtonColor,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
@@ -30,6 +34,7 @@ export default function TabLayout() {
           ios: {
             // Use a transparent background on iOS to show the blur effect
             position: "absolute",
+            backgroundColor: "transparent",
           },
           default: {},
         }),
@@ -40,16 +45,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: "Explore",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="paperplane.fill" color={color} />
+            <Entypo name="home" size={24} color={color} />
           ),
         }}
       />
@@ -57,15 +53,8 @@ export default function TabLayout() {
         name="shorts"
         options={{
           title: "Shorts",
-          tabBarIcon: ({ focused }) => (
-            <PulseLogoIcon
-              size={32}
-              style={{
-                opacity: focused ? 1 : 0.6,
-                marginBottom: 0,
-                alignSelf: "center",
-              }}
-            />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="pulse" size={24} color={color} />
           ),
         }}
       />
@@ -74,15 +63,20 @@ export default function TabLayout() {
         options={{
           title: "",
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol
-              size={28}
-              name="plus.circle.fill"
-              color={color}
+            <View
               style={{
-                marginBottom: 0,
-                alignSelf: "center",
+                width: 40,
+                height: 40,
+                borderRadius: 25,
+                backgroundColor:
+                  Colors[colorScheme ?? "light"].tabBarButtonColorBg,
+                justifyContent: "center",
+                alignItems: "center",
+                marginTop: 12,
               }}
-            />
+            >
+              <AntDesign name="plus" size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -91,11 +85,7 @@ export default function TabLayout() {
         options={{
           title: "Subscriptions",
           tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={28}
-              name="rectangle.stack.person.crop.fill"
-              color={color}
-            />
+            <MaterialIcons name="subscriptions" size={24} color={color} />
           ),
         }}
       />
@@ -104,7 +94,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.crop.circle" color={color} />
+            <Ionicons name="person-circle-outline" size={24} color={color} />
           ),
         }}
       />
