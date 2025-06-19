@@ -1,10 +1,14 @@
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
 import React from "react";
-import { Text, View } from "react-native";
 
 export default function ProfileScreen() {
   return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <Text>Profile</Text>
-    </View>
+    <ThemedView
+      style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+    >
+      <ThemedText type="title">Profile</ThemedText>
+      <ThemedText>This is your profile page.</ThemedText>
+    </ThemedView>
   );
 }
