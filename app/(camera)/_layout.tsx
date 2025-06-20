@@ -24,8 +24,10 @@ export default function CameraLayout() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#111" }}>
-      {/* Actual screen content */}
-      <Slot />
+      {/* Curved content container */}
+      <View style={styles.curvedContainer}>
+        <Slot />
+      </View>
 
       {/* Bottom Navigation */}
       <View style={[styles.nav, { paddingBottom: insets.bottom || 0 }]}>
@@ -55,15 +57,18 @@ export default function CameraLayout() {
 }
 
 const styles = StyleSheet.create({
+  curvedContainer: {
+    flex: 1,
+    backgroundColor: "#000",
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    overflow: "hidden",
+  },
   nav: {
     flexDirection: "row",
     justifyContent: "space-around",
     paddingVertical: 8,
     backgroundColor: "#000",
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
   },
   button: {
     paddingVertical: 6,
