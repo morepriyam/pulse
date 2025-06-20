@@ -1,11 +1,10 @@
 import { ThemedText } from "@/components/ThemedText";
 import * as Haptics from "expo-haptics";
 import { Slot, router, usePathname } from "expo-router";
-import { useEffect } from "react";
 import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const tabs = ["video", "shorts", "photo", "post"];
+const tabs = ["shorts", "video", "post"];
 
 export default function CameraLayout() {
   const insets =
@@ -14,13 +13,6 @@ export default function CameraLayout() {
       : { bottom: 0 };
   const pathname = usePathname();
   const active = pathname.split("/").pop();
-
-  // Redirect /camera to /camera/shorts
-  useEffect(() => {
-    if (pathname === "/camera" || pathname === "/(camera)") {
-      router.replace("/(camera)/shorts");
-    }
-  }, [pathname]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#111" }}>
