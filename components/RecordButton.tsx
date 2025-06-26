@@ -11,10 +11,20 @@ import {
 interface RecordButtonProps {
   cameraRef: React.RefObject<CameraView | null>;
   maxDuration?: number;
-  onRecordingStart?: (mode: "tap" | "hold") => void;
-  onRecordingComplete?: (videoUri: string | null, mode: "tap" | "hold") => void;
+  onRecordingStart?: (mode: "tap" | "hold", remainingTime: number) => void;
+  onRecordingComplete?: (
+    videoUri: string | null,
+    mode: "tap" | "hold",
+    duration: number
+  ) => void;
+  onRecordingProgress?: (
+    currentDuration: number,
+    remainingTime: number
+  ) => void;
   holdDelay?: number;
   style?: any;
+  totalDuration: number; // Total allowed recording time
+  usedDuration: number; // Already used recording time from segments
 }
 
 export default function RecordButton({
@@ -22,8 +32,11 @@ export default function RecordButton({
   maxDuration = 60,
   onRecordingStart,
   onRecordingComplete,
+  onRecordingProgress,
   holdDelay = 500,
   style,
+  totalDuration,
+  usedDuration,
 }: RecordButtonProps) {
   const [isRecording, setIsRecording] = React.useState(false);
   const [recordingMode, setRecordingMode] = React.useState<
@@ -38,21 +51,52 @@ export default function RecordButton({
   // Animation for hold mode (outer border pulse only)
   const outerBorderScaleAnim = React.useRef(new Animated.Value(1)).current;
   const pulsingRef = React.useRef<Animated.CompositeAnimation | null>(null);
-  const holdTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const holdTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const pressStartTimeRef = React.useRef<number>(0);
   const recordingPromiseRef = React.useRef<Promise<any> | null>(null);
   const manuallyStoppedRef = React.useRef(false);
   const isHoldingRef = React.useRef(false);
 
+  // New refs for tracking recording progress
+  const recordingStartTimeRef = React.useRef<number>(0);
+  const progressIntervalRef = React.useRef<ReturnType<
+    typeof setInterval
+  > | null>(null);
+
+  const remainingTime = totalDuration - usedDuration;
+
   const startRecording = (mode: "tap" | "hold") => {
-    if (!cameraRef.current || isRecording) return;
+    if (!cameraRef.current || isRecording || remainingTime <= 0) return;
 
     setIsRecording(true);
     setRecordingMode(mode);
     manuallyStoppedRef.current = false;
+    recordingStartTimeRef.current = Date.now();
 
-    // Call optional callback
-    onRecordingStart?.(mode);
+    // Calculate the maximum duration for this recording session
+    const sessionMaxDuration = Math.min(maxDuration, remainingTime);
+
+    // Call optional callback with remaining time
+    onRecordingStart?.(mode, remainingTime);
+
+    // Start progress tracking
+    progressIntervalRef.current = setInterval(() => {
+      const currentRecordingDuration =
+        (Date.now() - recordingStartTimeRef.current) / 1000;
+      const newRemainingTime = remainingTime - currentRecordingDuration;
+
+      onRecordingProgress?.(
+        currentRecordingDuration,
+        Math.max(0, newRemainingTime)
+      );
+
+      // Auto-stop when remaining time is exhausted
+      if (newRemainingTime <= 0) {
+        stopRecording();
+      }
+    }, 100);
 
     if (mode === "tap") {
       // Tap mode: shrink to square
@@ -75,25 +119,37 @@ export default function RecordButton({
 
     // Shared recording logic
     recordingPromiseRef.current = cameraRef.current
-      .recordAsync({ maxDuration })
+      .recordAsync({ maxDuration: sessionMaxDuration })
       .then((video) => {
+        const recordingDuration =
+          (Date.now() - recordingStartTimeRef.current) / 1000;
+
         // Only show alert if not manually stopped
         if (!manuallyStoppedRef.current && video?.uri) {
           Alert.alert("Recording Complete", `Video saved to: ${video.uri}`);
         }
-        // Call optional callback
-        onRecordingComplete?.(video?.uri || null, mode);
+        // Call optional callback with actual duration
+        onRecordingComplete?.(video?.uri || null, mode, recordingDuration);
         return video;
       })
       .catch((error) => {
+        const recordingDuration =
+          (Date.now() - recordingStartTimeRef.current) / 1000;
+
         // For manual stops, don't show error
         if (!error.message?.includes("stopped")) {
           Alert.alert("Recording Error", "Failed to record video");
         }
-        onRecordingComplete?.(null, mode);
+        onRecordingComplete?.(null, mode, recordingDuration);
         return null;
       })
       .finally(() => {
+        // Clear progress tracking
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+
         setIsRecording(false);
         setRecordingMode(null);
         recordingPromiseRef.current = null;
@@ -147,31 +203,16 @@ export default function RecordButton({
     // Mark as manually stopped
     manuallyStoppedRef.current = true;
 
-    // Stop the recording and wait for the result
+    // Stop the recording - the promise handlers will take care of the callback
     try {
       if (recordingPromiseRef.current) {
         cameraRef.current.stopRecording();
-        const video = await recordingPromiseRef.current;
-
-        // Show the same alert for both modes
-        if (video?.uri) {
-          Alert.alert("Recording Complete", `Video saved to: ${video.uri}`);
-        } else {
-          Alert.alert(
-            "Recording Complete",
-            "Video recording finished successfully"
-          );
-        }
-
-        // Call optional callback
-        onRecordingComplete?.(video?.uri || null, recordingMode!);
+        // Wait for the promise to complete, but don't call the callback here
+        // The promise .then()/.catch() handlers will handle the callback
+        await recordingPromiseRef.current;
       }
     } catch (error) {
-      Alert.alert(
-        "Recording Complete",
-        "Video recording finished successfully"
-      );
-      onRecordingComplete?.(null, recordingMode!);
+      // Error handling is done in the promise handlers
     }
 
     if (recordingMode === "tap") {
