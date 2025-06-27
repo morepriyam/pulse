@@ -1,12 +1,6 @@
 import { CameraView } from "expo-camera";
 import * as React from "react";
-import {
-  Alert,
-  Animated,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Animated, StyleSheet, TouchableOpacity, View } from "react-native";
 
 interface RecordButtonProps {
   cameraRef: React.RefObject<CameraView | null>;
@@ -95,6 +89,24 @@ export default function RecordButton({
       // Auto-stop when remaining time is exhausted
       if (newRemainingTime <= 0) {
         stopRecording();
+        // Reset UI state for auto-stop
+        if (mode === "hold") {
+          stopHoldVisualFeedback();
+        } else if (mode === "tap") {
+          // Reset tap animations
+          Animated.parallel([
+            Animated.timing(scaleAnim, {
+              toValue: 1,
+              duration: 150,
+              useNativeDriver: false,
+            }),
+            Animated.timing(borderRadiusAnim, {
+              toValue: 30,
+              duration: 150,
+              useNativeDriver: false,
+            }),
+          ]).start();
+        }
       }
     }, 100);
 
@@ -124,9 +136,9 @@ export default function RecordButton({
         const recordingDuration =
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
-        // Only show alert if not manually stopped
+        // Only log if not manually stopped
         if (!manuallyStoppedRef.current && video?.uri) {
-          Alert.alert("Recording Complete", `Video saved to: ${video.uri}`);
+          console.log("Recording Complete", `Video saved to: ${video.uri}`);
         }
         // Call optional callback with actual duration
         onRecordingComplete?.(video?.uri || null, mode, recordingDuration);
@@ -136,9 +148,9 @@ export default function RecordButton({
         const recordingDuration =
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
-        // For manual stops, don't show error
+        // For manual stops, don't log error
         if (!error.message?.includes("stopped")) {
-          Alert.alert("Recording Error", "Failed to record video");
+          console.log("Recording Error", "Failed to record video");
         }
         onRecordingComplete?.(null, mode, recordingDuration);
         return null;
