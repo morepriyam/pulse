@@ -4,7 +4,7 @@ import { Slot, router, usePathname } from "expo-router";
 import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const tabs = ["shorts", "video", "post"];
+const tabs = ["shorts", "drafts", "post"];
 
 export default function CameraLayout() {
   const insets =
