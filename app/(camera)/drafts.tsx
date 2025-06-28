@@ -36,7 +36,6 @@ export default function DraftsScreen() {
   };
 
   const handleDraftPress = (draft: Draft) => {
-    // Navigate to shorts screen with draft ID
     router.push({
       pathname: "/(camera)/shorts",
       params: { draftId: draft.id },
@@ -52,7 +51,7 @@ export default function DraftsScreen() {
         onPress: async () => {
           try {
             await DraftStorage.deleteDraft(draftId);
-            loadDrafts(); // Refresh the list
+            loadDrafts();
           } catch (error) {
             console.error("Error deleting draft:", error);
           }

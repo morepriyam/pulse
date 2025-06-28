@@ -213,7 +213,7 @@ export default function ShortsScreen() {
       }
     }
 
-    router.dismiss();
+    router.back();
   };
 
   return (
