@@ -17,8 +17,8 @@ interface RecordButtonProps {
   ) => void;
   holdDelay?: number;
   style?: any;
-  totalDuration: number; // Total allowed recording time
-  usedDuration: number; // Already used recording time from segments
+  totalDuration: number;
+  usedDuration: number;
 }
 
 export default function RecordButton({
@@ -38,11 +38,8 @@ export default function RecordButton({
   >(null);
   const [isHoldingForRecord, setIsHoldingForRecord] = React.useState(false);
 
-  // Animations for tap mode (inner button)
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
   const borderRadiusAnim = React.useRef(new Animated.Value(30)).current;
-
-  // Animation for hold mode (outer border pulse only)
   const outerBorderScaleAnim = React.useRef(new Animated.Value(1)).current;
   const pulsingRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const holdTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
@@ -53,7 +50,6 @@ export default function RecordButton({
   const manuallyStoppedRef = React.useRef(false);
   const isHoldingRef = React.useRef(false);
 
-  // New refs for tracking recording progress
   const recordingStartTimeRef = React.useRef<number>(0);
   const progressIntervalRef = React.useRef<ReturnType<
     typeof setInterval
@@ -69,13 +65,8 @@ export default function RecordButton({
     manuallyStoppedRef.current = false;
     recordingStartTimeRef.current = Date.now();
 
-    // Calculate the maximum duration for this recording session
     const sessionMaxDuration = Math.min(maxDuration, remainingTime);
-
-    // Call optional callback with remaining time
     onRecordingStart?.(mode, remainingTime);
-
-    // Start progress tracking
     progressIntervalRef.current = setInterval(() => {
       const currentRecordingDuration =
         (Date.now() - recordingStartTimeRef.current) / 1000;
@@ -86,14 +77,11 @@ export default function RecordButton({
         Math.max(0, newRemainingTime)
       );
 
-      // Auto-stop when remaining time is exhausted
       if (newRemainingTime <= 0) {
         stopRecording();
-        // Reset UI state for auto-stop
         if (mode === "hold") {
           stopHoldVisualFeedback();
         } else if (mode === "tap") {
-          // Reset tap animations
           Animated.parallel([
             Animated.timing(scaleAnim, {
               toValue: 1,
@@ -111,7 +99,6 @@ export default function RecordButton({
     }, 100);
 
     if (mode === "tap") {
-      // Tap mode: shrink to square
       Animated.sequence([
         Animated.delay(100),
         Animated.parallel([
@@ -129,18 +116,15 @@ export default function RecordButton({
       ]).start();
     }
 
-    // Shared recording logic
     recordingPromiseRef.current = cameraRef.current
       .recordAsync({ maxDuration: sessionMaxDuration })
       .then((video) => {
         const recordingDuration =
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
-        // Only log if not manually stopped
         if (!manuallyStoppedRef.current && video?.uri) {
           console.log("Recording Complete", `Video saved to: ${video.uri}`);
         }
-        // Call optional callback with actual duration
         onRecordingComplete?.(video?.uri || null, mode, recordingDuration);
         return video;
       })
@@ -148,7 +132,6 @@ export default function RecordButton({
         const recordingDuration =
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
-        // For manual stops, don't log error
         if (!error.message?.includes("stopped")) {
           console.log("Recording Error", "Failed to record video");
         }
@@ -156,7 +139,6 @@ export default function RecordButton({
         return null;
       })
       .finally(() => {
-        // Clear progress tracking
         if (progressIntervalRef.current) {
           clearInterval(progressIntervalRef.current);
           progressIntervalRef.current = null;
@@ -173,7 +155,6 @@ export default function RecordButton({
     setIsHoldingForRecord(true);
     isHoldingRef.current = true;
 
-    // Start pulsing immediately for visual feedback
     const startPulsing = () => {
       pulsingRef.current = Animated.loop(
         Animated.sequence([
@@ -198,7 +179,6 @@ export default function RecordButton({
     setIsHoldingForRecord(false);
     isHoldingRef.current = false;
 
-    // Stop pulsing and reset outer border
     if (pulsingRef.current) {
       pulsingRef.current.stop();
     }
@@ -212,23 +192,18 @@ export default function RecordButton({
   const stopRecording = async () => {
     if (!cameraRef.current || !isRecording) return;
 
-    // Mark as manually stopped
     manuallyStoppedRef.current = true;
 
-    // Stop the recording - the promise handlers will take care of the callback
     try {
       if (recordingPromiseRef.current) {
         cameraRef.current.stopRecording();
-        // Wait for the promise to complete, but don't call the callback here
-        // The promise .then()/.catch() handlers will handle the callback
         await recordingPromiseRef.current;
       }
     } catch (error) {
-      // Error handling is done in the promise handlers
+      // Error handling in promise handlers
     }
 
     if (recordingMode === "tap") {
-      // Reset tap animations
       Animated.parallel([
         Animated.timing(scaleAnim, {
           toValue: 1,
@@ -245,11 +220,9 @@ export default function RecordButton({
   };
 
   const handleRecordPress = () => {
-    // Calculate press duration to differentiate between tap and hold
     const pressDuration = Date.now() - pressStartTimeRef.current;
 
-    // If it was a quick press (less than 200ms), treat as tap
-    // If it was a longer press, ignore (it was a hold operation)
+    // Quick press = tap, longer press was hold operation
     if (pressDuration < 200) {
       isRecording ? stopRecording() : startRecording("tap");
     }
@@ -259,10 +232,8 @@ export default function RecordButton({
     pressStartTimeRef.current = Date.now();
 
     if (!isRecording && !isHoldingForRecord) {
-      // Start visual feedback immediately
       startHoldVisualFeedback();
 
-      // Start actual recording after delay
       holdTimeoutRef.current = setTimeout(() => {
         if (isHoldingRef.current) {
           startRecording("hold");
@@ -272,18 +243,15 @@ export default function RecordButton({
   };
 
   const handlePressOut = () => {
-    // Clear the timeout if user releases before delay
     if (holdTimeoutRef.current) {
       clearTimeout(holdTimeoutRef.current);
       holdTimeoutRef.current = null;
     }
 
     if (isRecording && recordingMode === "hold") {
-      // Stop recording if actually recording
       stopRecording();
       stopHoldVisualFeedback();
     } else if (isHoldingForRecord) {
-      // Just stop visual feedback if only holding (not yet recording)
       stopHoldVisualFeedback();
     }
   };

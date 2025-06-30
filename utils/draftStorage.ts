@@ -6,7 +6,7 @@ export interface Draft {
   segments: RecordingSegment[];
   totalDuration: number;
   createdAt: Date;
-  thumbnail?: string; // Optional thumbnail from first segment
+  thumbnail?: string;
 }
 
 const DRAFTS_STORAGE_KEY = 'recording_drafts';
@@ -21,7 +21,7 @@ export class DraftStorage {
         segments,
         totalDuration,
         createdAt: new Date(),
-        thumbnail: segments[0]?.uri, // Use first segment as thumbnail
+        thumbnail: segments[0]?.uri,
       };
       
       const updatedDrafts = [...existingDrafts, newDraft];
@@ -49,7 +49,6 @@ export class DraftStorage {
       if (!draftsJson) return [];
       
       const drafts = JSON.parse(draftsJson);
-      // Convert date strings back to Date objects
       return drafts.map((draft: any) => ({
         ...draft,
         createdAt: new Date(draft.createdAt),

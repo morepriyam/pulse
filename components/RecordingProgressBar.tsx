@@ -3,14 +3,14 @@ import { StyleSheet, View } from "react-native";
 
 export interface RecordingSegment {
   id: string;
-  duration: number; // in seconds
+  duration: number;
   uri: string;
 }
 
 interface RecordingProgressBarProps {
   segments: RecordingSegment[];
-  totalDuration: number; // total allowed duration in seconds
-  currentRecordingDuration?: number; // current recording duration in progress
+  totalDuration: number;
+  currentRecordingDuration?: number;
 }
 
 export default function RecordingProgressBar({
