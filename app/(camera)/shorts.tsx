@@ -3,6 +3,7 @@ import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
   RecordingSegment,
 } from "@/components/RecordingProgressBar";
+import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import { DraftStorage } from "@/utils/draftStorage";
@@ -27,52 +28,85 @@ export default function ShortsScreen() {
     null
   );
   const [hasStartedOver, setHasStartedOver] = React.useState(false);
+  const [isContinuingLastDraft, setIsContinuingLastDraft] =
+    React.useState(false);
+  const [showContinuingIndicator, setShowContinuingIndicator] =
+    React.useState(false);
 
-  // Load draft if draftId is provided
+  const isLoadingDraft = React.useRef(false);
+  const lastSegmentCount = React.useRef(0);
+
   React.useEffect(() => {
     const loadDraft = async () => {
-      if (draftId) {
-        isLoadingDraft.current = true; // Mark as loading
-        try {
-          const draft = await DraftStorage.getDraftById(draftId);
-          if (draft) {
-            setRecordingSegments(draft.segments);
-            setSelectedDuration(draft.totalDuration);
-            setCurrentDraftId(draft.id);
-            setOriginalDraftId(draft.id); // Track the original draft ID
-            lastSegmentCount.current = draft.segments.length; // Set initial count
+      isLoadingDraft.current = true;
+      try {
+        let draftToLoad = null;
+
+        if (draftId) {
+          draftToLoad = await DraftStorage.getDraftById(draftId);
+          setIsContinuingLastDraft(false);
+        } else {
+          const allDrafts = await DraftStorage.getAllDrafts();
+          if (allDrafts.length > 0) {
+            const mostRecent = allDrafts.sort(
+              (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+            )[0];
+            draftToLoad = mostRecent;
+            setIsContinuingLastDraft(true);
           }
-        } catch (error) {
-          console.error("Error loading draft:", error);
-        } finally {
-          isLoadingDraft.current = false; // Mark loading as complete
         }
+
+        if (draftToLoad) {
+          setRecordingSegments(draftToLoad.segments);
+          setSelectedDuration(draftToLoad.totalDuration);
+          setCurrentDraftId(draftToLoad.id);
+          setOriginalDraftId(draftToLoad.id);
+          lastSegmentCount.current = draftToLoad.segments.length;
+        }
+      } catch (error) {
+        console.error("Error loading draft:", error);
+      } finally {
+        isLoadingDraft.current = false;
       }
     };
 
     loadDraft();
   }, [draftId]);
 
-  // Track if we're loading vs recording new content
-  const isLoadingDraft = React.useRef(false);
-  const lastSegmentCount = React.useRef(0);
+  React.useEffect(() => {
+    if (isContinuingLastDraft && recordingSegments.length > 0) {
+      setShowContinuingIndicator(true);
+      const hideTimer = setTimeout(() => {
+        setShowContinuingIndicator(false);
+      }, 2000);
 
-  // Auto-save segments only when they actually change (new recordings)
+      return () => clearTimeout(hideTimer);
+    } else {
+      setShowContinuingIndicator(false);
+    }
+  }, [isContinuingLastDraft, recordingSegments.length]);
+
+  React.useEffect(() => {
+    if (
+      isContinuingLastDraft &&
+      recordingSegments.length > lastSegmentCount.current
+    ) {
+      setIsContinuingLastDraft(false);
+    }
+  }, [recordingSegments.length, isContinuingLastDraft]);
+
   React.useEffect(() => {
     const autoSave = async () => {
-      // Don't auto-save if no segments or if we're just loading a draft
       if (recordingSegments.length === 0 || isLoadingDraft.current) {
         return;
       }
 
-      // Only save if we actually have NEW segments (more than before)
       if (recordingSegments.length <= lastSegmentCount.current) {
         return;
       }
 
       try {
         if (currentDraftId) {
-          // Update existing draft
           const existingDrafts = await DraftStorage.getAllDrafts();
           const updatedDrafts = existingDrafts.map((draft) =>
             draft.id === currentDraftId
@@ -86,24 +120,21 @@ export default function ShortsScreen() {
           await DraftStorage.saveDraftArray(updatedDrafts);
           console.log("Auto-saved to existing draft:", currentDraftId);
         } else {
-          // Create new draft
           const newDraftId = await DraftStorage.saveDraft(
             recordingSegments,
             selectedDuration
           );
           setCurrentDraftId(newDraftId);
-          setHasStartedOver(false); // Reset the start over flag
+          setHasStartedOver(false);
           console.log("Auto-saved as new draft:", newDraftId);
         }
 
-        // Update the last known segment count
         lastSegmentCount.current = recordingSegments.length;
       } catch (error) {
         console.error("Error auto-saving draft:", error);
       }
     };
 
-    // Debounce auto-save to avoid too frequent saves
     const timeoutId = setTimeout(autoSave, 1000);
     return () => clearTimeout(timeoutId);
   }, [recordingSegments, selectedDuration, currentDraftId]);
@@ -167,17 +198,14 @@ export default function ShortsScreen() {
 
   const handleStartOver = () => {
     handleClearSegments();
-    setCurrentDraftId(null); // Reset draft ID so new recordings create a new draft
-    setHasStartedOver(true); // Mark that user started over
-    lastSegmentCount.current = 0; // Reset segment count tracking
+    setCurrentDraftId(null);
+    setHasStartedOver(true);
+    lastSegmentCount.current = 0;
   };
 
   const handleSaveAsDraft = async (segments: RecordingSegment[]) => {
-    // This is now only used for manual save from close button
-    // But since we have auto-save, this might not be needed anymore
     try {
       if (currentDraftId && !hasStartedOver) {
-        // Update existing draft
         const existingDrafts = await DraftStorage.getAllDrafts();
         const updatedDrafts = existingDrafts.map((draft) =>
           draft.id === currentDraftId
@@ -185,22 +213,23 @@ export default function ShortsScreen() {
             : draft
         );
         await DraftStorage.saveDraftArray(updatedDrafts);
-        console.log("Manually saved to existing draft:", currentDraftId);
+        console.log("Saved draft and starting over:", currentDraftId);
       } else {
-        // Create new draft
         const draftId = await DraftStorage.saveDraft(
           segments,
           selectedDuration
         );
-        console.log("Manually saved as new draft:", draftId);
+        console.log("Saved new draft and starting over:", draftId);
       }
+
+      handleStartOver();
+      setIsContinuingLastDraft(false);
     } catch (error) {
       console.error("Error saving draft:", error);
     }
   };
 
   const handleClose = async () => {
-    // If user started over from an existing draft and has no new segments, delete the original draft
     if (hasStartedOver && originalDraftId && recordingSegments.length === 0) {
       try {
         await DraftStorage.deleteDraft(originalDraftId);
@@ -213,7 +242,7 @@ export default function ShortsScreen() {
       }
     }
 
-    router.back();
+    router.dismiss();
   };
 
   return (
@@ -224,6 +253,15 @@ export default function ShortsScreen() {
         mode="video"
         facing="back"
       />
+
+      {showContinuingIndicator && (
+        <View style={styles.continuingDraftIndicator}>
+          <ThemedText style={styles.continuingDraftText}>
+            Continuing last draft ({recordingSegments.length} segment
+            {recordingSegments.length !== 1 ? "s" : ""})
+          </ThemedText>
+        </View>
+      )}
 
       <View style={styles.timeSelectorContainer}>
         <TimeSelectorButton
@@ -244,6 +282,7 @@ export default function ShortsScreen() {
         onSaveAsDraft={handleSaveAsDraft}
         hasStartedOver={hasStartedOver}
         onClose={handleClose}
+        isContinuingLastDraft={isContinuingLastDraft}
       />
 
       <RecordButton
@@ -267,6 +306,23 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
+  },
+  continuingDraftIndicator: {
+    position: "absolute",
+    top: "50%",
+    left: 20,
+    right: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 10,
+  },
+  continuingDraftText: {
+    color: "#ffffff",
+    fontSize: 14,
+    textAlign: "center",
+    fontFamily: "Roboto-Regular",
   },
   timeSelectorContainer: {
     position: "absolute",

@@ -20,11 +20,12 @@ interface CloseButtonProps {
   onSaveAsDraft: (segments: RecordingSegment[]) => void;
   hasStartedOver: boolean;
   onClose: () => void;
+  isContinuingLastDraft?: boolean;
 }
 
 const closeOptions: CloseOption[] = [
   { label: "Start Over", action: "startOver" },
-  { label: "Save as Draft", action: "saveAsDraft" },
+  { label: "Finish & Start New", action: "saveAsDraft" },
   { label: "Close", action: "close" },
 ];
 
@@ -34,16 +35,14 @@ export default function CloseButton({
   onSaveAsDraft,
   hasStartedOver,
   onClose,
+  isContinuingLastDraft = false,
 }: CloseButtonProps) {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const handleClosePress = () => {
-    // If no segments OR user started over and hasn't recorded anything new, direct close
     if (segments.length === 0) {
       onClose();
     } else {
-      // Show options modal - but since we have auto-save, "Save as Draft" might be redundant
-      // We'll keep it for explicit user control
       setIsModalVisible(true);
     }
   };
@@ -56,13 +55,10 @@ export default function CloseButton({
         onStartOver();
         break;
       case "close":
-        // Just close - auto-save has already handled saving if needed
         onClose();
         break;
       case "saveAsDraft":
-        // Manual save (though auto-save has likely already handled this)
         onSaveAsDraft(segments);
-        onClose();
         break;
     }
   };
@@ -105,7 +101,7 @@ export default function CloseButton({
 const styles = StyleSheet.create({
   closeButton: {
     position: "absolute",
-    top: 80, // Below the progress bar (which is at top: 60)
+    top: 80,
     left: 20,
     backgroundColor: "rgba(0, 0, 0, 0.6)",
     width: 40,
