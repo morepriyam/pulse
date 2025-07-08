@@ -11,8 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function DraftsScreen() {
+  const insets = useSafeAreaInsets();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -136,7 +138,7 @@ export default function DraftsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedView style={styles.header}>
+      <ThemedView style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <ThemedText style={styles.headerTitle}>Drafts</ThemedText>
         <ThemedText style={styles.headerSubtitle}>
           Tap to continue recording
@@ -157,14 +159,12 @@ export default function DraftsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
   },
   header: {
     padding: 20,
-    paddingTop: 60,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#ffffff",
     marginBottom: 4,

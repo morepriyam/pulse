@@ -78,7 +78,7 @@ export default function ShortsScreen() {
       setShowContinuingIndicator(true);
       const hideTimer = setTimeout(() => {
         setShowContinuingIndicator(false);
-      }, 2000);
+      }, 1000);
 
       return () => clearTimeout(hideTimer);
     } else {
@@ -257,7 +257,7 @@ export default function ShortsScreen() {
       {showContinuingIndicator && (
         <View style={styles.continuingDraftIndicator}>
           <ThemedText style={styles.continuingDraftText}>
-            Continuing last draft ({recordingSegments.length} segment
+            Continuing last draft({recordingSegments.length} segment
             {recordingSegments.length !== 1 ? "s" : ""})
           </ThemedText>
         </View>
