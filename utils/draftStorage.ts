@@ -1,5 +1,6 @@
 import { RecordingSegment } from '@/components/RecordingProgressBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { generateVideoThumbnail } from './videoThumbnails';
 
 export interface Draft {
   id: string;
@@ -16,12 +17,17 @@ export class DraftStorage {
     try {
       const existingDrafts = await this.getAllDrafts();
       
+      let thumbnailUri: string | undefined;
+      if (segments.length > 0 && segments[0].uri) {
+        thumbnailUri = await generateVideoThumbnail(segments[0].uri) || undefined;
+      }
+      
       const newDraft: Draft = {
         id: Date.now().toString(),
         segments,
         totalDuration,
         createdAt: new Date(),
-        thumbnail: segments[0]?.uri,
+        thumbnail: thumbnailUri,
       };
       
       const updatedDrafts = [...existingDrafts, newDraft];
