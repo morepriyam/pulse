@@ -10,7 +10,7 @@ import { DraftStorage } from "@/utils/draftStorage";
 import { CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function ShortsScreen() {
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
@@ -254,6 +254,22 @@ export default function ShortsScreen() {
         facing="back"
       />
 
+      {/* Camera Controls - right side vertical stack */}
+      <View style={styles.cameraControlsContainer}>
+        <TouchableOpacity style={styles.controlButton} onPress={() => {}}>
+          <Text style={styles.controlIcon}>🔄</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.controlButton} onPress={() => {}}>
+          <Text style={styles.controlIcon}>⏲️</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.controlButton} onPress={() => {}}>
+          <Text style={styles.controlIcon}>⚡</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.controlButton} onPress={() => {}}>
+          <Text style={styles.controlIcon}>✂️</Text>
+        </TouchableOpacity>
+      </View>
+
       {showContinuingIndicator && (
         <View style={styles.continuingDraftIndicator}>
           <ThemedText style={styles.continuingDraftText}>
@@ -329,5 +345,25 @@ const styles = StyleSheet.create({
     top: 80,
     right: 25,
     zIndex: 10,
+  },
+  cameraControlsContainer: {
+    position: "absolute",
+    right: 20,
+    top: "30%",
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  controlButton: {
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 24,
+    padding: 12,
+    marginVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  controlIcon: {
+    fontSize: 24,
+    color: "#fff",
   },
 });
