@@ -1,3 +1,4 @@
+import CameraControls from "@/components/CameraControls";
 import CloseButton from "@/components/CloseButton";
 import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
@@ -7,7 +8,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import { DraftStorage } from "@/utils/draftStorage";
-import { CameraView } from "expo-camera";
+import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
 import { StyleSheet, View } from "react-native";
@@ -32,6 +33,10 @@ export default function ShortsScreen() {
     React.useState(false);
   const [showContinuingIndicator, setShowContinuingIndicator] =
     React.useState(false);
+
+  // Camera control states
+  const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
+  const [torchEnabled, setTorchEnabled] = React.useState(false);
 
   const isLoadingDraft = React.useRef(false);
   const lastSegmentCount = React.useRef(0);
@@ -245,13 +250,30 @@ export default function ShortsScreen() {
     router.dismiss();
   };
 
+  // Camera control handlers
+  const handleFlipCamera = () => {
+    setCameraFacing((current) => (current === "back" ? "front" : "back"));
+  };
+
+  const handleTorchToggle = () => {
+    setTorchEnabled((current) => !current);
+  };
+
   return (
     <ThemedView style={styles.container}>
       <CameraView
         ref={cameraRef}
         style={styles.camera}
         mode="video"
-        facing="back"
+        facing={cameraFacing}
+        enableTorch={torchEnabled}
+      />
+
+      {/* Camera Controls - right side vertical stack */}
+      <CameraControls
+        onFlipCamera={handleFlipCamera}
+        onFlashToggle={handleTorchToggle}
+        torchEnabled={torchEnabled}
       />
 
       {showContinuingIndicator && (
@@ -309,7 +331,7 @@ const styles = StyleSheet.create({
   },
   continuingDraftIndicator: {
     position: "absolute",
-    top: "50%",
+    top: "70%",
     left: 20,
     right: 20,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
