@@ -48,6 +48,14 @@ export default function RootLayout() {
             animation: "slide_from_bottom",
           }}
         />
+        <Stack.Screen
+          name="preview"
+          options={{
+            headerShown: false,
+            presentation: "fullScreenModal",
+            animation: "fade",
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
       <PermissionMonitor />
