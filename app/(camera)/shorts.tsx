@@ -8,10 +8,11 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import { DraftStorage } from "@/utils/draftStorage";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 
 export default function ShortsScreen() {
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
@@ -259,6 +260,15 @@ export default function ShortsScreen() {
     setTorchEnabled((current) => !current);
   };
 
+  const handlePreview = () => {
+    if (currentDraftId && recordingSegments.length > 0) {
+      router.push({
+        pathname: "/preview",
+        params: { draftId: currentDraftId },
+      });
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       <CameraView
@@ -317,6 +327,13 @@ export default function ShortsScreen() {
         onRecordingProgress={handleRecordingProgress}
         onRecordingComplete={handleRecordingComplete}
       />
+
+      {/* Preview Button - aligned with record button */}
+      {recordingSegments.length > 0 && currentDraftId && (
+        <TouchableOpacity style={styles.previewButton} onPress={handlePreview}>
+          <MaterialIcons name="done" size={26} color="black" />
+        </TouchableOpacity>
+      )}
     </ThemedView>
   );
 }
@@ -350,6 +367,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 80,
     right: 25,
+    zIndex: 10,
+  },
+  previewButton: {
+    position: "absolute",
+    bottom: 40,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 10,
   },
 });
