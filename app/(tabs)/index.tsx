@@ -9,7 +9,7 @@ export default function HomeScreen() {
     <ThemedView
       style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
     >
-      <ThemedText type="title">Welcome to Home!</ThemedText>
+      <ThemedText type="title">Welcome to Pulse!</ThemedText>
       <ThemedText>This is the main tab of the app.</ThemedText>
     </ThemedView>
   );

@@ -52,14 +52,9 @@ export default function ShortsScreen() {
           draftToLoad = await DraftStorage.getDraftById(draftId);
           setIsContinuingLastDraft(false);
         } else {
-          const allDrafts = await DraftStorage.getAllDrafts();
-          if (allDrafts.length > 0) {
-            const mostRecent = allDrafts.sort(
-              (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-            )[0];
-            draftToLoad = mostRecent;
-            setIsContinuingLastDraft(true);
-          }
+          // Get the most recently modified draft
+          draftToLoad = await DraftStorage.getLastModifiedDraft();
+          setIsContinuingLastDraft(!!draftToLoad);
         }
 
         if (draftToLoad) {
@@ -113,17 +108,11 @@ export default function ShortsScreen() {
 
       try {
         if (currentDraftId) {
-          const existingDrafts = await DraftStorage.getAllDrafts();
-          const updatedDrafts = existingDrafts.map((draft) =>
-            draft.id === currentDraftId
-              ? {
-                  ...draft,
-                  segments: recordingSegments,
-                  totalDuration: selectedDuration,
-                }
-              : draft
+          await DraftStorage.updateDraft(
+            currentDraftId,
+            recordingSegments,
+            selectedDuration
           );
-          await DraftStorage.saveDraftArray(updatedDrafts);
           console.log("Auto-saved to existing draft:", currentDraftId);
         } else {
           const newDraftId = await DraftStorage.saveDraft(
@@ -212,13 +201,11 @@ export default function ShortsScreen() {
   const handleSaveAsDraft = async (segments: RecordingSegment[]) => {
     try {
       if (currentDraftId && !hasStartedOver) {
-        const existingDrafts = await DraftStorage.getAllDrafts();
-        const updatedDrafts = existingDrafts.map((draft) =>
-          draft.id === currentDraftId
-            ? { ...draft, segments, totalDuration: selectedDuration }
-            : draft
+        await DraftStorage.updateDraft(
+          currentDraftId,
+          segments,
+          selectedDuration
         );
-        await DraftStorage.saveDraftArray(updatedDrafts);
         console.log("Saved draft and starting over:", currentDraftId);
       } else {
         const draftId = await DraftStorage.saveDraft(
@@ -289,8 +276,7 @@ export default function ShortsScreen() {
       {showContinuingIndicator && (
         <View style={styles.continuingDraftIndicator}>
           <ThemedText style={styles.continuingDraftText}>
-            Continuing last draft({recordingSegments.length} segment
-            {recordingSegments.length !== 1 ? "s" : ""})
+            Continuing last draft
           </ThemedText>
         </View>
       )}
@@ -349,10 +335,10 @@ const styles = StyleSheet.create({
   continuingDraftIndicator: {
     position: "absolute",
     top: "70%",
-    left: 20,
-    right: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    borderRadius: 8,
+    left: 50,
+    right: 50,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    borderRadius: 80,
     paddingHorizontal: 12,
     paddingVertical: 6,
     zIndex: 10,

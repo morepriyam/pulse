@@ -7,6 +7,7 @@ export interface Draft {
   segments: RecordingSegment[];
   totalDuration: number;
   createdAt: Date;
+  lastModified: Date;
   thumbnail?: string;
 }
 
@@ -22,11 +23,13 @@ export class DraftStorage {
         thumbnailUri = await generateVideoThumbnail(segments[0].uri) || undefined;
       }
       
+      const now = new Date();
       const newDraft: Draft = {
         id: Date.now().toString(),
         segments,
         totalDuration,
-        createdAt: new Date(),
+        createdAt: now,
+        lastModified: now,
         thumbnail: thumbnailUri,
       };
       
@@ -39,16 +42,48 @@ export class DraftStorage {
       throw error;
     }
   }
-  
-  static async saveDraftArray(drafts: Draft[]): Promise<void> {
+
+  static async updateDraft(id: string, segments: RecordingSegment[], totalDuration: number): Promise<void> {
     try {
-      await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+      const existingDrafts = await this.getAllDrafts();
+      
+      const updatedDrafts = existingDrafts.map((draft) =>
+        draft.id === id
+          ? {
+              ...draft,
+              segments,
+              totalDuration,
+              lastModified: new Date(),
+              // Keep existing thumbnail - don't regenerate
+            }
+          : draft
+      );
+      
+      await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
     } catch (error) {
-      console.error('Error saving draft array:', error);
+      console.error('Error updating draft:', error);
       throw error;
     }
   }
+
+  static async getLastModifiedDraft(): Promise<Draft | null> {
+    try {
+      const drafts = await this.getAllDrafts();
+      if (drafts.length === 0) return null;
+      
+      // Find the most recently modified draft
+      const mostRecent = drafts.reduce((latest, current) => 
+        current.lastModified.getTime() > latest.lastModified.getTime() ? current : latest
+      );
+      
+      return mostRecent;
+    } catch (error) {
+      console.error('Error getting last modified draft:', error);
+      return null;
+    }
+  }
   
+
   static async getAllDrafts(): Promise<Draft[]> {
     try {
       const draftsJson = await AsyncStorage.getItem(DRAFTS_STORAGE_KEY);
@@ -58,6 +93,7 @@ export class DraftStorage {
       return drafts.map((draft: any) => ({
         ...draft,
         createdAt: new Date(draft.createdAt),
+        lastModified: new Date(draft.lastModified || draft.createdAt), // Handle existing drafts
       }));
     } catch (error) {
       console.error('Error getting drafts:', error);
@@ -82,15 +118,6 @@ export class DraftStorage {
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
     } catch (error) {
       console.error('Error deleting draft:', error);
-      throw error;
-    }
-  }
-  
-  static async clearAllDrafts(): Promise<void> {
-    try {
-      await AsyncStorage.removeItem(DRAFTS_STORAGE_KEY);
-    } catch (error) {
-      console.error('Error clearing drafts:', error);
       throw error;
     }
   }

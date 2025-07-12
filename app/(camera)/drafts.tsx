@@ -25,9 +25,10 @@ export default function DraftsScreen() {
   const loadDrafts = async () => {
     try {
       const savedDrafts = await DraftStorage.getAllDrafts();
+      // Sort by most recently modified
       setDrafts(
         savedDrafts.sort(
-          (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+          (a, b) => b.lastModified.getTime() - a.lastModified.getTime()
         )
       );
     } catch (error) {
@@ -69,11 +70,31 @@ export default function DraftsScreen() {
   };
 
   const formatDate = (date: Date) => {
-    return (
-      date.toLocaleDateString() +
-      " " +
-      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const dateOnly = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
     );
+    const timeString = date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    if (dateOnly.getTime() === today.getTime()) {
+      return `Today, ${timeString}`;
+    } else if (dateOnly.getTime() === yesterday.getTime()) {
+      return `Yesterday, ${timeString}`;
+    } else {
+      return `${date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+      })}, ${timeString}`;
+    }
   };
 
   const renderDraftItem = ({ item }: { item: Draft }) => {
@@ -93,15 +114,16 @@ export default function DraftsScreen() {
           )}
           <View style={styles.draftInfo}>
             <ThemedText style={styles.draftTitle}>
-              Draft ({item.segments.length} segment
-              {item.segments.length !== 1 ? "s" : ""})
-            </ThemedText>
-            <ThemedText style={styles.draftDetails}>
-              Recorded: {formatDuration(Math.round(totalRecordedDuration))} /{" "}
+              {item.segments.length} segment
+              {item.segments.length !== 1 ? "s" : ""} • Rec:{" "}
+              {formatDuration(Math.round(totalRecordedDuration))}/
               {formatDuration(item.totalDuration)}
             </ThemedText>
             <ThemedText style={styles.draftDate}>
-              {formatDate(item.createdAt)}
+              Created: {formatDate(item.createdAt)}
+            </ThemedText>
+            <ThemedText style={styles.draftDate}>
+              Modified: {formatDate(item.lastModified)}
             </ThemedText>
           </View>
           <TouchableOpacity
@@ -182,31 +204,31 @@ const styles = StyleSheet.create({
   },
   draftItem: {
     backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#333",
   },
   draftContent: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    padding: 12,
   },
   thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 50,
+    height: 50,
+    borderRadius: 6,
     backgroundColor: "#333",
-    marginRight: 12,
+    marginRight: 10,
   },
   draftInfo: {
     flex: 1,
   },
   draftTitle: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: "600",
     color: "#ffffff",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   draftDetails: {
     fontSize: 14,
@@ -214,8 +236,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   draftDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#666666",
+    lineHeight: 14,
   },
   deleteButton: {
     width: 32,
