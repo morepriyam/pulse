@@ -8,9 +8,6 @@ import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { useFirstTimeOpen } from "@/hooks/useFirstTimeOpen";
 import AntDesign from "@expo/vector-icons/AntDesign";
-import Entypo from "@expo/vector-icons/Entypo";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -39,7 +36,8 @@ export default function TabLayout() {
         }),
       }}
     >
-      <Tabs.Screen
+      {/* Commented out - Home Tab */}
+      {/* <Tabs.Screen
         name="index"
         options={{
           title: "Home",
@@ -48,8 +46,20 @@ export default function TabLayout() {
             <Entypo name="home" size={24} color={color} />
           ),
         }}
-      />
+      /> */}
+
+      {/* Placeholder tab to maintain center positioning */}
       <Tabs.Screen
+        name="index"
+        options={{
+          title: "",
+          tabBarButton: () => null, // Hidden tab
+          tabBarIcon: () => null,
+        }}
+      />
+
+      {/* Commented out - Shorts Tab */}
+      {/* <Tabs.Screen
         name="shorts"
         options={{
           title: "Shorts",
@@ -58,7 +68,19 @@ export default function TabLayout() {
             <Ionicons name="pulse" size={24} color={color} />
           ),
         }}
+      /> */}
+
+      {/* Placeholder tab to maintain center positioning */}
+      <Tabs.Screen
+        name="shorts"
+        options={{
+          title: "",
+          tabBarButton: () => null, // Hidden tab
+          tabBarIcon: () => null,
+        }}
       />
+
+      {/* ACTIVE - Create Button (+ button) */}
       <Tabs.Screen
         name="dummy-create"
         options={{
@@ -90,7 +112,9 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
+
+      {/* Commented out - Subscriptions Tab */}
+      {/* <Tabs.Screen
         name="subscriptions"
         options={{
           title: "Subscriptions",
@@ -99,8 +123,20 @@ export default function TabLayout() {
             <MaterialIcons name="subscriptions" size={24} color={color} />
           ),
         }}
-      />
+      /> */}
+
+      {/* Placeholder tab to maintain center positioning */}
       <Tabs.Screen
+        name="subscriptions"
+        options={{
+          title: "",
+          tabBarButton: () => null, // Hidden tab
+          tabBarIcon: () => null,
+        }}
+      />
+
+      {/* Commented out - Profile Tab */}
+      {/* <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
@@ -108,6 +144,16 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name="person-circle-outline" size={24} color={color} />
           ),
+        }}
+      /> */}
+
+      {/* Placeholder tab to maintain center positioning */}
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "",
+          tabBarButton: () => null, // Hidden tab
+          tabBarIcon: () => null,
         }}
       />
     </Tabs>
