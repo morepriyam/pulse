@@ -7,6 +7,7 @@ import RecordingProgressBar, {
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
+import UndoSegmentButton from "@/components/UndoSegmentButton";
 import { DraftStorage } from "@/utils/draftStorage";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
@@ -113,7 +114,7 @@ export default function ShortsScreen() {
             recordingSegments,
             selectedDuration
           );
-          console.log("Auto-saved to existing draft:", currentDraftId);
+          console.log("Auto-saved:", currentDraftId);
         } else {
           const newDraftId = await DraftStorage.saveDraft(
             recordingSegments,
@@ -121,12 +122,12 @@ export default function ShortsScreen() {
           );
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
-          console.log("Auto-saved as new draft:", newDraftId);
+          console.log("New draft:", newDraftId);
         }
 
         lastSegmentCount.current = recordingSegments.length;
       } catch (error) {
-        console.error("Error auto-saving draft:", error);
+        console.error("Auto-save failed:", error);
       }
     };
 
@@ -143,7 +144,7 @@ export default function ShortsScreen() {
     mode: "tap" | "hold",
     remainingTime: number
   ) => {
-    console.log(`Started ${mode} recording with ${remainingTime}s remaining`);
+    console.log(`Recording ${mode}, ${remainingTime}s left`);
     setCurrentRecordingDuration(0);
   };
 
@@ -154,20 +155,16 @@ export default function ShortsScreen() {
     setCurrentRecordingDuration(currentDuration);
 
     if (remainingTime <= 0) {
-      console.log("Recording will stop - time limit reached");
+      console.log("Time limit reached");
     }
   };
 
-  const handleRecordingComplete = (
+  const handleRecordingComplete = async (
     videoUri: string | null,
     mode: "tap" | "hold",
     duration: number
   ) => {
-    console.log(
-      `Completed ${mode} recording:`,
-      videoUri,
-      `Duration: ${duration}s`
-    );
+    console.log(`${mode} done: ${duration}s`);
 
     setCurrentRecordingDuration(0);
 
@@ -178,7 +175,34 @@ export default function ShortsScreen() {
         uri: videoUri,
       };
 
-      setRecordingSegments((prev) => [...prev, newSegment]);
+      const updatedSegments = [...recordingSegments, newSegment];
+      setRecordingSegments(updatedSegments);
+
+      // Immediately save to draft storage to prevent data loss
+      try {
+        if (currentDraftId) {
+          await DraftStorage.updateDraft(
+            currentDraftId,
+            updatedSegments,
+            selectedDuration
+          );
+          console.log("Saved:", currentDraftId);
+        } else {
+          const newDraftId = await DraftStorage.saveDraft(
+            updatedSegments,
+            selectedDuration
+          );
+          setCurrentDraftId(newDraftId);
+          setHasStartedOver(false);
+          console.log("New draft:", newDraftId);
+        }
+
+        // Update the segment count to prevent auto-save duplicate
+        lastSegmentCount.current = updatedSegments.length;
+      } catch (error) {
+        console.error("Save failed:", error);
+        // Auto-save will still trigger as backup
+      }
     }
   };
 
@@ -206,19 +230,19 @@ export default function ShortsScreen() {
           segments,
           selectedDuration
         );
-        console.log("Saved draft and starting over:", currentDraftId);
+        console.log("Saved & reset:", currentDraftId);
       } else {
         const draftId = await DraftStorage.saveDraft(
           segments,
           selectedDuration
         );
-        console.log("Saved new draft and starting over:", draftId);
+        console.log("New draft & reset:", draftId);
       }
 
       handleStartOver();
       setIsContinuingLastDraft(false);
     } catch (error) {
-      console.error("Error saving draft:", error);
+      console.error("Save failed:", error);
     }
   };
 
@@ -226,12 +250,9 @@ export default function ShortsScreen() {
     if (hasStartedOver && originalDraftId && recordingSegments.length === 0) {
       try {
         await DraftStorage.deleteDraft(originalDraftId);
-        console.log(
-          "Deleted original draft after start over:",
-          originalDraftId
-        );
+        console.log("Deleted original:", originalDraftId);
       } catch (error) {
-        console.error("Error deleting original draft:", error);
+        console.error("Delete failed:", error);
       }
     }
 
@@ -253,6 +274,43 @@ export default function ShortsScreen() {
         pathname: "/preview",
         params: { draftId: currentDraftId },
       });
+    }
+  };
+
+  const handleUndoSegment = async () => {
+    if (recordingSegments.length > 0) {
+      const updatedSegments = recordingSegments.slice(0, -1);
+      setRecordingSegments(updatedSegments);
+      setCurrentRecordingDuration(0);
+
+      // Update the segment count ref to prevent auto-save conflicts
+      lastSegmentCount.current = updatedSegments.length;
+
+      // Update or delete draft storage based on remaining segments
+      if (currentDraftId) {
+        try {
+          if (updatedSegments.length === 0) {
+            // Delete the draft when no segments remain
+            await DraftStorage.deleteDraft(currentDraftId);
+            setCurrentDraftId(null);
+            setHasStartedOver(false);
+            console.log("Draft deleted:", currentDraftId);
+          } else {
+            // Update the draft with remaining segments
+            await DraftStorage.updateDraft(
+              currentDraftId,
+              updatedSegments,
+              selectedDuration
+            );
+            console.log("Undo saved:", currentDraftId);
+          }
+        } catch (error) {
+          console.error("Undo failed:", error);
+          // Revert state changes if storage update fails
+          setRecordingSegments(recordingSegments);
+          lastSegmentCount.current = recordingSegments.length;
+        }
+      }
     }
   };
 
@@ -313,6 +371,11 @@ export default function ShortsScreen() {
         onRecordingProgress={handleRecordingProgress}
         onRecordingComplete={handleRecordingComplete}
       />
+
+      {/* Undo Segment Button - appears when at least 1 segment is recorded */}
+      {recordingSegments.length > 0 && (
+        <UndoSegmentButton onUndoSegment={handleUndoSegment} />
+      )}
 
       {/* Preview Button - aligned with record button */}
       {recordingSegments.length > 0 && currentDraftId && (

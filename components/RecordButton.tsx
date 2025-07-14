@@ -123,7 +123,7 @@ export default function RecordButton({
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
         if (!manuallyStoppedRef.current && video?.uri) {
-          console.log("Recording Complete", `Video saved to: ${video.uri}`);
+          console.log("Recording saved:", video.uri);
         }
         onRecordingComplete?.(video?.uri || null, mode, recordingDuration);
         return video;
@@ -133,7 +133,7 @@ export default function RecordButton({
           (Date.now() - recordingStartTimeRef.current) / 1000;
 
         if (!error.message?.includes("stopped")) {
-          console.log("Recording Error", "Failed to record video");
+          console.log("Recording failed");
         }
         onRecordingComplete?.(null, mode, recordingDuration);
         return null;
