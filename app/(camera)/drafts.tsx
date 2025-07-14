@@ -1,5 +1,3 @@
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
 import { Draft, DraftStorage } from "@/utils/draftStorage";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -8,6 +6,7 @@ import {
   FlatList,
   Image,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -113,24 +112,24 @@ export default function DraftsScreen() {
             <Image source={{ uri: item.thumbnail }} style={styles.thumbnail} />
           )}
           <View style={styles.draftInfo}>
-            <ThemedText style={styles.draftTitle}>
+            <Text style={styles.draftTitle}>
               {item.segments.length} segment
               {item.segments.length !== 1 ? "s" : ""} • Rec:{" "}
               {formatDuration(Math.round(totalRecordedDuration))}/
               {formatDuration(item.totalDuration)}
-            </ThemedText>
-            <ThemedText style={styles.draftDate}>
+            </Text>
+            <Text style={styles.draftDate}>
               Created: {formatDate(item.createdAt)}
-            </ThemedText>
-            <ThemedText style={styles.draftDate}>
+            </Text>
+            <Text style={styles.draftDate}>
               Modified: {formatDate(item.lastModified)}
-            </ThemedText>
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => handleDeleteDraft(item.id)}
           >
-            <ThemedText style={styles.deleteText}>×</ThemedText>
+            <Text style={styles.deleteText}>×</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -139,57 +138,55 @@ export default function DraftsScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.container}>
+      <View style={styles.container}>
         {/* Close Button */}
         <TouchableOpacity
           style={[styles.closeButton, { top: insets.top + 20 }]}
           onPress={() => router.dismiss()}
         >
-          <ThemedText style={styles.closeText}>×</ThemedText>
+          <Text style={styles.closeText}>×</Text>
         </TouchableOpacity>
 
-        <ThemedText style={styles.loadingText}>Loading drafts...</ThemedText>
-      </ThemedView>
+        <Text style={styles.loadingText}>Loading drafts...</Text>
+      </View>
     );
   }
 
   if (drafts.length === 0) {
     return (
-      <ThemedView style={styles.container}>
+      <View style={styles.container}>
         {/* Close Button */}
         <TouchableOpacity
           style={[styles.closeButton, { top: insets.top + 20 }]}
           onPress={() => router.dismiss()}
         >
-          <ThemedText style={styles.closeText}>×</ThemedText>
+          <Text style={styles.closeText}>×</Text>
         </TouchableOpacity>
 
-        <ThemedView style={styles.emptyContainer}>
-          <ThemedText style={styles.emptyTitle}>No Drafts</ThemedText>
-          <ThemedText style={styles.emptySubtitle}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No Drafts</Text>
+          <Text style={styles.emptySubtitle}>
             Your saved recording drafts will appear here
-          </ThemedText>
-        </ThemedView>
-      </ThemedView>
+          </Text>
+        </View>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       {/* Close Button */}
       <TouchableOpacity
         style={[styles.closeButton, { top: insets.top + 20 }]}
         onPress={() => router.dismiss()}
       >
-        <ThemedText style={styles.closeText}>×</ThemedText>
+        <Text style={styles.closeText}>×</Text>
       </TouchableOpacity>
 
-      <ThemedView style={[styles.header, { paddingTop: insets.top + 20 }]}>
-        <ThemedText style={styles.headerTitle}>Drafts</ThemedText>
-        <ThemedText style={styles.headerSubtitle}>
-          Tap to continue recording
-        </ThemedText>
-      </ThemedView>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+        <Text style={styles.headerTitle}>Drafts</Text>
+        <Text style={styles.headerSubtitle}>Tap to continue recording</Text>
+      </View>
 
       <FlatList
         data={drafts}
@@ -198,13 +195,14 @@ export default function DraftsScreen() {
         style={styles.list}
         contentContainerStyle={styles.listContent}
       />
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#000000",
   },
   header: {
     padding: 20,
