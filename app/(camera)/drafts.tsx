@@ -140,6 +140,14 @@ export default function DraftsScreen() {
   if (loading) {
     return (
       <ThemedView style={styles.container}>
+        {/* Close Button */}
+        <TouchableOpacity
+          style={[styles.closeButton, { top: insets.top + 20 }]}
+          onPress={() => router.dismiss()}
+        >
+          <ThemedText style={styles.closeText}>×</ThemedText>
+        </TouchableOpacity>
+
         <ThemedText style={styles.loadingText}>Loading drafts...</ThemedText>
       </ThemedView>
     );
@@ -148,6 +156,14 @@ export default function DraftsScreen() {
   if (drafts.length === 0) {
     return (
       <ThemedView style={styles.container}>
+        {/* Close Button */}
+        <TouchableOpacity
+          style={[styles.closeButton, { top: insets.top + 20 }]}
+          onPress={() => router.dismiss()}
+        >
+          <ThemedText style={styles.closeText}>×</ThemedText>
+        </TouchableOpacity>
+
         <ThemedView style={styles.emptyContainer}>
           <ThemedText style={styles.emptyTitle}>No Drafts</ThemedText>
           <ThemedText style={styles.emptySubtitle}>
