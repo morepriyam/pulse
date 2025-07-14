@@ -140,6 +140,14 @@ export default function DraftsScreen() {
   if (loading) {
     return (
       <ThemedView style={styles.container}>
+        {/* Close Button */}
+        <TouchableOpacity
+          style={[styles.closeButton, { top: insets.top + 20 }]}
+          onPress={() => router.dismiss()}
+        >
+          <ThemedText style={styles.closeText}>×</ThemedText>
+        </TouchableOpacity>
+
         <ThemedText style={styles.loadingText}>Loading drafts...</ThemedText>
       </ThemedView>
     );
@@ -148,6 +156,14 @@ export default function DraftsScreen() {
   if (drafts.length === 0) {
     return (
       <ThemedView style={styles.container}>
+        {/* Close Button */}
+        <TouchableOpacity
+          style={[styles.closeButton, { top: insets.top + 20 }]}
+          onPress={() => router.dismiss()}
+        >
+          <ThemedText style={styles.closeText}>×</ThemedText>
+        </TouchableOpacity>
+
         <ThemedView style={styles.emptyContainer}>
           <ThemedText style={styles.emptyTitle}>No Drafts</ThemedText>
           <ThemedText style={styles.emptySubtitle}>
@@ -160,6 +176,14 @@ export default function DraftsScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Close Button */}
+      <TouchableOpacity
+        style={[styles.closeButton, { top: insets.top + 20 }]}
+        onPress={() => router.dismiss()}
+      >
+        <ThemedText style={styles.closeText}>×</ThemedText>
+      </TouchableOpacity>
+
       <ThemedView style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <ThemedText style={styles.headerTitle}>Drafts</ThemedText>
         <ThemedText style={styles.headerSubtitle}>
@@ -277,5 +301,25 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     textAlign: "center",
     marginTop: 100,
+  },
+  closeButton: {
+    position: "absolute",
+    top: 80,
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  closeText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "300",
+    fontFamily: "Roboto-Regular",
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
   },
 });

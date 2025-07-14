@@ -24,8 +24,8 @@ interface CloseButtonProps {
 }
 
 const closeOptions: CloseOption[] = [
+  { label: "Start New", action: "saveAsDraft" },
   { label: "Start Over", action: "startOver" },
-  { label: "Finish & Start New", action: "saveAsDraft" },
   { label: "Close", action: "close" },
 ];
 
