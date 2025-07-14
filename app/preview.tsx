@@ -72,7 +72,7 @@ export default function PreviewScreen() {
           router.back();
         }
       } catch (error) {
-        console.error("Error loading draft for preview:", error);
+        console.error("Draft load failed:", error);
         router.back();
       } finally {
         setIsLoading(false);
@@ -94,7 +94,7 @@ export default function PreviewScreen() {
             await player2.replaceAsync(videoUris[nextIndex]);
           }
         } catch (error) {
-          console.error("Error setting up players:", error);
+          console.error("Player setup failed:", error);
         }
       }
     };
@@ -113,7 +113,7 @@ export default function PreviewScreen() {
 
         await nextPlayer.replaceAsync(nextVideoUri);
       } catch (error) {
-        console.error("Error preloading next video:", error);
+        console.error("Preload failed:", error);
       }
     };
 

@@ -1,4 +1,4 @@
-package com.morepriyam.pulse
+package com.mieweb.pulse
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

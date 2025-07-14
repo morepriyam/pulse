@@ -1,4 +1,4 @@
-package com.morepriyam.pulse
+package com.mieweb.pulse
 
 import android.app.Application
 import android.content.res.Configuration
