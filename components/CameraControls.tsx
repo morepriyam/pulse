@@ -1,5 +1,6 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { CameraType } from "expo-camera";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 
@@ -7,12 +8,14 @@ interface CameraControlsProps {
   onFlipCamera?: () => void;
   onFlashToggle?: () => void;
   torchEnabled?: boolean;
+  cameraFacing?: CameraType;
 }
 
 export default function CameraControls({
   onFlipCamera,
   onFlashToggle,
   torchEnabled = false,
+  cameraFacing = "back",
 }: CameraControlsProps) {
   const getTorchIcon = () => {
     return torchEnabled ? (
@@ -28,15 +31,18 @@ export default function CameraControls({
         <Ionicons name="camera-reverse-outline" size={24} color="white" />
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[
-          styles.controlButton,
-          torchEnabled && styles.activeControlButton,
-        ]}
-        onPress={onFlashToggle}
-      >
-        {getTorchIcon()}
-      </TouchableOpacity>
+      {/* Only show flash button for back camera */}
+      {cameraFacing === "back" && (
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            torchEnabled && styles.activeControlButton,
+          ]}
+          onPress={onFlashToggle}
+        >
+          {getTorchIcon()}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
