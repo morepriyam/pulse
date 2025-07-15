@@ -39,6 +39,9 @@ export default function ShortsScreen() {
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
   const [torchEnabled, setTorchEnabled] = React.useState(false);
+  const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
+  const [previousCameraFacing, setPreviousCameraFacing] =
+    React.useState<CameraType>("back");
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -256,12 +259,20 @@ export default function ShortsScreen() {
 
   // Camera control handlers
   const handleFlipCamera = () => {
+    setIsCameraSwitching(true);
     setCameraFacing((current) => {
+      setPreviousCameraFacing(current); // Store current as previous
       const newFacing = current === "back" ? "front" : "back";
       // Disable torch when switching to front camera (no flash capability)
       if (newFacing === "front") {
         setTorchEnabled(false);
       }
+
+      // Add delay to ensure camera switch is complete before updating controls
+      setTimeout(() => {
+        setIsCameraSwitching(false);
+      }, 300);
+
       return newFacing;
     });
   };
@@ -332,7 +343,7 @@ export default function ShortsScreen() {
           onFlipCamera={handleFlipCamera}
           onFlashToggle={handleTorchToggle}
           torchEnabled={torchEnabled}
-          cameraFacing={cameraFacing}
+          cameraFacing={isCameraSwitching ? previousCameraFacing : cameraFacing}
         />
       )}
 
