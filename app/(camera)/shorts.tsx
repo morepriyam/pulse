@@ -4,6 +4,7 @@ import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
   RecordingSegment,
 } from "@/components/RecordingProgressBar";
+import RedoSegmentButton from "@/components/RedoSegmentButton";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
@@ -22,6 +23,7 @@ export default function ShortsScreen() {
   const [recordingSegments, setRecordingSegments] = React.useState<
     RecordingSegment[]
   >([]);
+  const [redoStack, setRedoStack] = React.useState<RecordingSegment[]>([]);
   const [currentRecordingDuration, setCurrentRecordingDuration] =
     React.useState(0);
   const [currentDraftId, setCurrentDraftId] = React.useState<string | null>(
@@ -167,6 +169,9 @@ export default function ShortsScreen() {
     setIsRecording(false);
 
     if (videoUri && duration > 0) {
+      // Clear redo stack when new segment is recorded
+      setRedoStack([]);
+
       const newSegment: RecordingSegment = {
         id: Date.now().toString(),
         duration: duration,
@@ -211,6 +216,7 @@ export default function ShortsScreen() {
   const handleClearSegments = () => {
     setRecordingSegments([]);
     setCurrentRecordingDuration(0);
+    setRedoStack([]); // Clear redo stack when clearing segments
   };
 
   const handleStartOver = () => {
@@ -292,7 +298,12 @@ export default function ShortsScreen() {
 
   const handleUndoSegment = async () => {
     if (recordingSegments.length > 0) {
+      const lastSegment = recordingSegments[recordingSegments.length - 1];
       const updatedSegments = recordingSegments.slice(0, -1);
+
+      // Add the removed segment to redo stack
+      setRedoStack((prev) => [...prev, lastSegment]);
+
       setRecordingSegments(updatedSegments);
       setCurrentRecordingDuration(0);
 
@@ -321,6 +332,38 @@ export default function ShortsScreen() {
           console.error("Undo failed:", error);
           // Revert state changes if storage update fails
           setRecordingSegments(recordingSegments);
+          setRedoStack(redoStack);
+          lastSegmentCount.current = recordingSegments.length;
+        }
+      }
+    }
+  };
+
+  const handleRedoSegment = async () => {
+    if (redoStack.length > 0) {
+      const segmentToRestore = redoStack[redoStack.length - 1];
+      const updatedRedoStack = redoStack.slice(0, -1);
+
+      setRedoStack(updatedRedoStack);
+
+      const updatedSegments = [...recordingSegments, segmentToRestore];
+      setRecordingSegments(updatedSegments);
+      setCurrentRecordingDuration(0);
+
+      lastSegmentCount.current = updatedSegments.length;
+
+      if (currentDraftId) {
+        try {
+          await DraftStorage.updateDraft(
+            currentDraftId,
+            updatedSegments,
+            selectedDuration
+          );
+          console.log("Redo saved:", currentDraftId);
+        } catch (error) {
+          console.error("Redo failed:", error);
+          setRecordingSegments(recordingSegments);
+          setRedoStack(redoStack);
           lastSegmentCount.current = recordingSegments.length;
         }
       }
@@ -411,6 +454,11 @@ export default function ShortsScreen() {
       {/* Undo Segment Button - appears when at least 1 segment is recorded */}
       {recordingSegments.length > 0 && !isRecording && (
         <UndoSegmentButton onUndoSegment={handleUndoSegment} />
+      )}
+
+      {/* Redo Segment Button - appears when there are undone segments */}
+      {redoStack.length > 0 && !isRecording && (
+        <RedoSegmentButton onRedoSegment={handleRedoSegment} />
       )}
 
       {/* Preview Button - aligned with record button */}
