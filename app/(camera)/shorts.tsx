@@ -39,6 +39,12 @@ export default function ShortsScreen() {
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
   const [torchEnabled, setTorchEnabled] = React.useState(false);
+  const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
+  const [previousCameraFacing, setPreviousCameraFacing] =
+    React.useState<CameraType>("back");
+
+  // Recording state
+  const [isRecording, setIsRecording] = React.useState(false);
 
   const isLoadingDraft = React.useRef(false);
   const lastSegmentCount = React.useRef(0);
@@ -80,22 +86,12 @@ export default function ShortsScreen() {
       setShowContinuingIndicator(true);
       const hideTimer = setTimeout(() => {
         setShowContinuingIndicator(false);
+        setIsContinuingLastDraft(false); // Ensure it only shows once
       }, 1000);
 
       return () => clearTimeout(hideTimer);
-    } else {
-      setShowContinuingIndicator(false);
     }
-  }, [isContinuingLastDraft, recordingSegments.length]);
-
-  React.useEffect(() => {
-    if (
-      isContinuingLastDraft &&
-      recordingSegments.length > lastSegmentCount.current
-    ) {
-      setIsContinuingLastDraft(false);
-    }
-  }, [recordingSegments.length, isContinuingLastDraft]);
+  }, [isContinuingLastDraft]); // Removed recordingSegments.length dependency
 
   React.useEffect(() => {
     const autoSave = async () => {
@@ -146,6 +142,7 @@ export default function ShortsScreen() {
   ) => {
     console.log(`Recording ${mode}, ${remainingTime}s left`);
     setCurrentRecordingDuration(0);
+    setIsRecording(true);
   };
 
   const handleRecordingProgress = (
@@ -167,6 +164,7 @@ export default function ShortsScreen() {
     console.log(`${mode} done: ${duration}s`);
 
     setCurrentRecordingDuration(0);
+    setIsRecording(false);
 
     if (videoUri && duration > 0) {
       const newSegment: RecordingSegment = {
@@ -261,7 +259,22 @@ export default function ShortsScreen() {
 
   // Camera control handlers
   const handleFlipCamera = () => {
-    setCameraFacing((current) => (current === "back" ? "front" : "back"));
+    setIsCameraSwitching(true);
+    setCameraFacing((current) => {
+      setPreviousCameraFacing(current); // Store current as previous
+      const newFacing = current === "back" ? "front" : "back";
+      // Disable torch when switching to front camera (no flash capability)
+      if (newFacing === "front") {
+        setTorchEnabled(false);
+      }
+
+      // Add delay to ensure camera switch is complete before updating controls
+      setTimeout(() => {
+        setIsCameraSwitching(false);
+      }, 300);
+
+      return newFacing;
+    });
   };
 
   const handleTorchToggle = () => {
@@ -325,11 +338,14 @@ export default function ShortsScreen() {
       />
 
       {/* Camera Controls - right side vertical stack */}
-      <CameraControls
-        onFlipCamera={handleFlipCamera}
-        onFlashToggle={handleTorchToggle}
-        torchEnabled={torchEnabled}
-      />
+      {!isRecording && (
+        <CameraControls
+          onFlipCamera={handleFlipCamera}
+          onFlashToggle={handleTorchToggle}
+          torchEnabled={torchEnabled}
+          cameraFacing={isCameraSwitching ? previousCameraFacing : cameraFacing}
+        />
+      )}
 
       {showContinuingIndicator && (
         <View style={styles.continuingDraftIndicator}>
@@ -339,12 +355,14 @@ export default function ShortsScreen() {
         </View>
       )}
 
-      <View style={styles.timeSelectorContainer}>
-        <TimeSelectorButton
-          onTimeSelect={handleTimeSelect}
-          selectedTime={selectedDuration}
-        />
-      </View>
+      {!isRecording && (
+        <View style={styles.timeSelectorContainer}>
+          <TimeSelectorButton
+            onTimeSelect={handleTimeSelect}
+            selectedTime={selectedDuration}
+          />
+        </View>
+      )}
 
       <RecordingProgressBar
         segments={recordingSegments}
@@ -352,14 +370,32 @@ export default function ShortsScreen() {
         currentRecordingDuration={currentRecordingDuration}
       />
 
-      <CloseButton
-        segments={recordingSegments}
-        onStartOver={handleStartOver}
-        onSaveAsDraft={handleSaveAsDraft}
-        hasStartedOver={hasStartedOver}
-        onClose={handleClose}
-        isContinuingLastDraft={isContinuingLastDraft}
-      />
+      {/* Recording Time Display */}
+      {isRecording && (
+        <View style={styles.recordingTimeContainer}>
+          <ThemedText style={styles.recordingTimeText}>
+            {(() => {
+              const totalSeconds = Math.floor(
+                totalUsedDuration + currentRecordingDuration
+              );
+              const minutes = Math.floor(totalSeconds / 60);
+              const seconds = totalSeconds % 60;
+              return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+            })()}
+          </ThemedText>
+        </View>
+      )}
+
+      {!isRecording && (
+        <CloseButton
+          segments={recordingSegments}
+          onStartOver={handleStartOver}
+          onSaveAsDraft={handleSaveAsDraft}
+          hasStartedOver={hasStartedOver}
+          onClose={handleClose}
+          isContinuingLastDraft={isContinuingLastDraft}
+        />
+      )}
 
       <RecordButton
         cameraRef={cameraRef}
@@ -373,12 +409,12 @@ export default function ShortsScreen() {
       />
 
       {/* Undo Segment Button - appears when at least 1 segment is recorded */}
-      {recordingSegments.length > 0 && (
+      {recordingSegments.length > 0 && !isRecording && (
         <UndoSegmentButton onUndoSegment={handleUndoSegment} />
       )}
 
       {/* Preview Button - aligned with record button */}
-      {recordingSegments.length > 0 && currentDraftId && (
+      {recordingSegments.length > 0 && currentDraftId && !isRecording && (
         <TouchableOpacity style={styles.previewButton} onPress={handlePreview}>
           <MaterialIcons name="done" size={26} color="black" />
         </TouchableOpacity>
@@ -429,5 +465,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     zIndex: 10,
+  },
+  recordingTimeContainer: {
+    position: "absolute",
+    top: 78,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  recordingTimeText: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontFamily: "Roboto-Bold",
+    textShadowColor: "rgba(0, 0, 0, 0.7)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
