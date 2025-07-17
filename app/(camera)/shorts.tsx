@@ -16,6 +16,12 @@ import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { PinchGestureHandler } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedGestureHandler,
+  useSharedValue,
+} from "react-native-reanimated";
 
 const REDO_STACK_KEY = "redo_stack";
 
@@ -50,6 +56,10 @@ export default function ShortsScreen() {
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
+
+  const [zoom, setZoom] = React.useState(0);
+  const savedZoom = useSharedValue(0);
+  const currentZoom = useSharedValue(0);
 
   const isLoadingDraft = React.useRef(false);
   const lastSegmentCount = React.useRef(0);
@@ -333,6 +343,11 @@ export default function ShortsScreen() {
 
   const handleFlipCamera = () => {
     setIsCameraSwitching(true);
+    // Reset zoom when switching cameras
+    setZoom(0);
+    savedZoom.value = 0;
+    currentZoom.value = 0;
+
     setCameraFacing((current) => {
       setPreviousCameraFacing(current);
       const newFacing = current === "back" ? "front" : "back";
@@ -440,13 +455,43 @@ export default function ShortsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        mode="video"
-        facing={cameraFacing}
-        enableTorch={torchEnabled}
-      />
+      <PinchGestureHandler
+        onGestureEvent={useAnimatedGestureHandler({
+          onStart: () => {
+            currentZoom.value = savedZoom.value;
+          },
+          onActive: (event) => {
+            const scaleChange = event.scale - 1;
+
+            // Asymmetric sensitivity compensates for scale math limitations
+            const zoomChange =
+              scaleChange >= 0
+                ? scaleChange * 0.4 // Zoom in
+                : scaleChange * 0.7; // Zoom out (more sensitive)
+
+            const newZoom = Math.min(
+              0.5,
+              Math.max(0, savedZoom.value + zoomChange)
+            );
+            currentZoom.value = newZoom;
+            runOnJS(setZoom)(newZoom);
+          },
+          onEnd: () => {
+            savedZoom.value = currentZoom.value;
+          },
+        })}
+      >
+        <Animated.View style={{ flex: 1 }}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.camera}
+            mode="video"
+            facing={cameraFacing}
+            enableTorch={torchEnabled}
+            zoom={zoom}
+          />
+        </Animated.View>
+      </PinchGestureHandler>
 
       {!isRecording && (
         <CameraControls
