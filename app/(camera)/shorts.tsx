@@ -59,18 +59,44 @@ export default function ShortsScreen() {
       isLoadingDraft.current = true;
       try {
         let draftToLoad = null;
-        const savedRedoStack = await AsyncStorage.getItem(REDO_STACK_KEY);
-        const hasRedoStack =
-          savedRedoStack && JSON.parse(savedRedoStack).length > 0;
+        const savedRedoData = await AsyncStorage.getItem(REDO_STACK_KEY);
+        let redoData = null;
+
+        if (savedRedoData) {
+          try {
+            redoData = JSON.parse(savedRedoData);
+            if (Array.isArray(redoData)) {
+              redoData = { draftId: null, segments: redoData };
+            }
+          } catch {
+            redoData = null;
+          }
+        }
 
         if (draftId) {
           draftToLoad = await DraftStorage.getDraftById(draftId);
           setIsContinuingLastDraft(false);
-        } else if (hasRedoStack) {
-          setIsContinuingLastDraft(false);
         } else {
           draftToLoad = await DraftStorage.getLastModifiedDraft();
-          setIsContinuingLastDraft(!!draftToLoad);
+
+          const redoBelongsToCurrentDraft =
+            redoData &&
+            redoData.draftId &&
+            draftToLoad &&
+            redoData.draftId === draftToLoad.id;
+
+          if (
+            redoData &&
+            redoData.segments.length > 0 &&
+            !redoBelongsToCurrentDraft
+          ) {
+            draftToLoad = null;
+            setIsContinuingLastDraft(false);
+          } else {
+            setIsContinuingLastDraft(
+              !!draftToLoad && (!redoData || redoData.segments.length === 0)
+            );
+          }
         }
 
         if (draftToLoad) {
@@ -81,9 +107,18 @@ export default function ShortsScreen() {
           lastSegmentCount.current = draftToLoad.segments.length;
         }
 
-        // Load redo stack if it exists
-        if (savedRedoStack) {
-          setRedoStack(JSON.parse(savedRedoStack));
+        if (redoData && redoData.segments) {
+          const shouldLoadRedoStack = draftToLoad
+            ? redoData.draftId === draftToLoad.id
+            : !redoData.draftId;
+
+          if (shouldLoadRedoStack) {
+            setRedoStack(redoData.segments);
+          } else {
+            setRedoStack([]);
+          }
+        } else {
+          setRedoStack([]);
         }
       } catch (error) {
         console.error("Error loading draft:", error);
@@ -145,31 +180,20 @@ export default function ShortsScreen() {
   }, [recordingSegments, selectedDuration, currentDraftId]);
 
   React.useEffect(() => {
-    const loadRedoStack = async () => {
-      try {
-        const savedRedoStack = await AsyncStorage.getItem(REDO_STACK_KEY);
-        if (savedRedoStack) {
-          setRedoStack(JSON.parse(savedRedoStack));
-        }
-      } catch (error) {
-        console.error("Error loading redo stack:", error);
-      }
-    };
-
-    loadRedoStack();
-  }, []);
-
-  React.useEffect(() => {
     const saveRedoStack = async () => {
       try {
-        await AsyncStorage.setItem(REDO_STACK_KEY, JSON.stringify(redoStack));
+        const redoData = {
+          draftId: currentDraftId,
+          segments: redoStack,
+        };
+        await AsyncStorage.setItem(REDO_STACK_KEY, JSON.stringify(redoData));
       } catch (error) {
         console.error("Error saving redo stack:", error);
       }
     };
 
     saveRedoStack();
-  }, [redoStack]);
+  }, [redoStack, currentDraftId]);
 
   const totalUsedDuration = recordingSegments.reduce(
     (total, segment) => total + segment.duration,
