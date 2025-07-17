@@ -6,6 +6,7 @@ import {
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 
 import { PermissionMonitor } from "@/components/PermissionMonitor";
@@ -24,41 +25,43 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-        <Stack.Screen
-          name="onboarding"
-          options={{
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <Stack
+          screenOptions={{
             headerShown: false,
-            presentation: "fullScreenModal",
-            animation: "fade",
           }}
-        />
-        <Stack.Screen
-          name="(camera)"
-          options={{
-            headerShown: false,
-            presentation: "fullScreenModal",
-            animation: "slide_from_bottom",
-          }}
-        />
-        <Stack.Screen
-          name="preview"
-          options={{
-            headerShown: false,
-            presentation: "fullScreenModal",
-            animation: "fade",
-          }}
-        />
-      </Stack>
-      <StatusBar style="auto" />
-      <PermissionMonitor />
-    </ThemeProvider>
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="+not-found" />
+          <Stack.Screen
+            name="onboarding"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "fade",
+            }}
+          />
+          <Stack.Screen
+            name="(camera)"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="preview"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "fade",
+            }}
+          />
+        </Stack>
+        <StatusBar style="auto" />
+        <PermissionMonitor />
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
