@@ -192,6 +192,10 @@ We welcome contributions! Here's how to get started:
 - Add proper TypeScript interfaces for all props
 - Follow React Native and Expo best practices
 
+## ⇁ Acknowledgments
+
+Special thanks to [**Medical Informatics Engineering, Inc.**](https://github.com/mieweb) and [**Doug Horner**](https://github.com/horner) for supporting this project. Doug's passion for short-form content and knowledge sharing directly inspired the development of secure institutional video capabilities that make complex information accessible and engaging.
+
 ---
 
 <div align="center">
