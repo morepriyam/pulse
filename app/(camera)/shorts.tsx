@@ -9,9 +9,8 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
-import { DraftStorage } from "@/utils/draftStorage";
+import { useDraftManager } from "@/hooks/useDraftManager";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
@@ -23,29 +22,28 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 
-const REDO_STACK_KEY = "redo_stack";
-
 export default function ShortsScreen() {
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
   const cameraRef = React.useRef<CameraView>(null);
   const [selectedDuration, setSelectedDuration] = React.useState(60);
-  const [recordingSegments, setRecordingSegments] = React.useState<
-    RecordingSegment[]
-  >([]);
-  const [redoStack, setRedoStack] = React.useState<RecordingSegment[]>([]);
   const [currentRecordingDuration, setCurrentRecordingDuration] =
     React.useState(0);
-  const [currentDraftId, setCurrentDraftId] = React.useState<string | null>(
-    null
-  );
-  const [originalDraftId, setOriginalDraftId] = React.useState<string | null>(
-    null
-  );
-  const [hasStartedOver, setHasStartedOver] = React.useState(false);
-  const [isContinuingLastDraft, setIsContinuingLastDraft] =
-    React.useState(false);
-  const [showContinuingIndicator, setShowContinuingIndicator] =
-    React.useState(false);
+
+  // Use the draft manager hook
+  const {
+    recordingSegments,
+    redoStack,
+    currentDraftId,
+    hasStartedOver,
+    isContinuingLastDraft,
+    showContinuingIndicator,
+    handleStartOver,
+    handleSaveAsDraft,
+    handleClose,
+    handleUndoSegment,
+    handleRedoSegment,
+    updateSegmentsAfterRecording,
+  } = useDraftManager(draftId, selectedDuration);
 
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
@@ -57,153 +55,10 @@ export default function ShortsScreen() {
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
 
+  // Zoom state
   const [zoom, setZoom] = React.useState(0);
   const savedZoom = useSharedValue(0);
   const currentZoom = useSharedValue(0);
-
-  const isLoadingDraft = React.useRef(false);
-  const lastSegmentCount = React.useRef(0);
-
-  React.useEffect(() => {
-    const loadDraft = async () => {
-      isLoadingDraft.current = true;
-      try {
-        let draftToLoad = null;
-        const savedRedoData = await AsyncStorage.getItem(REDO_STACK_KEY);
-        let redoData = null;
-
-        if (savedRedoData) {
-          try {
-            redoData = JSON.parse(savedRedoData);
-            if (Array.isArray(redoData)) {
-              redoData = { draftId: null, segments: redoData };
-            }
-          } catch {
-            redoData = null;
-          }
-        }
-
-        if (draftId) {
-          draftToLoad = await DraftStorage.getDraftById(draftId);
-          setIsContinuingLastDraft(false);
-        } else {
-          draftToLoad = await DraftStorage.getLastModifiedDraft();
-
-          const redoBelongsToCurrentDraft =
-            redoData &&
-            redoData.draftId &&
-            draftToLoad &&
-            redoData.draftId === draftToLoad.id;
-
-          if (
-            redoData &&
-            redoData.segments.length > 0 &&
-            !redoBelongsToCurrentDraft
-          ) {
-            draftToLoad = null;
-            setIsContinuingLastDraft(false);
-          } else {
-            setIsContinuingLastDraft(
-              !!draftToLoad && (!redoData || redoData.segments.length === 0)
-            );
-          }
-        }
-
-        if (draftToLoad) {
-          setRecordingSegments(draftToLoad.segments);
-          setSelectedDuration(draftToLoad.totalDuration);
-          setCurrentDraftId(draftToLoad.id);
-          setOriginalDraftId(draftToLoad.id);
-          lastSegmentCount.current = draftToLoad.segments.length;
-        }
-
-        if (redoData && redoData.segments) {
-          const shouldLoadRedoStack = draftToLoad
-            ? redoData.draftId === draftToLoad.id
-            : !redoData.draftId;
-
-          if (shouldLoadRedoStack) {
-            setRedoStack(redoData.segments);
-          } else {
-            setRedoStack([]);
-          }
-        } else {
-          setRedoStack([]);
-        }
-      } catch (error) {
-        console.error("Error loading draft:", error);
-      } finally {
-        isLoadingDraft.current = false;
-      }
-    };
-
-    loadDraft();
-  }, [draftId]);
-
-  React.useEffect(() => {
-    if (isContinuingLastDraft && recordingSegments.length > 0) {
-      setShowContinuingIndicator(true);
-      const hideTimer = setTimeout(() => {
-        setShowContinuingIndicator(false);
-        setIsContinuingLastDraft(false);
-      }, 1000);
-
-      return () => clearTimeout(hideTimer);
-    }
-  }, [isContinuingLastDraft]);
-  React.useEffect(() => {
-    const autoSave = async () => {
-      if (recordingSegments.length === 0 || isLoadingDraft.current) {
-        return;
-      }
-
-      if (recordingSegments.length <= lastSegmentCount.current) {
-        return;
-      }
-
-      try {
-        if (currentDraftId) {
-          await DraftStorage.updateDraft(
-            currentDraftId,
-            recordingSegments,
-            selectedDuration
-          );
-          console.log("Auto-saved:", currentDraftId);
-        } else {
-          const newDraftId = await DraftStorage.saveDraft(
-            recordingSegments,
-            selectedDuration
-          );
-          setCurrentDraftId(newDraftId);
-          setHasStartedOver(false);
-          console.log("New draft:", newDraftId);
-        }
-
-        lastSegmentCount.current = recordingSegments.length;
-      } catch (error) {
-        console.error("Auto-save failed:", error);
-      }
-    };
-
-    const timeoutId = setTimeout(autoSave, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [recordingSegments, selectedDuration, currentDraftId]);
-
-  React.useEffect(() => {
-    const saveRedoStack = async () => {
-      try {
-        const redoData = {
-          draftId: currentDraftId,
-          segments: redoStack,
-        };
-        await AsyncStorage.setItem(REDO_STACK_KEY, JSON.stringify(redoData));
-      } catch (error) {
-        console.error("Error saving redo stack:", error);
-      }
-    };
-
-    saveRedoStack();
-  }, [redoStack, currentDraftId]);
 
   const totalUsedDuration = recordingSegments.reduce(
     (total, segment) => total + segment.duration,
@@ -241,104 +96,18 @@ export default function ShortsScreen() {
     setIsRecording(false);
 
     if (videoUri && duration > 0) {
-      setRedoStack([]);
-
       const newSegment: RecordingSegment = {
         id: Date.now().toString(),
         duration: duration,
         uri: videoUri,
       };
 
-      const updatedSegments = [...recordingSegments, newSegment];
-      setRecordingSegments(updatedSegments);
-
-      try {
-        if (currentDraftId) {
-          await DraftStorage.updateDraft(
-            currentDraftId,
-            updatedSegments,
-            selectedDuration
-          );
-          console.log("Saved:", currentDraftId);
-        } else {
-          const newDraftId = await DraftStorage.saveDraft(
-            updatedSegments,
-            selectedDuration
-          );
-          setCurrentDraftId(newDraftId);
-          setHasStartedOver(false);
-          console.log("New draft:", newDraftId);
-        }
-
-        lastSegmentCount.current = updatedSegments.length;
-      } catch (error) {
-        console.error("Save failed:", error);
-      }
+      await updateSegmentsAfterRecording(newSegment, selectedDuration);
     }
   };
 
   const handleTimeSelect = (timeInSeconds: number) => {
     setSelectedDuration(timeInSeconds);
-  };
-
-  const handleClearSegments = () => {
-    setRecordingSegments([]);
-    setCurrentRecordingDuration(0);
-    setRedoStack([]);
-  };
-
-  const handleStartOver = () => {
-    handleClearSegments();
-    setCurrentDraftId(null);
-    setHasStartedOver(true);
-    lastSegmentCount.current = 0;
-  };
-
-  const handleSaveAsDraft = async (segments: RecordingSegment[]) => {
-    try {
-      if (currentDraftId && !hasStartedOver) {
-        await DraftStorage.updateDraft(
-          currentDraftId,
-          segments,
-          selectedDuration
-        );
-        console.log("Saved & reset:", currentDraftId);
-      } else {
-        const draftId = await DraftStorage.saveDraft(
-          segments,
-          selectedDuration
-        );
-        console.log("New draft & reset:", draftId);
-      }
-
-      handleStartOver();
-      setIsContinuingLastDraft(false);
-    } catch (error) {
-      console.error("Save failed:", error);
-    }
-  };
-
-  const handleClose = async () => {
-    if (hasStartedOver && originalDraftId && recordingSegments.length === 0) {
-      try {
-        await DraftStorage.deleteDraft(originalDraftId);
-        console.log("Deleted original:", originalDraftId);
-      } catch (error) {
-        console.error("Delete failed:", error);
-      }
-    }
-
-    if (recordingSegments.length === 0) {
-      try {
-        await AsyncStorage.removeItem(REDO_STACK_KEY);
-        setRedoStack([]);
-        console.log("Cleared redo stack on close");
-      } catch (error) {
-        console.error("Failed to clear redo stack:", error);
-      }
-    }
-
-    router.dismiss();
   };
 
   const handleFlipCamera = () => {
@@ -376,81 +145,21 @@ export default function ShortsScreen() {
     }
   };
 
-  const handleUndoSegment = async () => {
-    if (recordingSegments.length > 0) {
-      const lastSegment = recordingSegments[recordingSegments.length - 1];
-      const updatedSegments = recordingSegments.slice(0, -1);
-
-      setRedoStack((prev) => [...prev, lastSegment]);
-
-      setRecordingSegments(updatedSegments);
-      setCurrentRecordingDuration(0);
-
-      lastSegmentCount.current = updatedSegments.length;
-
-      if (currentDraftId) {
-        try {
-          if (updatedSegments.length === 0) {
-            await DraftStorage.deleteDraft(currentDraftId);
-            setCurrentDraftId(null);
-            setHasStartedOver(false);
-            console.log("Draft deleted:", currentDraftId);
-          } else {
-            await DraftStorage.updateDraft(
-              currentDraftId,
-              updatedSegments,
-              selectedDuration
-            );
-            console.log("Undo saved:", currentDraftId);
-          }
-        } catch (error) {
-          console.error("Undo failed:", error);
-
-          setRecordingSegments(recordingSegments);
-          setRedoStack(redoStack);
-          lastSegmentCount.current = recordingSegments.length;
-        }
-      }
-    }
+  const handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => {
+    await handleSaveAsDraft(segments, selectedDuration);
   };
 
-  const handleRedoSegment = async () => {
-    if (redoStack.length > 0) {
-      const segmentToRestore = redoStack[redoStack.length - 1];
-      const updatedRedoStack = redoStack.slice(0, -1);
+  const handleUndoSegmentWrapper = async () => {
+    await handleUndoSegment(selectedDuration);
+  };
 
-      setRedoStack(updatedRedoStack);
+  const handleRedoSegmentWrapper = async () => {
+    await handleRedoSegment(selectedDuration);
+  };
 
-      const updatedSegments = [...recordingSegments, segmentToRestore];
-      setRecordingSegments(updatedSegments);
-      setCurrentRecordingDuration(0);
-
-      lastSegmentCount.current = updatedSegments.length;
-
-      try {
-        if (!currentDraftId) {
-          const newDraftId = await DraftStorage.saveDraft(
-            updatedSegments,
-            selectedDuration
-          );
-          setCurrentDraftId(newDraftId);
-          setHasStartedOver(false);
-          console.log("New draft created on redo:", newDraftId);
-        } else {
-          await DraftStorage.updateDraft(
-            currentDraftId,
-            updatedSegments,
-            selectedDuration
-          );
-          console.log("Redo saved:", currentDraftId);
-        }
-      } catch (error) {
-        console.error("Redo failed:", error);
-        setRecordingSegments(recordingSegments);
-        setRedoStack(redoStack);
-        lastSegmentCount.current = recordingSegments.length;
-      }
-    }
+  const handleCloseWrapper = async () => {
+    await handleClose();
+    router.dismiss();
   };
 
   return (
@@ -544,9 +253,9 @@ export default function ShortsScreen() {
         <CloseButton
           segments={recordingSegments}
           onStartOver={handleStartOver}
-          onSaveAsDraft={handleSaveAsDraft}
+          onSaveAsDraft={handleSaveAsDraftWrapper}
           hasStartedOver={hasStartedOver}
-          onClose={handleClose}
+          onClose={handleCloseWrapper}
           isContinuingLastDraft={isContinuingLastDraft}
         />
       )}
@@ -563,11 +272,11 @@ export default function ShortsScreen() {
       />
 
       {recordingSegments.length > 0 && !isRecording && (
-        <UndoSegmentButton onUndoSegment={handleUndoSegment} />
+        <UndoSegmentButton onUndoSegment={handleUndoSegmentWrapper} />
       )}
 
       {redoStack.length > 0 && !isRecording && (
-        <RedoSegmentButton onRedoSegment={handleRedoSegment} />
+        <RedoSegmentButton onRedoSegment={handleRedoSegmentWrapper} />
       )}
 
       {recordingSegments.length > 0 && currentDraftId && !isRecording && (
