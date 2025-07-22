@@ -22,6 +22,16 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 
+/**
+ * Shorts recording screen - main camera interface for creating segmented videos.
+ *
+ * Features:
+ * - Segmented video recording with tap/hold controls
+ * - Pinch-to-zoom camera view
+ * - Camera controls (flip, flash)
+ * - Draft auto-save with undo/redo
+ * - Time selector for recording duration
+ */
 export default function ShortsScreen() {
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
   const cameraRef = React.useRef<CameraView>(null);

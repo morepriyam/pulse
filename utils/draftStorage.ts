@@ -13,6 +13,12 @@ export interface Draft {
 
 const DRAFTS_STORAGE_KEY = 'recording_drafts';
 
+/**
+ * Utility class for managing draft video recordings in AsyncStorage.
+ * 
+ * Provides CRUD operations for drafts with automatic thumbnail generation
+ * and metadata management.
+ */
 export class DraftStorage {
   static async saveDraft(segments: RecordingSegment[], totalDuration: number): Promise<string> {
     try {
