@@ -26,6 +26,18 @@ interface DraftManagerActions {
   updateSegmentsAfterRecording: (newSegment: RecordingSegment, selectedDuration: number) => Promise<void>;
 }
 
+/**
+ * Custom hook for managing draft recording state and operations.
+ * 
+ * Handles:
+ * - Auto-loading last modified draft on mount
+ * - Auto-saving segments as they're recorded
+ * - Undo/redo stack with persistence
+ * - Draft lifecycle (save, delete, start over)
+ * 
+ * @param draftId - Optional specific draft to load
+ * @param selectedDuration - Total recording duration limit
+ */
 export function useDraftManager(
   draftId?: string,
   selectedDuration: number = 60
