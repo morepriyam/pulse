@@ -77,6 +77,12 @@ export default function ShortsScreen() {
   const savedZoom = useSharedValue(0);
   const currentZoom = useSharedValue(0);
 
+  // Drag-to-zoom state
+  const initialTouchY = useSharedValue(0);
+  const currentTouchY = useSharedValue(0);
+  const isHoldRecording = useSharedValue(false);
+  const recordingModeShared = useSharedValue("");
+
   const totalUsedDuration = recordingSegments.reduce(
     (total, segment) => total + segment.duration,
     0
@@ -89,6 +95,10 @@ export default function ShortsScreen() {
     console.log(`Recording ${mode}, ${remainingTime}s left`);
     setCurrentRecordingDuration(0);
     setIsRecording(true);
+
+    // Update shared values for gesture handler
+    isHoldRecording.value = true;
+    recordingModeShared.value = mode;
   };
 
   const handleRecordingProgress = (
@@ -111,6 +121,10 @@ export default function ShortsScreen() {
 
     setCurrentRecordingDuration(0);
     setIsRecording(false);
+
+    // Reset shared values
+    isHoldRecording.value = false;
+    recordingModeShared.value = "";
 
     if (videoUri && duration > 0) {
       const newSegment: RecordingSegment = {
@@ -183,19 +197,56 @@ export default function ShortsScreen() {
     setButtonPressActive(false);
   };
 
-  // Screen-level touch handler for continuous hold recording
+  // Screen-level touch handler for continuous hold recording with drag-to-zoom
   const handleScreenPanGesture = useAnimatedGestureHandler({
-    onStart: () => {
+    onStart: (event) => {
       runOnJS(setScreenTouchActive)(true);
+      // Store initial touch position for zoom calculation
+      initialTouchY.value = event.y;
+      currentTouchY.value = event.y;
+    },
+    onActive: (event) => {
+      currentTouchY.value = event.y;
+
+      // Only apply zoom during hold recording
+      if (isHoldRecording.value && recordingModeShared.value === "hold") {
+        const deltaY = initialTouchY.value - event.y; // Negative = down, Positive = up
+
+        // Convert pixel movement to zoom change with same sensitivity as pinch
+        // Scale factor adjusted for touch movement (roughly 300px = full zoom range)
+        const zoomChange =
+          deltaY >= 0
+            ? deltaY * 0.0013 // Drag up = zoom in (similar to pinch 0.4x sensitivity)
+            : deltaY * 0.0023; // Drag down = zoom out (similar to pinch 0.7x sensitivity)
+
+        const newZoom = Math.min(
+          0.5,
+          Math.max(0, savedZoom.value + zoomChange)
+        );
+        currentZoom.value = newZoom;
+        runOnJS(setZoom)(newZoom);
+      }
     },
     onEnd: () => {
       runOnJS(setScreenTouchActive)(false);
+      // Save final zoom value when gesture ends
+      if (isHoldRecording.value && recordingModeShared.value === "hold") {
+        savedZoom.value = currentZoom.value;
+      }
     },
     onCancel: () => {
       runOnJS(setScreenTouchActive)(false);
+      // Save zoom state on cancel too
+      if (isHoldRecording.value && recordingModeShared.value === "hold") {
+        savedZoom.value = currentZoom.value;
+      }
     },
     onFail: () => {
       runOnJS(setScreenTouchActive)(false);
+      // Save zoom state on fail too
+      if (isHoldRecording.value && recordingModeShared.value === "hold") {
+        savedZoom.value = currentZoom.value;
+      }
     },
   });
 
@@ -311,7 +362,7 @@ export default function ShortsScreen() {
             maxDuration={60}
             totalDuration={selectedDuration}
             usedDuration={totalUsedDuration}
-            holdDelay={500}
+            holdDelay={300}
             onRecordingStart={handleRecordingStart}
             onRecordingProgress={handleRecordingProgress}
             onRecordingComplete={handleRecordingComplete}
