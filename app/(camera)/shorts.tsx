@@ -15,7 +15,10 @@ import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { PinchGestureHandler } from "react-native-gesture-handler";
+import {
+  PanGestureHandler,
+  PinchGestureHandler,
+} from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedGestureHandler,
@@ -64,6 +67,10 @@ export default function ShortsScreen() {
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
+
+  // Screen-level touch state for continuous hold recording
+  const [screenTouchActive, setScreenTouchActive] = React.useState(false);
+  const [buttonPressActive, setButtonPressActive] = React.useState(false);
 
   // Zoom state
   const [zoom, setZoom] = React.useState(0);
@@ -167,6 +174,31 @@ export default function ShortsScreen() {
     await handleRedoSegment(selectedDuration);
   };
 
+  // Button touch coordination handlers
+  const handleButtonTouchStart = () => {
+    setButtonPressActive(true);
+  };
+
+  const handleButtonTouchEnd = () => {
+    setButtonPressActive(false);
+  };
+
+  // Screen-level touch handler for continuous hold recording
+  const handleScreenPanGesture = useAnimatedGestureHandler({
+    onStart: () => {
+      runOnJS(setScreenTouchActive)(true);
+    },
+    onEnd: () => {
+      runOnJS(setScreenTouchActive)(false);
+    },
+    onCancel: () => {
+      runOnJS(setScreenTouchActive)(false);
+    },
+    onFail: () => {
+      runOnJS(setScreenTouchActive)(false);
+    },
+  });
+
   const handleCloseWrapper = async () => {
     await handleClose();
     router.dismiss();
@@ -174,126 +206,138 @@ export default function ShortsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <PinchGestureHandler
-        onGestureEvent={useAnimatedGestureHandler({
-          onStart: () => {
-            currentZoom.value = savedZoom.value;
-          },
-          onActive: (event) => {
-            const scaleChange = event.scale - 1;
-
-            // Asymmetric sensitivity compensates for scale math limitations
-            const zoomChange =
-              scaleChange >= 0
-                ? scaleChange * 0.4 // Zoom in
-                : scaleChange * 0.7; // Zoom out (more sensitive)
-
-            const newZoom = Math.min(
-              0.5,
-              Math.max(0, savedZoom.value + zoomChange)
-            );
-            currentZoom.value = newZoom;
-            runOnJS(setZoom)(newZoom);
-          },
-          onEnd: () => {
-            savedZoom.value = currentZoom.value;
-          },
-        })}
-      >
+      <PanGestureHandler onGestureEvent={handleScreenPanGesture}>
         <Animated.View style={{ flex: 1 }}>
-          <CameraView
-            ref={cameraRef}
-            style={styles.camera}
-            mode="video"
-            facing={cameraFacing}
-            enableTorch={torchEnabled}
-            zoom={zoom}
+          <PinchGestureHandler
+            onGestureEvent={useAnimatedGestureHandler({
+              onStart: () => {
+                currentZoom.value = savedZoom.value;
+              },
+              onActive: (event) => {
+                const scaleChange = event.scale - 1;
+
+                // Asymmetric sensitivity compensates for scale math limitations
+                const zoomChange =
+                  scaleChange >= 0
+                    ? scaleChange * 0.4 // Zoom in
+                    : scaleChange * 0.7; // Zoom out (more sensitive)
+
+                const newZoom = Math.min(
+                  0.5,
+                  Math.max(0, savedZoom.value + zoomChange)
+                );
+                currentZoom.value = newZoom;
+                runOnJS(setZoom)(newZoom);
+              },
+              onEnd: () => {
+                savedZoom.value = currentZoom.value;
+              },
+            })}
+          >
+            <Animated.View style={{ flex: 1 }}>
+              <CameraView
+                ref={cameraRef}
+                style={styles.camera}
+                mode="video"
+                facing={cameraFacing}
+                enableTorch={torchEnabled}
+                zoom={zoom}
+              />
+            </Animated.View>
+          </PinchGestureHandler>
+
+          {!isRecording && (
+            <CameraControls
+              onFlipCamera={handleFlipCamera}
+              onFlashToggle={handleTorchToggle}
+              torchEnabled={torchEnabled}
+              cameraFacing={
+                isCameraSwitching ? previousCameraFacing : cameraFacing
+              }
+            />
+          )}
+
+          {showContinuingIndicator && (
+            <View style={styles.continuingDraftIndicator}>
+              <ThemedText style={styles.continuingDraftText}>
+                Continuing last draft
+              </ThemedText>
+            </View>
+          )}
+
+          {!isRecording && (
+            <View style={styles.timeSelectorContainer}>
+              <TimeSelectorButton
+                onTimeSelect={handleTimeSelect}
+                selectedTime={selectedDuration}
+              />
+            </View>
+          )}
+
+          <RecordingProgressBar
+            segments={recordingSegments}
+            totalDuration={selectedDuration}
+            currentRecordingDuration={currentRecordingDuration}
           />
+
+          {isRecording && (
+            <View style={styles.recordingTimeContainer}>
+              <ThemedText style={styles.recordingTimeText}>
+                {(() => {
+                  const totalSeconds = Math.floor(
+                    totalUsedDuration + currentRecordingDuration
+                  );
+                  const minutes = Math.floor(totalSeconds / 60);
+                  const seconds = totalSeconds % 60;
+                  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+                })()}
+              </ThemedText>
+            </View>
+          )}
+
+          {!isRecording && (
+            <CloseButton
+              segments={recordingSegments}
+              onStartOver={handleStartOver}
+              onSaveAsDraft={handleSaveAsDraftWrapper}
+              hasStartedOver={hasStartedOver}
+              onClose={handleCloseWrapper}
+              isContinuingLastDraft={isContinuingLastDraft}
+            />
+          )}
+
+          <RecordButton
+            cameraRef={cameraRef}
+            maxDuration={60}
+            totalDuration={selectedDuration}
+            usedDuration={totalUsedDuration}
+            holdDelay={500}
+            onRecordingStart={handleRecordingStart}
+            onRecordingProgress={handleRecordingProgress}
+            onRecordingComplete={handleRecordingComplete}
+            onButtonTouchStart={handleButtonTouchStart}
+            onButtonTouchEnd={handleButtonTouchEnd}
+            screenTouchActive={screenTouchActive}
+          />
+
+          {recordingSegments.length > 0 && !isRecording && (
+            <UndoSegmentButton onUndoSegment={handleUndoSegmentWrapper} />
+          )}
+
+          {redoStack.length > 0 && !isRecording && (
+            <RedoSegmentButton onRedoSegment={handleRedoSegmentWrapper} />
+          )}
+
+          {recordingSegments.length > 0 && currentDraftId && !isRecording && (
+            <TouchableOpacity
+              style={styles.previewButton}
+              onPress={handlePreview}
+            >
+              <MaterialIcons name="done" size={26} color="black" />
+            </TouchableOpacity>
+          )}
         </Animated.View>
-      </PinchGestureHandler>
-
-      {!isRecording && (
-        <CameraControls
-          onFlipCamera={handleFlipCamera}
-          onFlashToggle={handleTorchToggle}
-          torchEnabled={torchEnabled}
-          cameraFacing={isCameraSwitching ? previousCameraFacing : cameraFacing}
-        />
-      )}
-
-      {showContinuingIndicator && (
-        <View style={styles.continuingDraftIndicator}>
-          <ThemedText style={styles.continuingDraftText}>
-            Continuing last draft
-          </ThemedText>
-        </View>
-      )}
-
-      {!isRecording && (
-        <View style={styles.timeSelectorContainer}>
-          <TimeSelectorButton
-            onTimeSelect={handleTimeSelect}
-            selectedTime={selectedDuration}
-          />
-        </View>
-      )}
-
-      <RecordingProgressBar
-        segments={recordingSegments}
-        totalDuration={selectedDuration}
-        currentRecordingDuration={currentRecordingDuration}
-      />
-
-      {isRecording && (
-        <View style={styles.recordingTimeContainer}>
-          <ThemedText style={styles.recordingTimeText}>
-            {(() => {
-              const totalSeconds = Math.floor(
-                totalUsedDuration + currentRecordingDuration
-              );
-              const minutes = Math.floor(totalSeconds / 60);
-              const seconds = totalSeconds % 60;
-              return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-            })()}
-          </ThemedText>
-        </View>
-      )}
-
-      {!isRecording && (
-        <CloseButton
-          segments={recordingSegments}
-          onStartOver={handleStartOver}
-          onSaveAsDraft={handleSaveAsDraftWrapper}
-          hasStartedOver={hasStartedOver}
-          onClose={handleCloseWrapper}
-          isContinuingLastDraft={isContinuingLastDraft}
-        />
-      )}
-
-      <RecordButton
-        cameraRef={cameraRef}
-        maxDuration={60}
-        totalDuration={selectedDuration}
-        usedDuration={totalUsedDuration}
-        holdDelay={500}
-        onRecordingStart={handleRecordingStart}
-        onRecordingProgress={handleRecordingProgress}
-        onRecordingComplete={handleRecordingComplete}
-      />
-
-      {recordingSegments.length > 0 && !isRecording && (
-        <UndoSegmentButton onUndoSegment={handleUndoSegmentWrapper} />
-      )}
-
-      {redoStack.length > 0 && !isRecording && (
-        <RedoSegmentButton onRedoSegment={handleRedoSegmentWrapper} />
-      )}
-
-      {recordingSegments.length > 0 && currentDraftId && !isRecording && (
-        <TouchableOpacity style={styles.previewButton} onPress={handlePreview}>
-          <MaterialIcons name="done" size={26} color="black" />
-        </TouchableOpacity>
-      )}
+      </PanGestureHandler>
     </ThemedView>
   );
 }
