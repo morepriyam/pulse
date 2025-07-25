@@ -19,6 +19,10 @@ interface RecordButtonProps {
   style?: any;
   totalDuration: number;
   usedDuration: number;
+  // New props for screen-level touch coordination
+  onButtonTouchStart?: () => void;
+  onButtonTouchEnd?: () => void;
+  screenTouchActive?: boolean;
 }
 
 export default function RecordButton({
@@ -31,12 +35,19 @@ export default function RecordButton({
   style,
   totalDuration,
   usedDuration,
+  // New props for screen-level touch coordination
+  onButtonTouchStart,
+  onButtonTouchEnd,
+  screenTouchActive = false,
 }: RecordButtonProps) {
   const [isRecording, setIsRecording] = React.useState(false);
   const [recordingMode, setRecordingMode] = React.useState<
     "tap" | "hold" | null
   >(null);
   const [isHoldingForRecord, setIsHoldingForRecord] = React.useState(false);
+  // Track if current recording session was initiated by this button
+  const [buttonInitiatedRecording, setButtonInitiatedRecording] =
+    React.useState(false);
 
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
   const borderRadiusAnim = React.useRef(new Animated.Value(30)).current;
@@ -57,11 +68,27 @@ export default function RecordButton({
 
   const remainingTime = totalDuration - usedDuration;
 
+  // Handle screen-level touch end for hold recording
+  React.useEffect(() => {
+    if (
+      !screenTouchActive &&
+      buttonInitiatedRecording &&
+      isRecording &&
+      recordingMode === "hold"
+    ) {
+      // Screen touch ended, stop hold recording
+      stopRecording();
+      stopHoldVisualFeedback();
+      setButtonInitiatedRecording(false);
+    }
+  }, [screenTouchActive, buttonInitiatedRecording, isRecording, recordingMode]);
+
   const startRecording = (mode: "tap" | "hold") => {
     if (!cameraRef.current || isRecording || remainingTime <= 0) return;
 
     setIsRecording(true);
     setRecordingMode(mode);
+    setButtonInitiatedRecording(true);
     manuallyStoppedRef.current = false;
     recordingStartTimeRef.current = Date.now();
 
@@ -146,6 +173,7 @@ export default function RecordButton({
 
         setIsRecording(false);
         setRecordingMode(null);
+        setButtonInitiatedRecording(false);
         recordingPromiseRef.current = null;
         manuallyStoppedRef.current = false;
       });
@@ -231,6 +259,9 @@ export default function RecordButton({
   const handlePressIn = () => {
     pressStartTimeRef.current = Date.now();
 
+    // Notify parent that button touch started
+    onButtonTouchStart?.();
+
     if (!isRecording && !isHoldingForRecord) {
       startHoldVisualFeedback();
 
@@ -243,14 +274,24 @@ export default function RecordButton({
   };
 
   const handlePressOut = () => {
+    // Notify parent that button touch ended
+    onButtonTouchEnd?.();
+
     if (holdTimeoutRef.current) {
       clearTimeout(holdTimeoutRef.current);
       holdTimeoutRef.current = null;
     }
 
+    // Only stop hold recording on button press out if we're not using screen-level touch detection
+    // or if the screen touch is also inactive
     if (isRecording && recordingMode === "hold") {
-      stopRecording();
-      stopHoldVisualFeedback();
+      // If we have screen-level touch coordination, let the useEffect handle stopping
+      // Otherwise, stop immediately on press out
+      if (!onButtonTouchStart || !screenTouchActive) {
+        stopRecording();
+        stopHoldVisualFeedback();
+        setButtonInitiatedRecording(false);
+      }
     } else if (isHoldingForRecord) {
       stopHoldVisualFeedback();
     }
