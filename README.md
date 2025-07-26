@@ -160,10 +160,59 @@ npx tsc --noEmit
 ### Building for Production
 
 ```bash
-# Create production build
+# Create production build locally
 expo build:android
 expo build:ios
+
+# Or use EAS CLI for cloud builds
+eas build --platform ios --profile production
+eas build --platform android --profile production
 ```
+
+### TestFlight Deployment
+
+The app includes an automated GitHub Actions workflow for deploying iOS builds to TestFlight. The workflow can be triggered in several ways:
+
+#### Manual Deployment
+
+1. Go to the [Actions tab](../../actions) in the GitHub repository
+2. Select "Deploy to TestFlight" workflow
+3. Click "Run workflow"
+4. Choose the environment (production/staging)
+5. Optionally skip the build step if you have a recent build
+
+#### Version Tag Deployment
+
+Create and push a version tag to automatically trigger a TestFlight deployment:
+
+```bash
+# Create a new version tag
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+#### Release-based Deployment
+
+Create a new release on GitHub to trigger a TestFlight deployment:
+
+1. Go to the [Releases page](../../releases)
+2. Click "Create a new release"
+3. Choose or create a tag (e.g., v1.0.0)
+4. Fill in release notes and publish
+
+#### Required Secrets
+
+Before using the TestFlight deployment workflow, ensure the following secrets are configured in your GitHub repository settings:
+
+- `EXPO_TOKEN`: Your Expo access token for authentication
+- `APPLE_ID`: Your Apple ID email address
+- `APPLE_ID_PASSWORD`: App-specific password for your Apple ID
+- `APPLE_TEAM_ID`: Your Apple Developer Team ID
+- `ASC_APP_ID`: Your App Store Connect application ID
+
+#### EAS Configuration
+
+The project includes an `eas.json` configuration file that defines build profiles for development, preview, and production environments. The production profile is used for TestFlight deployments.
 
 ## ⇁ Contributing
 

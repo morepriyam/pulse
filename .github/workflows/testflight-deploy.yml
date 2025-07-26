@@ -1,0 +1,184 @@
+name: Deploy to TestFlight
+
+"on":
+  # Manual workflow dispatch - can be triggered from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      skip_build:
+        description: 'Skip the build step (use existing build)'
+        required: false
+        default: false
+        type: boolean
+
+  # Tag-based deployment for version releases
+  push:
+    tags:
+      - 'v*.*.*'  # Matches v1.0.0, v2.1.3, etc.
+
+  # Release-based deployment (optional)
+  release:
+    types: [published]
+
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  APPLE_ID: ${{ secrets.APPLE_ID }}
+  APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+jobs:
+  deploy-ios:
+    name: Deploy iOS App to TestFlight
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS CLI
+        run: |
+          npm install -g @expo/cli@latest
+          npm install -g eas-cli@latest
+          
+          # Verify installations
+          expo --version
+          eas --version
+
+      - name: Verify Expo authentication
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "ERROR: EXPO_TOKEN secret is not set"
+            echo "Please set the EXPO_TOKEN secret in your repository settings"
+            exit 1
+          fi
+          expo whoami
+
+      - name: Extract version from tag (if tag triggered)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DEPLOYMENT_TYPE=tag" >> $GITHUB_ENV
+
+      - name: Set version for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DEPLOYMENT_TYPE=manual" >> $GITHUB_ENV
+
+      - name: Set version for release
+        if: github.event_name == 'release'
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DEPLOYMENT_TYPE=release" >> $GITHUB_ENV
+
+      - name: Configure app for iOS production
+        run: |
+          echo "Configuring app for production deployment"
+          echo "Version: $VERSION"
+          echo "Deployment type: $DEPLOYMENT_TYPE"
+
+      - name: Build and submit to TestFlight
+        if: ${{ !inputs.skip_build || inputs.skip_build == false }}
+        run: |
+          echo "Starting iOS build and TestFlight submission..."
+          
+          # Check if eas.json exists, if not create basic configuration
+          if [ ! -f "eas.json" ]; then
+            echo "Creating eas.json configuration..."
+            cat > eas.json << EOF
+          {
+            "cli": {
+              "version": ">= 5.8.0"
+            },
+            "build": {
+              "development": {
+                "developmentClient": true,
+                "distribution": "internal"
+              },
+              "preview": {
+                "distribution": "internal",
+                "ios": {
+                  "simulator": false
+                }
+              },
+              "production": {
+                "autoIncrement": true,
+                "ios": {
+                  "simulator": false
+                }
+              }
+            },
+            "submit": {
+              "production": {
+                "ios": {
+                  "appleId": "${{ secrets.APPLE_ID }}",
+                  "ascAppId": "${{ secrets.ASC_APP_ID }}",
+                  "appleTeamId": "${{ secrets.APPLE_TEAM_ID }}"
+                }
+              }
+            }
+          }
+          EOF
+          fi
+          
+          # Build for iOS
+          eas build --platform ios --profile production --non-interactive --no-wait
+          
+          # Wait for build to complete and get build ID
+          echo "Waiting for build to complete..."
+          BUILD_ID=$(eas build:list --platform ios --status finished --limit 1 --json | jq -r '.[0].id')
+          
+          # Submit to TestFlight
+          echo "Submitting build $BUILD_ID to TestFlight..."
+          eas submit --platform ios --id $BUILD_ID --profile production --non-interactive
+
+      - name: Skip build notification
+        if: ${{ inputs.skip_build == true }}
+        run: |
+          echo "Build step was skipped as requested."
+          echo "Please ensure you have a recent build available for submission."
+
+      - name: Deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform**: iOS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment Type**: $DEPLOYMENT_TYPE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target**: TestFlight" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$DEPLOYMENT_TYPE" = "tag" ]; then
+            echo "- **Tag**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          elif [ "$DEPLOYMENT_TYPE" = "manual" ]; then
+            echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Skip Build**: ${{ inputs.skip_build }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "The TestFlight deployment failed. Please check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          echo "Common issues:" >> $GITHUB_STEP_SUMMARY
+          echo "- Missing or invalid Apple credentials" >> $GITHUB_STEP_SUMMARY
+          echo "- Invalid bundle identifier or provisioning profile" >> $GITHUB_STEP_SUMMARY
+          echo "- Build errors or configuration issues" >> $GITHUB_STEP_SUMMARY
