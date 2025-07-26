@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 
 import { PermissionMonitor } from "@/components/PermissionMonitor";
+import { URLHandler } from "@/components/URLHandler";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function RootLayout() {
@@ -61,6 +62,7 @@ export default function RootLayout() {
         </Stack>
         <StatusBar style="auto" />
         <PermissionMonitor />
+        <URLHandler />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

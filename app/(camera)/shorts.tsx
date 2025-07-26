@@ -36,9 +36,49 @@ import Animated, {
  * - Time selector for recording duration
  */
 export default function ShortsScreen() {
-  const { draftId } = useLocalSearchParams<{ draftId?: string }>();
+  const searchParams = useLocalSearchParams<{ 
+    draftId?: string;
+    uploadMode?: string;
+    uploadUrl?: string;
+    configMode?: string;
+    config?: string;
+  }>();
+  const { draftId } = searchParams;
+  
+  // URL handling state
+  const [uploadConfig, setUploadConfig] = React.useState<{
+    enabled: boolean;
+    url?: string;
+  }>({ enabled: false });
+  
+  const [externalConfig, setExternalConfig] = React.useState<any>(null);
+
   const cameraRef = React.useRef<CameraView>(null);
   const [selectedDuration, setSelectedDuration] = React.useState(60);
+
+  // Handle URL parameters on component mount
+  React.useEffect(() => {
+    if (searchParams.uploadMode === 'true' && searchParams.uploadUrl) {
+      setUploadConfig({
+        enabled: true,
+        url: searchParams.uploadUrl,
+      });
+    }
+
+    if (searchParams.configMode === 'true' && searchParams.config) {
+      try {
+        const configData = JSON.parse(decodeURIComponent(searchParams.config));
+        setExternalConfig(configData);
+        
+        // Apply configuration settings
+        if (configData.duration && typeof configData.duration === 'number') {
+          setSelectedDuration(configData.duration);
+        }
+      } catch (error) {
+        console.error('Error applying configuration:', error);
+      }
+    }
+  }, [searchParams]);
   const [currentRecordingDuration, setCurrentRecordingDuration] =
     React.useState(0);
 
@@ -134,6 +174,50 @@ export default function ShortsScreen() {
       };
 
       await updateSegmentsAfterRecording(newSegment, selectedDuration);
+
+      // Handle upload if upload mode is enabled
+      if (uploadConfig.enabled && uploadConfig.url) {
+        await handleUploadVideo(videoUri);
+      }
+    }
+  };
+
+  const handleUploadVideo = async (videoUri: string) => {
+    if (!uploadConfig.url) return;
+
+    try {
+      console.log('Uploading video to:', uploadConfig.url);
+      
+      const formData = new FormData();
+      formData.append('video', {
+        uri: videoUri,
+        type: 'video/mp4',
+        name: 'pulse_video.mp4',
+      } as any);
+
+      // Add additional metadata if available from external config
+      if (externalConfig) {
+        formData.append('metadata', JSON.stringify(externalConfig));
+      }
+
+      const response = await fetch(uploadConfig.url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.ok) {
+        console.log('Video uploaded successfully');
+        // Could show success notification here
+      } else {
+        console.error('Upload failed:', response.status, response.statusText);
+        // Could show error notification here
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      // Could show error notification here
     }
   };
 
@@ -316,6 +400,24 @@ export default function ShortsScreen() {
             </View>
           )}
 
+          {uploadConfig.enabled && (
+            <View style={[styles.modeIndicator, { top: showContinuingIndicator ? '75%' : '70%' }]}>
+              <ThemedText style={styles.modeIndicatorText}>
+                Upload Mode Enabled
+              </ThemedText>
+            </View>
+          )}
+
+          {externalConfig && (
+            <View style={[styles.modeIndicator, { 
+              top: uploadConfig.enabled ? '80%' : (showContinuingIndicator ? '75%' : '70%') 
+            }]}>
+              <ThemedText style={styles.modeIndicatorText}>
+                External Config Applied
+              </ThemedText>
+            </View>
+          )}
+
           {!isRecording && (
             <View style={styles.timeSelectorContainer}>
               <TimeSelectorButton
@@ -415,6 +517,22 @@ const styles = StyleSheet.create({
   continuingDraftText: {
     color: "#ffffff",
     fontSize: 14,
+    textAlign: "center",
+    fontFamily: "Roboto-Regular",
+  },
+  modeIndicator: {
+    position: "absolute",
+    left: 50,
+    right: 50,
+    backgroundColor: "rgba(0, 120, 0, 0.8)",
+    borderRadius: 80,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 10,
+  },
+  modeIndicatorText: {
+    color: "#ffffff",
+    fontSize: 12,
     textAlign: "center",
     fontFamily: "Roboto-Regular",
   },
