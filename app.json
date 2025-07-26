@@ -64,6 +64,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5f42c4ab-daf7-489a-918e-a893e453486b"
+      }
+    },
+    "owner": "morepriyam"
   }
 }

@@ -21,8 +21,7 @@
       "autoIncrement": true,
       "ios": {
         "simulator": false,
-        "buildConfiguration": "Release",
-        "bundleIdentifier": "com.mieweb.pulse"
+        "buildConfiguration": "Release"
       }
     }
   },
