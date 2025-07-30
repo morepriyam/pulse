@@ -10,6 +10,7 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
+import { useVideoProcessor } from "@/hooks/useVideoProcessor";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -57,6 +58,9 @@ export default function ShortsScreen() {
     handleRedoSegment,
     updateSegmentsAfterRecording,
   } = useDraftManager(draftId, selectedDuration);
+
+  // Video processing hook for testing
+  const { processDraft, isProcessing } = useVideoProcessor();
 
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
@@ -168,11 +172,22 @@ export default function ShortsScreen() {
   };
 
   const handlePreview = () => {
-    if (currentDraftId && recordingSegments.length > 0) {
-      router.push({
-        pathname: "/preview",
-        params: { draftId: currentDraftId },
-      });
+    if (recordingSegments.length > 0 && currentDraftId) {
+      router.push(`/preview?draftId=${currentDraftId}`);
+    }
+  };
+
+  // TEMPORARY: Test concatenation function
+  const handleTestConcat = async () => {
+    if (recordingSegments.length > 1) {
+      console.log("🧪 Testing concatenation directly from shorts screen...");
+      const result = await processDraft(recordingSegments);
+      if (result) {
+        console.log("🎉 Test concatenation successful!", result);
+        // Optionally show an alert or navigate to result
+      } else {
+        console.log("❌ Test concatenation failed");
+      }
     }
   };
 
@@ -258,7 +273,7 @@ export default function ShortsScreen() {
   return (
     <ThemedView style={styles.container}>
       <PanGestureHandler onGestureEvent={handleScreenPanGesture}>
-        <Animated.View style={{ flex: 1 }}>
+        <Animated.View style={styles.container}>
           <PinchGestureHandler
             onGestureEvent={useAnimatedGestureHandler({
               onStart: () => {
@@ -285,14 +300,18 @@ export default function ShortsScreen() {
               },
             })}
           >
-            <Animated.View style={{ flex: 1 }}>
+            <Animated.View style={styles.container}>
               <CameraView
-                ref={cameraRef}
-                style={styles.camera}
-                mode="video"
+                style={[
+                  styles.camera,
+                  {
+                    transform: [{ scale: Math.max(1, 1 + zoom * 1.5) }],
+                  },
+                ]}
                 facing={cameraFacing}
-                enableTorch={torchEnabled}
+                ref={cameraRef}
                 zoom={zoom}
+                enableTorch={torchEnabled}
               />
             </Animated.View>
           </PinchGestureHandler>
@@ -387,6 +406,23 @@ export default function ShortsScreen() {
               <MaterialIcons name="done" size={26} color="black" />
             </TouchableOpacity>
           )}
+
+          {/* TEMPORARY: Test Concatenation Button */}
+          {recordingSegments.length > 1 && !isRecording && !isProcessing && (
+            <TouchableOpacity
+              style={styles.testButton}
+              onPress={handleTestConcat}
+            >
+              <ThemedText style={styles.testButtonText}>🧪</ThemedText>
+            </TouchableOpacity>
+          )}
+
+          {/* Processing indicator */}
+          {isProcessing && (
+            <View style={styles.processingIndicator}>
+              <ThemedText style={styles.processingText}>Testing...</ThemedText>
+            </View>
+          )}
         </Animated.View>
       </PanGestureHandler>
     </ThemedView>
@@ -451,5 +487,38 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.7)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  testButton: {
+    position: "absolute",
+    bottom: 100,
+    left: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  testButtonText: {
+    fontSize: 24,
+    color: "black",
+  },
+  processingIndicator: {
+    position: "absolute",
+    top: "50%",
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  processingText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontFamily: "Roboto-Bold",
   },
 });
