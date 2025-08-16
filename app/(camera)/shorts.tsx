@@ -10,6 +10,7 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
+import { VideoStabilization, mapToNativeVideoStabilization } from "@/constants/camera";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -64,6 +65,9 @@ export default function ShortsScreen() {
   const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
   const [previousCameraFacing, setPreviousCameraFacing] =
     React.useState<CameraType>("back");
+  const [videoStabilizationMode, setVideoStabilizationMode] = React.useState<VideoStabilization>(
+    VideoStabilization.off
+  );
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -165,6 +169,11 @@ export default function ShortsScreen() {
 
   const handleTorchToggle = () => {
     setTorchEnabled((current) => !current);
+  };
+
+  const handleVideoStabilizationChange = (mode: VideoStabilization) => {
+    console.log(`Video stabilization changed to: ${mode}`);
+    setVideoStabilizationMode(mode);
   };
 
   const handlePreview = () => {
@@ -293,6 +302,7 @@ export default function ShortsScreen() {
                 facing={cameraFacing}
                 enableTorch={torchEnabled}
                 zoom={zoom}
+                videoStabilizationMode={mapToNativeVideoStabilization(videoStabilizationMode)}
               />
             </Animated.View>
           </PinchGestureHandler>
@@ -305,6 +315,8 @@ export default function ShortsScreen() {
               cameraFacing={
                 isCameraSwitching ? previousCameraFacing : cameraFacing
               }
+              videoStabilizationMode={videoStabilizationMode}
+              onVideoStabilizationChange={handleVideoStabilizationChange}
             />
           )}
 
