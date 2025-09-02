@@ -1,5 +1,4 @@
 import CameraControls from "@/components/CameraControls";
-import CloseButton from "@/components/CloseButton";
 import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
   RecordingSegment,
@@ -9,6 +8,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
+import UploadCloseButton from "@/components/UploadCloseButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
@@ -350,13 +350,10 @@ export default function UploadScreen() {
           )}
 
           {!isRecording && (
-            <CloseButton
+            <UploadCloseButton
               segments={recordingSegments}
               onStartOver={handleStartOver}
-              onSaveAsDraft={handleSaveAsDraftWrapper}
               hasStartedOver={hasStartedOver}
-              onClose={handleCloseWrapper}
-              isContinuingLastDraft={isContinuingLastDraft}
             />
           )}
 
