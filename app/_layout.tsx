@@ -37,7 +37,7 @@ export default function RootLayout() {
             options={{
               headerShown: false,
               presentation: "fullScreenModal",
-              animation: "fade",
+              animation: "none",
             }}
           />
           <Stack.Screen name="+not-found" />
