@@ -36,7 +36,10 @@ import Animated, {
  * - Time selector for recording duration
  */
 export default function UploadScreen() {
-  const { draftId } = useLocalSearchParams<{ draftId?: string }>();
+  const { draftId } = useLocalSearchParams<{
+    draftId?: string;
+    mode?: string;
+  }>();
   const cameraRef = React.useRef<CameraView>(null);
   const [selectedDuration, setSelectedDuration] = React.useState(60);
   const [currentRecordingDuration, setCurrentRecordingDuration] =
@@ -56,7 +59,7 @@ export default function UploadScreen() {
     handleUndoSegment,
     handleRedoSegment,
     updateSegmentsAfterRecording,
-  } = useDraftManager(draftId, selectedDuration);
+  } = useDraftManager(draftId, selectedDuration, "upload");
 
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
