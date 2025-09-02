@@ -1,5 +1,5 @@
 import { RecordingSegment } from "@/components/RecordingProgressBar";
-import { DraftStorage } from "@/utils/draftStorage";
+import { DraftMode, DraftStorage } from "@/utils/draftStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
 
@@ -40,7 +40,8 @@ interface DraftManagerActions {
  */
 export function useDraftManager(
   draftId?: string,
-  selectedDuration: number = 60
+  selectedDuration: number = 60,
+  mode: DraftMode = 'camera'
 ): DraftManagerState & DraftManagerActions {
   const [recordingSegments, setRecordingSegments] = useState<RecordingSegment[]>([]);
   const [redoStack, setRedoStack] = useState<RecordingSegment[]>([]);
@@ -74,10 +75,11 @@ export function useDraftManager(
         }
 
         if (draftId) {
-          draftToLoad = await DraftStorage.getDraftById(draftId);
+          draftToLoad = await DraftStorage.getDraftById(draftId, mode);
           setIsContinuingLastDraft(false);
         } else {
-          draftToLoad = await DraftStorage.getLastModifiedDraft();
+          // Only auto-load last draft in camera mode, not in upload mode
+          draftToLoad = mode === 'camera' ? await DraftStorage.getLastModifiedDraft(mode) : null;
 
           const redoBelongsToCurrentDraft =
             redoData &&
@@ -164,7 +166,9 @@ export function useDraftManager(
         } else {
           const newDraftId = await DraftStorage.saveDraft(
             recordingSegments,
-            selectedDuration
+            selectedDuration,
+            mode,
+            draftId  // Pass the URL's draft ID
           );
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
@@ -212,7 +216,8 @@ export function useDraftManager(
         await DraftStorage.updateDraft(currentDraftId, segments, duration);
         console.log("Saved & reset:", currentDraftId);
       } else {
-        const draftId = await DraftStorage.saveDraft(segments, duration);
+        const newId = await DraftStorage.saveDraft(segments, duration, mode, draftId);
+        setCurrentDraftId(newId);
         console.log("New draft & reset:", draftId);
       }
 
@@ -288,7 +293,7 @@ export function useDraftManager(
 
       try {
         if (!currentDraftId) {
-          const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration);
+          const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration, mode, draftId);
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
           console.log("New draft created on redo:", newDraftId);
@@ -319,7 +324,13 @@ export function useDraftManager(
         await DraftStorage.updateDraft(currentDraftId, updatedSegments, duration);
         console.log("Saved:", currentDraftId);
       } else {
-        const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration);
+        // Use provided draftId if available, otherwise generate new one
+        const newDraftId = await DraftStorage.saveDraft(
+          updatedSegments,
+          duration,
+          mode,
+          draftId // Pass through the ID from URL
+        );
         setCurrentDraftId(newDraftId);
         setHasStartedOver(false);
         console.log("New draft:", newDraftId);
