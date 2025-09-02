@@ -23,7 +23,7 @@ export default function DraftsScreen() {
 
   const loadDrafts = async () => {
     try {
-      const savedDrafts = await DraftStorage.getAllDrafts();
+      const savedDrafts = await DraftStorage.getAllDrafts("camera");
       // Sort by most recently modified
       setDrafts(
         savedDrafts.sort(
