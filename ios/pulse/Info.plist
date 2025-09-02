@@ -27,7 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>pulse</string>
+          <string>pulsecam</string>
           <string>com.mieweb.pulse</string>
         </array>
       </dict>
