@@ -2,8 +2,11 @@ import { RecordingSegment } from '@/components/RecordingProgressBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateVideoThumbnail } from './videoThumbnails';
 
+export type DraftMode = 'camera' | 'upload';
+
 export interface Draft {
   id: string;
+  mode: DraftMode;
   segments: RecordingSegment[];
   totalDuration: number;
   createdAt: Date;
@@ -20,7 +23,12 @@ const DRAFTS_STORAGE_KEY = 'recording_drafts';
  * and metadata management.
  */
 export class DraftStorage {
-  static async saveDraft(segments: RecordingSegment[], totalDuration: number): Promise<string> {
+  static async saveDraft(
+    segments: RecordingSegment[],
+    totalDuration: number,
+    mode: DraftMode = 'camera',
+    customId?: string
+  ): Promise<string> {
     try {
       const existingDrafts = await this.getAllDrafts();
       
@@ -31,7 +39,8 @@ export class DraftStorage {
       
       const now = new Date();
       const newDraft: Draft = {
-        id: Date.now().toString(),
+        id: customId || Date.now().toString(),
+        mode,
         segments,
         totalDuration,
         createdAt: now,
@@ -39,7 +48,9 @@ export class DraftStorage {
         thumbnail: thumbnailUri,
       };
       
-      const updatedDrafts = [...existingDrafts, newDraft];
+      // Replace existing draft with same ID or append new one
+      const updatedDrafts = existingDrafts.filter(draft => draft.id !== newDraft.id);
+      updatedDrafts.push(newDraft);
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
       
       return newDraft.id;
@@ -72,13 +83,17 @@ export class DraftStorage {
     }
   }
 
-  static async getLastModifiedDraft(): Promise<Draft | null> {
+  static async getLastModifiedDraft(mode?: DraftMode): Promise<Draft | null> {
     try {
       const drafts = await this.getAllDrafts();
       if (drafts.length === 0) return null;
       
+      // Filter by mode if specified
+      const filteredDrafts = mode ? drafts.filter(draft => draft.mode === mode) : drafts;
+      if (filteredDrafts.length === 0) return null;
+
       // Find the most recently modified draft
-      const mostRecent = drafts.reduce((latest, current) => 
+      const mostRecent = filteredDrafts.reduce((latest, current) => 
         current.lastModified.getTime() > latest.lastModified.getTime() ? current : latest
       );
       
@@ -90,27 +105,36 @@ export class DraftStorage {
   }
   
 
-  static async getAllDrafts(): Promise<Draft[]> {
+  static async getAllDrafts(mode?: DraftMode): Promise<Draft[]> {
     try {
       const draftsJson = await AsyncStorage.getItem(DRAFTS_STORAGE_KEY);
       if (!draftsJson) return [];
       
       const drafts = JSON.parse(draftsJson);
-      return drafts.map((draft: any) => ({
+      const parsedDrafts = drafts.map((draft: any) => ({
         ...draft,
         createdAt: new Date(draft.createdAt),
         lastModified: new Date(draft.lastModified || draft.createdAt), // Handle existing drafts
+        mode: draft.mode || 'camera' // Default to camera for older drafts
       }));
+      
+      // Filter by mode if specified
+      return mode ? parsedDrafts.filter((draft: Draft) => draft.mode === mode) : parsedDrafts;
     } catch (error) {
       console.error('Error getting drafts:', error);
       return [];
     }
   }
   
-  static async getDraftById(id: string): Promise<Draft | null> {
+  static async getDraftById(id: string, mode?: DraftMode): Promise<Draft | null> {
     try {
       const drafts = await this.getAllDrafts();
-      return drafts.find(draft => draft.id === id) || null;
+      const draft = drafts.find(draft => draft.id === id);
+      // If mode is specified, check if draft matches the mode
+      if (draft && mode && draft.mode !== mode) {
+        return null;
+      }
+      return draft || null;
     } catch (error) {
       console.error('Error getting draft by id:', error);
       return null;

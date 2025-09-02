@@ -32,7 +32,14 @@ export default function RootLayout() {
             headerShown: false,
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "none",
+            }}
+          />
           <Stack.Screen name="+not-found" />
           <Stack.Screen
             name="onboarding"
@@ -52,6 +59,14 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="preview"
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "fade",
+            }}
+          />
+          <Stack.Screen
+            name="upload"
             options={{
               headerShown: false,
               presentation: "fullScreenModal",
