@@ -37,8 +37,7 @@ import Animated, {
  */
 export default function UploadScreen() {
   const { draftId } = useLocalSearchParams<{
-    draftId?: string;
-    mode?: string;
+    draftId: string;
   }>();
   const cameraRef = React.useRef<CameraView>(null);
   const [selectedDuration, setSelectedDuration] = React.useState(60);
