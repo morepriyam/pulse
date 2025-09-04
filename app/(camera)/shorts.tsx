@@ -252,7 +252,7 @@ export default function ShortsScreen() {
 
   const handleCloseWrapper = async () => {
     await handleClose();
-    router.dismiss();
+    router.push("/(tabs)");
   };
 
   return (
