@@ -1,5 +1,4 @@
 import { ThemedText } from "@/components/ThemedText";
-import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Modal,
@@ -14,6 +13,7 @@ interface UploadCloseButtonProps {
   segments: RecordingSegment[];
   onStartOver: () => void;
   hasStartedOver: boolean;
+  onClose?: () => void;
 }
 
 const closeOptions = [
@@ -25,12 +25,13 @@ export default function UploadCloseButton({
   segments,
   onStartOver,
   hasStartedOver,
+  onClose,
 }: UploadCloseButtonProps) {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const handleClosePress = () => {
     if (segments.length === 0) {
-      router.replace("/(tabs)");
+      onClose?.();
     } else {
       setIsModalVisible(true);
     }
@@ -44,7 +45,7 @@ export default function UploadCloseButton({
         onStartOver();
         break;
       case "close":
-        router.replace("/(tabs)");
+        onClose?.();
         break;
     }
   };

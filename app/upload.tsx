@@ -255,7 +255,7 @@ export default function UploadScreen() {
 
   const handleCloseWrapper = async () => {
     await handleClose();
-    router.dismiss();
+    router.push("/(camera)/drafts");
   };
 
   return (
@@ -354,6 +354,7 @@ export default function UploadScreen() {
               segments={recordingSegments}
               onStartOver={handleStartOver}
               hasStartedOver={hasStartedOver}
+              onClose={handleCloseWrapper}
             />
           )}
 

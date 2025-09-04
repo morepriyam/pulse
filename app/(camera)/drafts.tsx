@@ -1,4 +1,5 @@
 import { Draft, DraftStorage } from "@/utils/draftStorage";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -23,7 +24,7 @@ export default function DraftsScreen() {
 
   const loadDrafts = async () => {
     try {
-      const savedDrafts = await DraftStorage.getAllDrafts("camera");
+      const savedDrafts = await DraftStorage.getAllDrafts();
       // Sort by most recently modified
       setDrafts(
         savedDrafts.sort(
@@ -38,10 +39,17 @@ export default function DraftsScreen() {
   };
 
   const handleDraftPress = (draft: Draft) => {
-    router.push({
-      pathname: "/(camera)/shorts",
-      params: { draftId: draft.id },
-    });
+    if (draft.mode === "upload") {
+      router.push({
+        pathname: "/upload",
+        params: { draftId: draft.id },
+      });
+    } else {
+      router.push({
+        pathname: "/(camera)/shorts",
+        params: { draftId: draft.id },
+      });
+    }
   };
 
   const handleDeleteDraft = async (draftId: string) => {
@@ -125,12 +133,19 @@ export default function DraftsScreen() {
               Modified: {formatDate(item.lastModified)}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteDraft(item.id)}
-          >
-            <Text style={styles.deleteText}>×</Text>
-          </TouchableOpacity>
+          <View style={styles.actionsContainer}>
+            {item.mode === "upload" && (
+              <View style={styles.modeTag}>
+                <MaterialIcons name="link" size={14} color="#888888" />
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDeleteDraft(item.id)}
+            >
+              <Text style={styles.deleteText}>×</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -142,7 +157,7 @@ export default function DraftsScreen() {
         {/* Close Button */}
         <TouchableOpacity
           style={[styles.closeButton, { top: insets.top + 20 }]}
-          onPress={() => router.dismiss()}
+          onPress={() => router.push("/(tabs)")}
         >
           <Text style={styles.closeText}>×</Text>
         </TouchableOpacity>
@@ -158,7 +173,7 @@ export default function DraftsScreen() {
         {/* Close Button */}
         <TouchableOpacity
           style={[styles.closeButton, { top: insets.top + 20 }]}
-          onPress={() => router.dismiss()}
+          onPress={() => router.push("/(tabs)")}
         >
           <Text style={styles.closeText}>×</Text>
         </TouchableOpacity>
@@ -166,7 +181,7 @@ export default function DraftsScreen() {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No Drafts</Text>
           <Text style={styles.emptySubtitle}>
-            Your saved recording drafts will appear here
+            Your saved recording and uploaded video drafts will appear here
           </Text>
         </View>
       </View>
@@ -200,6 +215,19 @@ export default function DraftsScreen() {
 }
 
 const styles = StyleSheet.create({
+  actionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modeTag: {
+    backgroundColor: "#2a2a2a",
+    padding: 4,
+    borderRadius: 4,
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: "#000000",
