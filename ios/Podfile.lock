@@ -3,7 +3,7 @@ PODS:
   - DoubleConversion (1.1.6)
   - EXConstants (17.1.7):
     - ExpoModulesCore
-  - Expo (53.0.20):
+  - Expo (53.0.22):
     - DoubleConversion
     - ExpoModulesCore
     - glog
@@ -44,7 +44,7 @@ PODS:
     - ExpoModulesCore
   - ExpoHaptics (14.1.4):
     - ExpoModulesCore
-  - ExpoHead (5.1.4):
+  - ExpoHead (5.1.5):
     - ExpoModulesCore
   - ExpoImage (2.4.0):
     - ExpoModulesCore
@@ -91,7 +91,7 @@ PODS:
     - ExpoModulesCore
   - ExpoSymbols (0.4.5):
     - ExpoModulesCore
-  - ExpoSystemUI (5.0.10):
+  - ExpoSystemUI (5.0.11):
     - ExpoModulesCore
   - ExpoVideo (2.2.2):
     - ExpoModulesCore
@@ -2103,6 +2103,8 @@ PODS:
     - libwebp (~> 1.0)
     - SDWebImage/Core (~> 5.17)
   - SocketRocket (0.7.1)
+  - VideoConcat (1.0.0):
+    - ExpoModulesCore
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
   - ZXingObjC/OneD (3.6.9):
@@ -2209,6 +2211,7 @@ DEPENDENCIES:
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
+  - VideoConcat (from `../modules/video-concat/ios`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -2417,6 +2420,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-reanimated"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  VideoConcat:
+    :path: "../modules/video-concat/ios"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -2424,14 +2429,14 @@ SPEC CHECKSUMS:
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   EXConstants: 98bcf0f22b820f9b28f9fee55ff2daededadd2f8
-  Expo: a40d525c930dd1c8a158e082756ee071955baccb
+  Expo: a64c53f1ebaa36c439a87874759b6690785e60a4
   ExpoAsset: ef06e880126c375f580d4923fdd1cdf4ee6ee7d6
   ExpoBlur: 3c8885b9bf9eef4309041ec87adec48b5f1986a9
   ExpoCamera: e1879906d41184e84b57d7643119f8509414e318
   ExpoFileSystem: 7f92f7be2f5c5ed40a7c9efc8fa30821181d9d63
   ExpoFont: cf508bc2e6b70871e05386d71cab927c8524cc8e
   ExpoHaptics: 0ff6e0d83cd891178a306e548da1450249d54500
-  ExpoHead: a7b66cbaeeb51f4a85338d335a0f5467e29a2c90
+  ExpoHead: 54d7ce2efb9ecb9920b585051f5d0fbc96464234
   ExpoImage: e4102c93d1dbe99ff54b075452d1bc9d6ec21b7c
   ExpoKeepAwake: bf0811570c8da182bfb879169437d4de298376e7
   ExpoLinking: d5c183998ca6ada66ff45e407e0f965b398a8902
@@ -2440,7 +2445,7 @@ SPEC CHECKSUMS:
   ExpoSharing: b0377be82430d07398c6a4cd60b5a15696accbd3
   ExpoSplashScreen: 0ad5acac1b5d2953c6e00d4319f16d616f70d4dd
   ExpoSymbols: c5612a90fb9179cdaebcd19bea9d8c69e5d3b859
-  ExpoSystemUI: c2724f9d5af6b1bb74e013efadf9c6a8fae547a2
+  ExpoSystemUI: 433a971503b99020318518ed30a58204288bab2d
   ExpoVideo: ada534976cfd4a6bf082cc61aa1b17920a251e32
   ExpoVideoThumbnails: ef1a4c7bff9ab3b4e006ce17576c3f09320b4cf4
   ExpoWebBrowser: dc39a88485f007e61a3dff05d6a75f22ab4a2e92
@@ -2525,6 +2530,7 @@ SPEC CHECKSUMS:
   SDWebImageSVGCoder: 15a300a97ec1c8ac958f009c02220ac0402e936c
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  VideoConcat: c12b10200f118baf7d2b593e3a39a41719287de4
   Yoga: adb397651e1c00672c12e9495babca70777e411e
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
