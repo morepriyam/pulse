@@ -58,6 +58,7 @@
 - 🎯 **Auto-Stop** - Automatic recording termination when time limit is reached
 - 🎨 **Modern UI** - Clean, intuitive interface with smooth animations
 - 📱 **Cross-Platform** - Works on both iOS and Android devices
+- 🎭 **Video Stabilization** - Cross-platform video stabilization controls (iOS: cinematic modes, Android: on/off)
 
 ## ⇁ Installation
 
@@ -112,6 +113,17 @@ const defaultSettings = {
   progressUpdateInterval: 100, // Progress update frequency (ms)
 };
 ```
+
+### Video Stabilization
+
+The app includes cross-platform video stabilization controls:
+
+- **iOS**: Full range of stabilization modes (`off`, `standard`, `cinematic`, `cinematicExtended`, `auto`)
+- **Android**: Simple on/off control
+- **Control**: Tap to cycle modes, long-press for mode picker
+- **Platform Mapping**: iOS-specific modes automatically map to "on" on Android
+
+For detailed information, see [VIDEO_STABILIZATION.md](./VIDEO_STABILIZATION.md).
 
 ### Time Options
 
