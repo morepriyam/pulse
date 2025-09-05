@@ -1,19 +1,10 @@
-import type { StyleProp, ViewStyle } from 'react-native';
+export interface ExportProgress {
+  progress: number;  // 0-1
+  currentSegment: number;
+  phase: 'preparing' | 'processing' | 'finalizing';
+}
 
-export type OnLoadEventPayload = {
-  url: string;
-};
-
-export type VideoConcatModuleEvents = {
-  onChange: (params: ChangeEventPayload) => void;
-};
-
-export type ChangeEventPayload = {
-  value: string;
-};
-
-export type VideoConcatViewProps = {
-  url: string;
-  onLoad: (event: { nativeEvent: OnLoadEventPayload }) => void;
-  style?: StyleProp<ViewStyle>;
-};
+export interface VideoConcatModuleEvents {
+  [key: string]: (params: any) => void;  // Add index signature
+  onProgress: (event: { progress: ExportProgress }) => void;
+}
