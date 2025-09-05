@@ -20,21 +20,8 @@ export default function VideoStabilizationControl({
 }: VideoStabilizationControlProps) {
   const capabilities = getSupportedVideoStabilizationModes();
 
-  const getStabilizationIcon = () => {
-    switch (stabilizationMode) {
-      case VideoStabilization.off:
-        return "video-stable";
-      case VideoStabilization.on:
-      case VideoStabilization.standard:
-        return "video-stable";
-      case VideoStabilization.cinematic:
-      case VideoStabilization.cinematicExtended:
-        return "video-stable";
-      case VideoStabilization.auto:
-        return "auto-awesome";
-      default:
-        return "video-stable";
-    }
+  const getStabilizationIcon = (): "video-stable" => {
+    return "video-stable";
   };
 
   const getStabilizationLabel = (mode: VideoStabilization): string => {
@@ -43,14 +30,6 @@ export default function VideoStabilizationControl({
         return "Off";
       case VideoStabilization.on:
         return "On";
-      case VideoStabilization.standard:
-        return "Standard";
-      case VideoStabilization.cinematic:
-        return "Cinematic";
-      case VideoStabilization.cinematicExtended:
-        return "Cinematic+";
-      case VideoStabilization.auto:
-        return "Auto";
       default:
         return "Off";
     }
@@ -65,40 +44,12 @@ export default function VideoStabilizationControl({
       return;
     }
 
-    // Cycle through supported modes
-    const currentIndex = capabilities.supportedModes.findIndex(
-      (mode) => mode === stabilizationMode
-    );
-    const nextIndex = (currentIndex + 1) % capabilities.supportedModes.length;
-    const nextMode = capabilities.supportedModes[nextIndex];
-
-    // Log platform-specific behavior warning
-    if (Platform.OS === 'android' && nextMode !== VideoStabilization.off && nextMode !== VideoStabilization.on) {
-      console.warn(`Video stabilization mode '${nextMode}' will be mapped to 'on' on Android`);
-    }
+    // Simple toggle between off and on
+    const nextMode = stabilizationMode === VideoStabilization.off 
+      ? VideoStabilization.on 
+      : VideoStabilization.off;
 
     onStabilizationModeChange(nextMode);
-  };
-
-  const handleStabilizationLongPress = () => {
-    if (!capabilities.isSupported) return;
-
-    const modeOptions = capabilities.supportedModes.map((mode) => ({
-      text: getStabilizationLabel(mode),
-      onPress: () => onStabilizationModeChange(mode),
-    }));
-
-    Alert.alert(
-      "Video Stabilization",
-      `Current: ${getStabilizationLabel(stabilizationMode)}\n\nChoose a mode:`,
-      [
-        ...modeOptions,
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]
-    );
   };
 
   if (!capabilities.isSupported) {
@@ -115,7 +66,6 @@ export default function VideoStabilizationControl({
           isActive && styles.activeButton,
         ]}
         onPress={handleStabilizationToggle}
-        onLongPress={handleStabilizationLongPress}
       >
         <MaterialIcons
           name={getStabilizationIcon()}
@@ -134,7 +84,6 @@ export default function VideoStabilizationControl({
           isActive && styles.activeButton,
         ]}
         onPress={handleStabilizationToggle}
-        onLongPress={handleStabilizationLongPress}
       >
         <MaterialIcons
           name={getStabilizationIcon()}
@@ -168,6 +117,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 25,
+    marginVertical: 8,
     alignItems: "center",
     justifyContent: "center",
   },

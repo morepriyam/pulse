@@ -2,21 +2,13 @@ import { Platform } from 'react-native';
 
 /**
  * Cross-platform video stabilization mode enum.
- * Extends expo-camera's VideoStabilization with additional modes.
+ * Simple on/off control for both iOS and Android.
  */
 export enum VideoStabilization {
   /** Disable video stabilization */
   off = 'off',
-  /** Enable basic stabilization (Android + iOS convenience mapping) */
+  /** Enable video stabilization */
   on = 'on',
-  /** Standard stabilization (iOS only, maps to 'on' on Android) */
-  standard = 'standard',
-  /** Cinematic stabilization (iOS only, maps to 'on' on Android) */
-  cinematic = 'cinematic',
-  /** Cinematic extended stabilization (iOS only, maps to 'on' on Android) */
-  cinematicExtended = 'cinematicExtended',
-  /** Auto stabilization (iOS only, maps to 'on' on Android) */
-  auto = 'auto',
 }
 
 /**
@@ -34,18 +26,12 @@ export interface VideoStabilizationCapabilities {
  */
 export function mapToNativeVideoStabilization(
   mode: VideoStabilization
-): 'off' | 'standard' | 'cinematic' | 'auto' {
+): 'off' | 'standard' {
   switch (mode) {
     case VideoStabilization.off:
       return 'off';
     case VideoStabilization.on:
-    case VideoStabilization.standard:
       return 'standard';
-    case VideoStabilization.cinematic:
-    case VideoStabilization.cinematicExtended:
-      return 'cinematic';
-    case VideoStabilization.auto:
-      return 'auto';
     default:
       return 'off';
   }
@@ -55,21 +41,8 @@ export function mapToNativeVideoStabilization(
  * Get supported video stabilization modes for the current platform
  */
 export function getSupportedVideoStabilizationModes(): VideoStabilizationCapabilities {
-  if (Platform.OS === 'ios') {
-    // iOS supports the full range
-    return {
-      isSupported: true,
-      supportedModes: [
-        VideoStabilization.off,
-        VideoStabilization.on,
-        VideoStabilization.standard,
-        VideoStabilization.cinematic,
-        VideoStabilization.cinematicExtended,
-        VideoStabilization.auto,
-      ],
-    };
-  } else if (Platform.OS === 'android') {
-    // Android only supports on/off
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    // Both iOS and Android support simple on/off
     return {
       isSupported: true,
       supportedModes: [
