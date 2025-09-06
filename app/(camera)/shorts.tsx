@@ -9,7 +9,9 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
+import WhisperButton from "@/components/WhisperButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
+import { useTranscription } from "@/hooks/useTranscription";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -67,6 +69,12 @@ export default function ShortsScreen() {
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
+
+  // Transcription state
+  const {
+    isTranscribing,
+    transcribeVideo,
+  } = useTranscription(currentDraftId || undefined);
 
   // Screen-level touch state for continuous hold recording
   const [screenTouchActive, setScreenTouchActive] = React.useState(false);
@@ -186,6 +194,17 @@ export default function ShortsScreen() {
 
   const handleRedoSegmentWrapper = async () => {
     await handleRedoSegment(selectedDuration);
+  };
+
+  const handleTranscribe = async () => {
+    if (recordingSegments.length === 0) {
+      console.warn('No segments to transcribe');
+      return;
+    }
+
+    // Use the first segment's URI for transcription
+    const firstSegmentUri = recordingSegments[0].uri;
+    await transcribeVideo(firstSegmentUri);
   };
 
   // Button touch coordination handlers
@@ -379,6 +398,18 @@ export default function ShortsScreen() {
             <RedoSegmentButton onRedoSegment={handleRedoSegmentWrapper} />
           )}
 
+          {/* Transcription Control */}
+          {recordingSegments.length > 0 && !isRecording && (
+            <View style={styles.transcriptionControl}>
+              <WhisperButton
+                onTranscribe={handleTranscribe}
+                isTranscribing={isTranscribing}
+                disabled={recordingSegments.length === 0}
+                style={styles.whisperButton}
+              />
+            </View>
+          )}
+
           {recordingSegments.length > 0 && currentDraftId && !isRecording && (
             <TouchableOpacity
               style={styles.previewButton}
@@ -451,5 +482,14 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.7)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  transcriptionControl: {
+    position: "absolute",
+    bottom: 110,
+    left: 20,
+    zIndex: 10,
+  },
+  whisperButton: {
+    backgroundColor: "rgba(33, 150, 243, 0.9)",
   },
 });
