@@ -50,7 +50,7 @@ export default function UploadScreen() {
     redoStack,
     currentDraftId,
     hasStartedOver,
-    isContinuingLastDraft,
+    isContinuingLastDraft: _isContinuingLastDraft, // eslint-disable-line @typescript-eslint/no-unused-vars
     showContinuingIndicator,
     handleStartOver,
     handleSaveAsDraft,
@@ -72,7 +72,7 @@ export default function UploadScreen() {
 
   // Screen-level touch state for continuous hold recording
   const [screenTouchActive, setScreenTouchActive] = React.useState(false);
-  const [buttonPressActive, setButtonPressActive] = React.useState(false);
+  const [_buttonPressActive, setButtonPressActive] = React.useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Zoom state
   const [zoom, setZoom] = React.useState(0);
@@ -178,7 +178,7 @@ export default function UploadScreen() {
     }
   };
 
-  const handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => {
+  const _handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     await handleSaveAsDraft(segments, selectedDuration);
   };
 

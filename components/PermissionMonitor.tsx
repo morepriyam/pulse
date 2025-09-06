@@ -1,6 +1,6 @@
 import { useCameraPermissions, useMicrophonePermissions } from "expo-camera";
 import { usePermissions } from "expo-media-library";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   AppState,
@@ -26,22 +26,7 @@ export function PermissionMonitor() {
   const [mediaLibraryPermissions, requestMediaLibraryPermissions] =
     usePermissions();
 
-  useEffect(() => {
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange
-    );
-    checkPermissions();
-    return () => subscription.remove();
-  }, []);
-
-  const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-    if (nextAppState === "active") {
-      await checkPermissions();
-    }
-  };
-
-  async function checkPermissions() {
+  const checkPermissions = useCallback(async () => {
     const [cameraStatus, microphoneStatus, mediaLibraryStatus] =
       await Promise.all([
         requestCameraPermissions(),
@@ -55,7 +40,22 @@ export function PermissionMonitor() {
       mediaLibraryStatus.granted;
 
     setShowMonitor(!hasAllPermissions);
-  }
+  }, [requestCameraPermissions, requestMicrophonePermissions, requestMediaLibraryPermissions]);
+
+  const handleAppStateChange = useCallback(async (nextAppState: AppStateStatus) => {
+    if (nextAppState === "active") {
+      await checkPermissions();
+    }
+  }, [checkPermissions]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
+    checkPermissions();
+    return () => subscription.remove();
+  }, [checkPermissions, handleAppStateChange]);
 
   async function handleUpdatePermissions() {
     const [cameraStatus, microphoneStatus, mediaLibraryStatus] =

@@ -44,7 +44,7 @@ export default function PreviewScreen() {
     }
   });
 
-  const currentPlayer = useSecondPlayer ? player2 : player1;
+  const _currentPlayer = useSecondPlayer ? player2 : player1; // eslint-disable-line @typescript-eslint/no-unused-vars
   const nextPlayer = useSecondPlayer ? player1 : player2;
 
   useEventListener(player1, "playToEnd", () => {
@@ -117,7 +117,7 @@ export default function PreviewScreen() {
     };
 
     setupPlayers();
-  }, [videoUris, isLoading]);
+  }, [videoUris, isLoading, player1, player2]);
 
   useEffect(() => {
     const preloadNext = async () => {

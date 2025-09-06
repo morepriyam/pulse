@@ -70,7 +70,7 @@ export default function ShortsScreen() {
 
   // Screen-level touch state for continuous hold recording
   const [screenTouchActive, setScreenTouchActive] = React.useState(false);
-  const [buttonPressActive, setButtonPressActive] = React.useState(false);
+  const [_buttonPressActive, setButtonPressActive] = React.useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Zoom state
   const [zoom, setZoom] = React.useState(0);
