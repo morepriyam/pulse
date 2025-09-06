@@ -2,7 +2,13 @@ import Foundation
 import AVFoundation
 import CoreMedia
 
-// MARK: - Data Models (from VideoConcat.swift)
+// MARK: - Progress Delegate Protocol
+
+public protocol VideoConcatProgressDelegate: AnyObject {
+    func videoConcatDidUpdateProgress(_ progress: Float, currentSegment: Int, phase: String)
+}
+
+// MARK: - Data Models
 
 public struct VideoSegment {
     public let id: String
@@ -42,9 +48,11 @@ public enum VideoConcatError: Error, LocalizedError {
     }
 }
 
-// MARK: - Simplified VideoConcat for Testing
+// MARK: - VideoConcat Class
 
 public class VideoConcat {
+    
+    public weak var progressDelegate: VideoConcatProgressDelegate?
     
     public init() {}
     
@@ -139,7 +147,7 @@ public class VideoConcat {
         return outputURL
     }
     
-    private func concatenateVideos(_ segments: [VideoSegment]) async throws -> URL {
+    public func concatenateVideos(_ segments: [VideoSegment], outputURL: URL? = nil) async throws -> URL {
         // Create composition
         let composition = AVMutableComposition()
         
@@ -162,7 +170,12 @@ public class VideoConcat {
         
         // Process each segment
         for (index, segment) in segments.enumerated() {
-            print("   Processing segment \(index + 1)/\(segments.count)...")
+            let currentSegmentNumber = index + 1
+            let progressPercent = Float(currentSegmentNumber) / Float(segments.count) * 0.8 // 80% for processing
+            
+            progressDelegate?.videoConcatDidUpdateProgress(progressPercent, currentSegment: currentSegmentNumber, phase: "Processing segment \(currentSegmentNumber)")
+            
+            print("   Processing segment \(currentSegmentNumber)/\(segments.count)...")
             
             let asset = AVURLAsset(url: segment.url)
             let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -198,21 +211,32 @@ public class VideoConcat {
             throw VideoConcatError.exportSessionFailed
         }
         
-        let outputURL = URL(fileURLWithPath: "test/video/test_concatenated_output.mp4")
+        // Determine output URL
+        let finalOutputURL: URL
+        if let providedURL = outputURL {
+            finalOutputURL = providedURL
+        } else {
+            // Default to test directory for test cases
+            finalOutputURL = URL(fileURLWithPath: "test/video/test_concatenated_output.mp4")
+        }
         
         // Remove existing file
-        try? FileManager.default.removeItem(at: outputURL)
+        try? FileManager.default.removeItem(at: finalOutputURL)
         
-        exportSession.outputURL = outputURL
+        exportSession.outputURL = finalOutputURL
         exportSession.outputFileType = .mp4
         
+        progressDelegate?.videoConcatDidUpdateProgress(0.9, currentSegment: segments.count, phase: "Exporting video")
+        
         await exportSession.export()
+        
+        progressDelegate?.videoConcatDidUpdateProgress(1.0, currentSegment: segments.count, phase: "Export completed")
         
         guard exportSession.status == .completed else {
             throw VideoConcatError.exportFailed(exportSession.error?.localizedDescription ?? "Unknown error")
         }
         
-        return outputURL
+        return finalOutputURL
     }
 }
 
@@ -222,20 +246,3 @@ extension Double {
         return (self * divisor).rounded() / divisor
     }
 }
-
-// MARK: - Main execution
-
-Task {
-    do {
-        let videoConcat = VideoConcat()
-        let outputURL = try await videoConcat.TestConcat()
-        print("\n🎉 Test completed successfully!")
-        print("📁 Final output: \(outputURL.path)")
-    } catch {
-        print("\n❌ Test failed: \(error.localizedDescription)")
-        exit(1)
-    }
-    exit(0)
-}
-
-RunLoop.main.run()
