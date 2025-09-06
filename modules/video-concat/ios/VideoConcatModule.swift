@@ -50,10 +50,14 @@ public class VideoConcatModule: Module {
             // Convert Expo segments to VideoSegment format
             let videoSegments = try self.convertToVideoSegments(segments)
             
-            // Use the shared VideoConcat logic
-            let outputURL = try await self.videoConcat.concatenateVideos(videoSegments)
+            // Generate output URL in the documents directory
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let outputURL = documentsPath.appendingPathComponent("concatenated_video_\(Date().timeIntervalSince1970).mp4")
             
-            return outputURL.absoluteString
+            // Use the shared VideoConcat logic
+            let finalOutputURL = try await self.videoConcat.concatenateVideos(videoSegments, outputURL: outputURL)
+            
+            return finalOutputURL.absoluteString
         }
         
         AsyncFunction("cancelExport") {
