@@ -2,4 +2,5 @@
 echo "🎬 Testing VideoConcat Module"
 echo "============================"
 
-swift modules/video-concat/ios/VideoConcat.swift
+# Run the VideoConcat CLI script
+swift modules/video-concat/ios/VideoConcat-CLI.swift
