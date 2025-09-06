@@ -1,5 +1,3 @@
-/* eslint-env jest */
-
 // Mock React Native for Jest testing
 const mockRNVideoConcat = {
   concatenate: jest.fn(),
