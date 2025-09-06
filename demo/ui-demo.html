@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto-Edit Toggle UI Demo</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .demo-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .toggle {
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid;
+            min-width: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-disabled {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .toggle-enabled {
+            background: rgba(76, 175, 80, 0.9);
+            border-color: rgba(76, 175, 80, 1);
+        }
+
+        .toggle-processing {
+            background: rgba(255, 152, 0, 0.9);
+            border-color: rgba(255, 152, 0, 1);
+        }
+
+        .toggle-content {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toggle-text {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .toggle-disabled .toggle-text {
+            color: #ccc;
+        }
+
+        .toggle-enabled .toggle-text,
+        .toggle-processing .toggle-text {
+            color: #fff;
+        }
+
+        .icon {
+            font-size: 20px;
+        }
+
+        .badge {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            min-width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .time-saved {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        .demo-label {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .interactive-demo {
+            margin-top: 40px;
+            text-align: center;
+        }
+
+        .feature-list {
+            max-width: 600px;
+            text-align: left;
+            margin-top: 40px;
+        }
+
+        .feature-list h3 {
+            margin-bottom: 20px;
+        }
+
+        .feature-list li {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎬 Auto-Edit Toggle UI Component</h1>
+
+    <div class="demo-container">
+        <div>
+            <div class="demo-label">Disabled State</div>
+            <div class="toggle toggle-disabled">
+                <div class="toggle-content">
+                    <div class="icon">🔧</div>
+                    <div class="toggle-text">Auto-Edit</div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="demo-label">Processing State</div>
+            <div class="toggle toggle-processing">
+                <div class="toggle-content">
+                    <div class="icon">⏳</div>
+                    <div class="toggle-text">Processing...</div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="demo-label">Active with Results</div>
+            <div class="toggle toggle-enabled">
+                <div class="toggle-content">
+                    <div class="icon">✨</div>
+                    <div class="toggle-text">Auto-Edit</div>
+                    <div class="badge">3</div>
+                </div>
+                <div class="time-saved">2s saved</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="interactive-demo">
+        <div class="demo-label">Interactive Demo (click to toggle)</div>
+        <div id="interactiveToggle" class="toggle toggle-disabled" onclick="toggleInteractive()">
+            <div class="toggle-content">
+                <div class="icon" id="interactiveIcon">🔧</div>
+                <div class="toggle-text" id="interactiveText">Auto-Edit</div>
+                <div class="badge" id="interactiveBadge" style="display: none;">3</div>
+            </div>
+            <div class="time-saved" id="interactiveTimeSaved" style="display: none;">2s saved</div>
+        </div>
+    </div>
+
+    <div class="feature-list">
+        <h3>🎯 Auto-Edit Feature Benefits</h3>
+        <ul>
+            <li><strong>Automatic Detection:</strong> Uses AI to identify filler words like "um", "uh", "ah"</li>
+            <li><strong>Real-time Feedback:</strong> Shows count of detected filler words and time saved</li>
+            <li><strong>Seamless Integration:</strong> Works automatically during recording without interruption</li>
+            <li><strong>Quality Improvement:</strong> Reduces video length while maintaining content quality</li>
+            <li><strong>User Control:</strong> Can be toggled on/off based on user preference</li>
+            <li><strong>Visual Indicators:</strong> Clear UI states for disabled, processing, and active modes</li>
+        </ul>
+    </div>
+
+    <script>
+        let isEnabled = false;
+        let isProcessing = false;
+
+        function toggleInteractive() {
+            const toggle = document.getElementById('interactiveToggle');
+            const icon = document.getElementById('interactiveIcon');
+            const text = document.getElementById('interactiveText');
+            const badge = document.getElementById('interactiveBadge');
+            const timeSaved = document.getElementById('interactiveTimeSaved');
+
+            if (!isEnabled && !isProcessing) {
+                // Start processing
+                isProcessing = true;
+                toggle.className = 'toggle toggle-processing';
+                icon.textContent = '⏳';
+                text.textContent = 'Processing...';
+                badge.style.display = 'none';
+                timeSaved.style.display = 'none';
+
+                // Simulate processing delay
+                setTimeout(() => {
+                    isProcessing = false;
+                    isEnabled = true;
+                    toggle.className = 'toggle toggle-enabled';
+                    icon.textContent = '✨';
+                    text.textContent = 'Auto-Edit';
+                    badge.style.display = 'flex';
+                    timeSaved.style.display = 'block';
+                }, 2000);
+            } else if (isEnabled && !isProcessing) {
+                // Disable
+                isEnabled = false;
+                toggle.className = 'toggle toggle-disabled';
+                icon.textContent = '🔧';
+                text.textContent = 'Auto-Edit';
+                badge.style.display = 'none';
+                timeSaved.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

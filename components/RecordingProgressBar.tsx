@@ -5,6 +5,9 @@ export interface RecordingSegment {
   id: string;
   duration: number;
   uri: string;
+  inMs?: number; // Optional start trim point for auto-edit
+  outMs?: number; // Optional end trim point for auto-edit
+  fillerWords?: { startMs: number; endMs: number; word: string }[]; // Detected filler words for auto-edit mode
 }
 
 interface RecordingProgressBarProps {

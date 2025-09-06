@@ -1,3 +1,4 @@
+import AutoEditToggle from "@/components/AutoEditToggle";
 import CameraControls from "@/components/CameraControls";
 import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
@@ -9,6 +10,7 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import UploadCloseButton from "@/components/UploadCloseButton";
+import { useAutoEdit } from "@/hooks/useAutoEdit";
 import { useDraftManager } from "@/hooks/useDraftManager";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
@@ -59,6 +61,15 @@ export default function UploadScreen() {
     handleRedoSegment,
     updateSegmentsAfterRecording,
   } = useDraftManager(draftId, selectedDuration, "upload");
+
+  // Auto-edit functionality
+  const {
+    isEnabled: isAutoEditEnabled,
+    isProcessing: isAutoEditProcessing,
+    summary: autoEditSummary,
+    processSegments: processAutoEdit,
+    toggleAutoEdit,
+  } = useAutoEdit();
 
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
@@ -129,11 +140,24 @@ export default function UploadScreen() {
     recordingModeShared.value = "";
 
     if (videoUri && duration > 0) {
-      const newSegment: RecordingSegment = {
+      let newSegment: RecordingSegment = {
         id: Date.now().toString(),
         duration: duration,
         uri: videoUri,
       };
+
+      // Process with auto-edit if enabled
+      if (isAutoEditEnabled) {
+        try {
+          const autoEditResults = await processAutoEdit([newSegment]);
+          if (autoEditResults.length > 0 && autoEditResults[0].fillerWordsDetected.length > 0) {
+            newSegment = autoEditResults[0].editedSegment;
+          }
+        } catch (error) {
+          console.error('Auto-edit processing failed:', error);
+          // Continue with original segment if auto-edit fails
+        }
+      }
 
       await updateSegmentsAfterRecording(newSegment, selectedDuration);
     }
@@ -327,6 +351,19 @@ export default function UploadScreen() {
             </View>
           )}
 
+          {/* Auto-edit toggle - show when not recording and have segments */}
+          {!isRecording && recordingSegments.length > 0 && (
+            <View style={styles.autoEditContainer}>
+              <AutoEditToggle
+                isEnabled={isAutoEditEnabled}
+                isProcessing={isAutoEditProcessing}
+                onToggle={toggleAutoEdit}
+                fillerWordsCount={autoEditSummary?.totalFillerWords || 0}
+                timeSaved={autoEditSummary?.totalTimeSaved || 0}
+              />
+            </View>
+          )}
+
           <RecordingProgressBar
             segments={recordingSegments}
             totalDuration={selectedDuration}
@@ -422,6 +459,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 80,
     right: 25,
+    zIndex: 10,
+  },
+  autoEditContainer: {
+    position: "absolute",
+    top: 80,
+    left: 25,
     zIndex: 10,
   },
   previewButton: {
