@@ -1,3 +1,5 @@
+#!/usr/bin/env swift
+
 import Foundation
 import AVFoundation
 import CoreMedia
@@ -26,7 +28,7 @@ public struct VideoSegment {
     }
 }
 
-// MARK: - Error Types (from VideoConcat.swift)
+// MARK: - Error Types
 
 public enum VideoConcatError: Error, LocalizedError {
     case trackCreationFailed(String)
@@ -246,3 +248,20 @@ extension Double {
         return (self * divisor).rounded() / divisor
     }
 }
+
+// MARK: - CLI Entry Point
+
+Task {
+    do {
+        let videoConcat = VideoConcat()
+        let outputURL = try await videoConcat.TestConcat()
+        print("\n🎉 Test completed successfully!")
+        print("📁 Final output: \(outputURL.path)")
+    } catch {
+        print("\n❌ Test failed: \(error.localizedDescription)")
+        exit(1)
+    }
+    exit(0)
+}
+
+RunLoop.main.run()
