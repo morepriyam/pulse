@@ -588,5 +588,3 @@ const ProcessingView = ({
 ---
 
 **Remember**: This is a video-first app with high performance requirements. Prioritize smooth user experience and reliable video processing over feature complexity.
-
-**Remember**: This is a video-first app with high performance requirements. Prioritize smooth user experience and reliable video processing over feature complexity.
