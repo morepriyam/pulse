@@ -1,4 +1,6 @@
 name: Build and Test
+permissions:
+  contents: read
 
 on:
   # Trigger on pushes to main and feature branches
