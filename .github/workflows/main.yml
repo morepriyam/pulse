@@ -31,7 +31,6 @@ on:
         type: boolean
 
 env:
-  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
   NODE_VERSION: '18'
 
 jobs:
@@ -103,7 +102,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Expo and EAS CLI
+      - name: Setup Expo 
         run: |
           npm install -g expo
           expo --version
@@ -129,22 +128,7 @@ jobs:
       - name: Build Android (Development)
         run: |
           echo "Building Android development build..."
-          if [ -n "$EXPO_TOKEN" ]; then
-            eas build --platform android --profile development --non-interactive --local
-          else
-            echo "Building locally without EAS (no EXPO_TOKEN)"
-            npx expo run:android --variant debug || echo "Local Android build completed with warnings"
-          fi
-
-      - name: Build Android (Preview)
-        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-        run: |
-          echo "Building Android preview build..."
-          if [ -n "$EXPO_TOKEN" ]; then
-            eas build --platform android --profile preview --non-interactive --local
-          else
-            echo "Skipping preview build (no EXPO_TOKEN)"
-          fi
+          npx expo run:android --variant debug || echo "Local Android build completed with warnings"
 
       - name: Upload Android artifacts
         if: always()
@@ -184,18 +168,8 @@ jobs:
 
       - name: Setup Expo and EAS CLI
         run: |
-          npm install -g @expo/cli@latest
-          npm install -g eas-cli@latest
+          npm install -g expo
           expo --version
-          eas --version
-
-      - name: Verify Expo authentication
-        run: |
-          if [ -z "$EXPO_TOKEN" ]; then
-            echo "⚠️  EXPO_TOKEN not set - using anonymous build"
-          else
-            expo whoami
-          fi
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
@@ -213,22 +187,7 @@ jobs:
       - name: Build iOS (Development)
         run: |
           echo "Building iOS development build..."
-          if [ -n "$EXPO_TOKEN" ]; then
-            eas build --platform ios --profile development --non-interactive --local
-          else
-            echo "Building locally without EAS (no EXPO_TOKEN)"
-            npx expo run:ios --configuration Debug --simulator || echo "Local iOS build completed with warnings"
-          fi
-
-      - name: Build iOS (Preview) 
-        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-        run: |
-          echo "Building iOS preview build..."
-          if [ -n "$EXPO_TOKEN" ]; then
-            eas build --platform ios --profile preview --non-interactive --local
-          else
-            echo "Skipping preview build (no EXPO_TOKEN)"
-          fi
+          npx expo run:ios --configuration Debug --simulator || echo "Local iOS build completed with warnings"
 
       - name: Upload iOS artifacts
         if: always()
