@@ -9,7 +9,10 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import UploadCloseButton from "@/components/UploadCloseButton";
+import WhisperButton from "@/components/WhisperButton";
+import TranscriptView from "@/components/TranscriptView";
 import { useDraftManager } from "@/hooks/useDraftManager";
+import { useTranscription } from "@/hooks/useTranscription";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -69,6 +72,14 @@ export default function UploadScreen() {
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
+
+  // Transcription state
+  const [showTranscriptView, setShowTranscriptView] = React.useState(false);
+  const {
+    transcript,
+    isTranscribing,
+    transcribeVideo,
+  } = useTranscription(currentDraftId || undefined);
 
   // Screen-level touch state for continuous hold recording
   const [screenTouchActive, setScreenTouchActive] = React.useState(false);
@@ -257,6 +268,23 @@ export default function UploadScreen() {
     router.push("/(camera)/drafts");
   };
 
+  const handleTranscribe = async () => {
+    if (recordingSegments.length === 0) {
+      console.warn('No segments to transcribe');
+      return;
+    }
+
+    // Use the first segment's URI for transcription
+    // In a real implementation, you might concatenate all segments first
+    const firstSegmentUri = recordingSegments[0].uri;
+    await transcribeVideo(firstSegmentUri);
+  };
+
+  const handleTimestampTap = (timestampMs: number) => {
+    // In a real implementation, this would seek the video player to the timestamp
+    console.log(`Seeking to timestamp: ${timestampMs}ms`);
+  };
+
   return (
     <ThemedView style={styles.container}>
       <PanGestureHandler onGestureEvent={handleScreenPanGesture}>
@@ -379,6 +407,49 @@ export default function UploadScreen() {
             <RedoSegmentButton onRedoSegment={handleRedoSegmentWrapper} />
           )}
 
+          {/* Transcription Controls */}
+          {recordingSegments.length > 0 && !isRecording && (
+            <View style={styles.transcriptionControls}>
+              <WhisperButton
+                onTranscribe={handleTranscribe}
+                isTranscribing={isTranscribing}
+                disabled={recordingSegments.length === 0}
+              />
+              
+              {transcript && (
+                <TouchableOpacity
+                  style={styles.transcriptToggleButton}
+                  onPress={() => setShowTranscriptView(!showTranscriptView)}
+                >
+                  <MaterialIcons 
+                    name={showTranscriptView ? "visibility-off" : "visibility"} 
+                    size={20} 
+                    color="#ffffff" 
+                  />
+                  <ThemedText style={styles.transcriptToggleText}>
+                    {showTranscriptView ? 'Hide' : 'Show'} Transcript
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Transcript View */}
+          {showTranscriptView && transcript && (
+            <View style={styles.transcriptContainer}>
+              <TranscriptView
+                transcript={transcript}
+                onTimestampTap={handleTimestampTap}
+                onTranscriptSave={async (updatedTranscript) => {
+                  // Save the updated transcript
+                  console.log('Saving updated transcript:', updatedTranscript);
+                  // In a real app, you would update the transcript in storage here
+                }}
+                style={styles.transcriptView}
+              />
+            </View>
+          )}
+
           {recordingSegments.length > 0 && currentDraftId && !isRecording && (
             <TouchableOpacity
               style={styles.previewButton}
@@ -451,5 +522,39 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.7)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  transcriptionControls: {
+    position: "absolute",
+    bottom: 140,
+    left: 20,
+    flexDirection: "row",
+    gap: 12,
+    zIndex: 10,
+  },
+  transcriptToggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
+  },
+  transcriptToggleText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  transcriptContainer: {
+    position: "absolute",
+    bottom: 200,
+    left: 20,
+    right: 20,
+    height: 300,
+    zIndex: 10,
+  },
+  transcriptView: {
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 12,
   },
 });

@@ -5,6 +5,8 @@ export interface RecordingSegment {
   id: string;
   duration: number;
   uri: string;
+  inMs?: number; // Optional start trim point
+  outMs?: number; // Optional end trim point
 }
 
 interface RecordingProgressBarProps {
