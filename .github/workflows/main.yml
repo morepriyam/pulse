@@ -105,10 +105,8 @@ jobs:
 
       - name: Setup Expo and EAS CLI
         run: |
-          npm install -g @expo/cli@latest
-          npm install -g eas-cli@latest
+          npm install -g expo
           expo --version
-          eas --version
 
       - name: Verify Expo authentication
         run: |
