@@ -440,6 +440,11 @@ export default function UploadScreen() {
               <TranscriptView
                 transcript={transcript}
                 onTimestampTap={handleTimestampTap}
+                onTranscriptSave={async (updatedTranscript) => {
+                  // Save the updated transcript
+                  console.log('Saving updated transcript:', updatedTranscript);
+                  // In a real app, you would update the transcript in storage here
+                }}
                 style={styles.transcriptView}
               />
             </View>

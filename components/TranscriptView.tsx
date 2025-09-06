@@ -10,6 +10,7 @@ import {
 import { ThemedText } from './ThemedText';
 import { MaterialIcons } from '@expo/vector-icons';
 import { VideoTranscript, TranscriptSegment, TranscriptWord } from '../types/transcription';
+import TranscriptEditor from './TranscriptEditor';
 
 interface TranscriptViewProps {
   /** The transcript data to display */
@@ -22,6 +23,8 @@ interface TranscriptViewProps {
   editMode?: boolean;
   /** Callback when transcript text is edited */
   onTextEdit?: (segmentId: string, newText: string) => void;
+  /** Callback when transcript is saved after editing */
+  onTranscriptSave?: (updatedTranscript: VideoTranscript) => void;
   /** Custom style for the container */
   style?: any;
 }
@@ -36,9 +39,11 @@ export default function TranscriptView({
   onTimestampTap,
   editMode = false,
   onTextEdit,
+  onTranscriptSave,
   style,
 }: TranscriptViewProps) {
   const [expandedModal, setExpandedModal] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   const formatTime = (milliseconds: number): string => {
     const totalSeconds = Math.floor(milliseconds / 1000);
@@ -149,9 +154,19 @@ export default function TranscriptView({
           <ThemedText style={styles.info}>
             {transcript.language.toUpperCase()} • {formatTime(transcript.durationMs)}
           </ThemedText>
-          <TouchableOpacity onPress={() => setExpandedModal(true)}>
-            <MaterialIcons name="fullscreen" size={20} color="#666" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            {onTranscriptSave && (
+              <TouchableOpacity 
+                onPress={() => setShowEditor(true)}
+                style={styles.editButton}
+              >
+                <MaterialIcons name="edit" size={16} color="#2196F3" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setExpandedModal(true)}>
+              <MaterialIcons name="fullscreen" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -196,6 +211,26 @@ export default function TranscriptView({
           {mainContent}
         </SafeAreaView>
       </Modal>
+
+      {/* Editor Modal */}
+      {transcript && (
+        <Modal
+          visible={showEditor}
+          animationType="slide"
+          presentationStyle="formSheet"
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <TranscriptEditor
+              transcript={transcript}
+              onSave={(updatedTranscript) => {
+                onTranscriptSave?.(updatedTranscript);
+                setShowEditor(false);
+              }}
+              onCancel={() => setShowEditor(false)}
+            />
+          </SafeAreaView>
+        </Modal>
+      )}
     </>
   );
 }
@@ -221,6 +256,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  editButton: {
+    padding: 4,
+    borderRadius: 4,
   },
   title: {
     fontSize: 18,
