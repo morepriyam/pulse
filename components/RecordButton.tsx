@@ -81,7 +81,7 @@ export default function RecordButton({
       stopHoldVisualFeedback();
       setButtonInitiatedRecording(false);
     }
-  }, [screenTouchActive, buttonInitiatedRecording, isRecording, recordingMode]);
+  }, [screenTouchActive, buttonInitiatedRecording, isRecording, recordingMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startRecording = (mode: "tap" | "hold") => {
     if (!cameraRef.current || isRecording || remainingTime <= 0) return;
@@ -227,7 +227,7 @@ export default function RecordButton({
         cameraRef.current.stopRecording();
         await recordingPromiseRef.current;
       }
-    } catch (error) {
+    } catch {
       // Error handling in promise handlers
     }
 
@@ -252,7 +252,11 @@ export default function RecordButton({
 
     // Quick press = tap, longer press was hold operation
     if (pressDuration < 200) {
-      isRecording ? stopRecording() : startRecording("tap");
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording("tap");
+      }
     }
   };
 

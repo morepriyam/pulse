@@ -19,7 +19,7 @@ export default function OnboardingScreen() {
 
   useEffect(() => {
     scale.value = withRepeat(withTiming(1.1, { duration: 1000 }), -1, true);
-  }, []);
+  }, [scale]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
