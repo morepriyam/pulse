@@ -1,0 +1,179 @@
+name: FFmpeg Matrix Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-macos:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: Run macOS FFmpeg tests
+      run: ./scripts/test_macos.sh
+      
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-macos-artifacts
+        path: |
+          build/helloworld.macos.mp4
+          build/helloworld_cli.macos.mp4
+        retention-days: 30
+
+  test-ios:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+        
+    - name: List available simulators
+      run: xcrun simctl list devices available
+      
+    - name: Run iOS FFmpeg tests
+      run: ./scripts/test_ios.sh
+      
+    - name: Upload iOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-ios-artifacts
+        path: |
+          build/helloworld.ios.mp4
+          build/helloworld_cli.ios.mp4
+        retention-days: 30
+
+  test-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      
+    - name: Install Android NDK
+      run: |
+        sdkmanager "ndk;25.2.9519653"
+        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+        
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential yasm nasm
+        
+    - name: Enable KVM (for Android emulator)
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+        
+    - name: AVD cache
+      uses: actions/cache@v4
+      id: avd-cache
+      with:
+        path: |
+          ~/.android/avd/*
+          ~/.android/adb*
+        key: avd-30
+        
+    - name: Create AVD and generate snapshot for caching
+      if: steps.avd-cache.outputs.cache-hit != 'true'
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 30
+        target: google_apis
+        arch: x86_64
+        force-avd-creation: false
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: false
+        script: echo "Generated AVD snapshot for caching."
+        
+    - name: Run Android FFmpeg tests
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 30
+        target: google_apis
+        arch: x86_64
+        force-avd-creation: false
+        emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: true
+        script: ./scripts/test_android.sh
+        
+    - name: Upload Android artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-android-artifacts
+        path: |
+          build/helloworld.android.mp4
+          build/helloworld_cli.android.mp4
+        retention-days: 30
+
+  summary:
+    needs: [test-macos, test-ios, test-android]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: Display test results
+      run: |
+        echo "## FFmpeg Build Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Artifacts Generated:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        for platform in macos ios android; do
+          echo "#### $platform" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "ffmpeg-$platform-artifacts" ]; then
+            echo "✅ $platform tests completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Files:" >> $GITHUB_STEP_SUMMARY
+            ls -la ffmpeg-$platform-artifacts/ | while read line; do
+              echo "- $line" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "❌ $platform tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+        done
+        
+    - name: Upload combined artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-all-platforms
+        path: |
+          ffmpeg-*-artifacts/
+        retention-days: 30
