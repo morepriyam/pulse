@@ -1,6 +1,6 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-test/video/test_concatenated_output.mp4
+*.mp4
 
 # dependencies
 node_modules/
