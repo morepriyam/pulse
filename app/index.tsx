@@ -11,11 +11,22 @@ export default function Index() {
     draftId?: string;
   }>();
 
+  // Debug logging for deeplink parameters
+  console.log("🔗 Deeplink params:", params);
+
   // Handle upload mode with UUID validation
-  if (params.mode === "upload" && params.draftId && isUUIDv4(params.draftId)) {
-    return <Redirect href={`/upload?draftId=${params.draftId}`} />;
+  if (params.mode === "upload") {
+    if (params.draftId && isUUIDv4(params.draftId)) {
+      console.log("✅ Valid upload deeplink, redirecting to upload screen");
+      return <Redirect href={`/upload?draftId=${params.draftId}`} />;
+    } else {
+      console.log("❌ Invalid upload deeplink - missing or invalid draftId");
+      // Could redirect to upload screen without draftId for new recording
+      // return <Redirect href="/upload" />;
+    }
   }
 
   // Default to tabs
+  console.log("🏠 Redirecting to main tabs");
   return <Redirect href="/(tabs)" />;
 }
