@@ -2,10 +2,10 @@
   "expo": {
     "name": "pulse",
     "slug": "pulse",
-    "version": "0.0.5",
+    "version": "0.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/pulse-logo.png",
-    "scheme": "pulse",
+    "scheme": "pulsecam",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

@@ -1,5 +1,4 @@
 import CameraControls from "@/components/CameraControls";
-import CloseButton from "@/components/CloseButton";
 import RecordButton from "@/components/RecordButton";
 import RecordingProgressBar, {
   RecordingSegment,
@@ -9,8 +8,8 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
+import UploadCloseButton from "@/components/UploadCloseButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
-import { VideoStabilization, mapToNativeVideoStabilization } from "@/constants/camera";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -36,8 +35,10 @@ import Animated, {
  * - Draft auto-save with undo/redo
  * - Time selector for recording duration
  */
-export default function ShortsScreen() {
-  const { draftId } = useLocalSearchParams<{ draftId?: string }>();
+export default function UploadScreen() {
+  const { draftId } = useLocalSearchParams<{
+    draftId: string;
+  }>();
   const cameraRef = React.useRef<CameraView>(null);
   const [selectedDuration, setSelectedDuration] = React.useState(60);
   const [currentRecordingDuration, setCurrentRecordingDuration] =
@@ -57,7 +58,7 @@ export default function ShortsScreen() {
     handleUndoSegment,
     handleRedoSegment,
     updateSegmentsAfterRecording,
-  } = useDraftManager(draftId, selectedDuration);
+  } = useDraftManager(draftId, selectedDuration, "upload");
 
   // Camera control states
   const [cameraFacing, setCameraFacing] = React.useState<CameraType>("back");
@@ -65,9 +66,6 @@ export default function ShortsScreen() {
   const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
   const [previousCameraFacing, setPreviousCameraFacing] =
     React.useState<CameraType>("back");
-  const [videoStabilizationMode, setVideoStabilizationMode] = React.useState<VideoStabilization>(
-    VideoStabilization.off
-  );
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -171,11 +169,6 @@ export default function ShortsScreen() {
     setTorchEnabled((current) => !current);
   };
 
-  const handleVideoStabilizationChange = (mode: VideoStabilization) => {
-    console.log(`Video stabilization changed to: ${mode}`);
-    setVideoStabilizationMode(mode);
-  };
-
   const handlePreview = () => {
     if (currentDraftId && recordingSegments.length > 0) {
       router.push({
@@ -261,7 +254,7 @@ export default function ShortsScreen() {
 
   const handleCloseWrapper = async () => {
     await handleClose();
-    router.push("/(tabs)");
+    router.push("/(camera)/drafts");
   };
 
   return (
@@ -302,7 +295,6 @@ export default function ShortsScreen() {
                 facing={cameraFacing}
                 enableTorch={torchEnabled}
                 zoom={zoom}
-                videoStabilizationMode={mapToNativeVideoStabilization(videoStabilizationMode)}
               />
             </Animated.View>
           </PinchGestureHandler>
@@ -315,8 +307,6 @@ export default function ShortsScreen() {
               cameraFacing={
                 isCameraSwitching ? previousCameraFacing : cameraFacing
               }
-              videoStabilizationMode={videoStabilizationMode}
-              onVideoStabilizationChange={handleVideoStabilizationChange}
             />
           )}
 
@@ -359,13 +349,11 @@ export default function ShortsScreen() {
           )}
 
           {!isRecording && (
-            <CloseButton
+            <UploadCloseButton
               segments={recordingSegments}
               onStartOver={handleStartOver}
-              onSaveAsDraft={handleSaveAsDraftWrapper}
               hasStartedOver={hasStartedOver}
               onClose={handleCloseWrapper}
-              isContinuingLastDraft={isContinuingLastDraft}
             />
           )}
 
