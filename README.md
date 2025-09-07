@@ -2,13 +2,17 @@
 
 > Secure institutional knowledge sharing through short-form video content
 
-[![React Native](https://img.shields.io/badge/React%20Native-0.79.4-blue.svg?style=for-the-badge&logo=react)](https://reactnative.dev)
-[![Expo](https://img.shields.io/badge/Expo-53.0.12-white.svg?style=for-the-badge&logo=expo&logoColor=black)](https://expo.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue.svg?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![AVFoundation](https://img.shields.io/badge/AVFoundation-Hardware%20Accelerated-green.svg?style=for-the-badge&logo=apple)](https://developer.apple.com/av-foundation/)
-[![Media3](https://img.shields.io/badge/Media3-Android%20Video-orange.svg?style=for-the-badge&logo=android)](https://developer.android.com/guide/topics/media/media3)
-
-<img alt="Pulse Logo" height="200" src="./assets/images/pulse-logo.png" />
+<div align="center">
+  <img alt="Pulse Logo" height="200" src="./assets/images/pulse-logo.png" />
+  
+  <br />
+  
+  [![React Native](https://img.shields.io/badge/React%20Native-0.79.4-blue.svg?style=flat&logo=react)](https://reactnative.dev)
+  [![Expo](https://img.shields.io/badge/Expo-53.0.12-white.svg?style=flat&logo=expo&logoColor=black)](https://expo.dev)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue.svg?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+  [![AVFoundation](https://img.shields.io/badge/AVFoundation-Hardware%20Accelerated-green.svg?style=flat&logo=apple)](https://developer.apple.com/av-foundation/)
+  [![Media3](https://img.shields.io/badge/Media3-Android%20Video-orange.svg?style=flat&logo=android)](https://developer.android.com/guide/topics/media/media3)
+</div>
 
 A React Native app for creating and sharing short-form video content with segmented recording, native video processing, and secure institutional knowledge sharing capabilities.
 
