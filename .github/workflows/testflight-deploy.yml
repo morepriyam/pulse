@@ -1,4 +1,6 @@
 name: Deploy to TestFlight
+permissions:
+  contents: read
 
 "on":
   # Manual workflow dispatch - can be triggered from GitHub Actions UI
