@@ -1,25 +1,33 @@
 #!/bin/bash
+
+# Print each command for debugging
+set -x
+
+# Change to project root
+cd "$(dirname "$0")/.."
+
+# Set test videos directory
+export VIDEOS_DIR="$PWD/test/video"
+
+# Print test info
 echo "🎬 Testing VideoConcat Module"
 echo "============================"
 
-# Get absolute path to project root
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
 # Check if test videos exist
-if [ ! -f "$PROJECT_ROOT/test/video/recording1.mov" ] || [ ! -f "$PROJECT_ROOT/test/video/recording2.mov" ]; then
-    echo "❌ Test videos not found. Please run: git lfs pull"
+if [ -f "$VIDEOS_DIR/recording1.mov" ] && [ -f "$VIDEOS_DIR/recording2.mov" ]; then
+    echo "✅ Test videos found"
+else
+    echo "❌ Test videos not found in $VIDEOS_DIR"
     exit 1
 fi
 
-echo "✅ Test videos found"
 echo "🧪 Running VideoConcat Module Tests..."
-echo ""
+echo
 
-# Run the Swift test file directly
-cd "$PROJECT_ROOT/modules/video-concat/ios"
-VIDEOS_DIR="$PROJECT_ROOT/test/video" swift VideoConcatTests.swift --run-tests
+# Run the test
+swift "$PWD/test/video/RunTests.swift"
 
-# Check if test succeeded
+# Check exit code
 if [ $? -eq 0 ]; then
     echo "✅ Tests passed successfully!"
 else
@@ -27,5 +35,5 @@ else
     exit 1
 fi
 
-echo ""
+echo
 echo "✅ Test execution completed!"

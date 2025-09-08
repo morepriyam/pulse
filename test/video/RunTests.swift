@@ -1,4 +1,8 @@
 import Foundation
+
+// Import test file
+#sourceLocation(file: "VideoConcatTests.swift", line: 1)
+import Foundation
 import AVFoundation
 
 // Simple test class to merge videos
@@ -111,3 +115,11 @@ class VideoConcatTests {
         }
     }
 }
+
+// Run tests
+Task {
+    let tests = VideoConcatTests()
+    await tests.runAllTests()
+    exit(0)
+}
+RunLoop.main.run()
