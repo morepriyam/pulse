@@ -85,31 +85,6 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - ExpoScreenOrientation (8.1.7):
-    - DoubleConversion
-    - ExpoModulesCore
-    - glog
-    - hermes-engine
-    - RCT-Folly (= 2024.11.18.00)
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-hermes
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - Yoga
   - ExpoSharing (13.1.5):
     - ExpoModulesCore
   - ExpoSplashScreen (0.30.10):
@@ -2154,7 +2129,6 @@ DEPENDENCIES:
   - ExpoLinking (from `../node_modules/expo-linking/ios`)
   - ExpoMediaLibrary (from `../node_modules/expo-media-library/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
-  - ExpoScreenOrientation (from `../node_modules/expo-screen-orientation/ios`)
   - ExpoSharing (from `../node_modules/expo-sharing/ios`)
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - ExpoSymbols (from `../node_modules/expo-symbols/ios`)
@@ -2285,8 +2259,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-media-library/ios"
   ExpoModulesCore:
     :path: "../node_modules/expo-modules-core"
-  ExpoScreenOrientation:
-    :path: "../node_modules/expo-screen-orientation/ios"
   ExpoSharing:
     :path: "../node_modules/expo-sharing/ios"
   ExpoSplashScreen:
@@ -2470,7 +2442,6 @@ SPEC CHECKSUMS:
   ExpoLinking: d5c183998ca6ada66ff45e407e0f965b398a8902
   ExpoMediaLibrary: 0daf5e811e00daa47690f5da2989e71ff7de56e0
   ExpoModulesCore: 00a1b5c73248465bd0b93f59f8538c4573dac579
-  ExpoScreenOrientation: c883a8f448232c4f185cea4f08ce54ebdf9d010d
   ExpoSharing: b0377be82430d07398c6a4cd60b5a15696accbd3
   ExpoSplashScreen: 0ad5acac1b5d2953c6e00d4319f16d616f70d4dd
   ExpoSymbols: c5612a90fb9179cdaebcd19bea9d8c69e5d3b859
