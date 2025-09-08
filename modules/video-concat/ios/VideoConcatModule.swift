@@ -89,9 +89,139 @@ public class VideoConcatModule: Module {
         return videoComposition
     }
     
-  public func definition() -> ModuleDefinition {
-    Name("VideoConcat")
-
+    // MARK: - Video Processing
+    
+    private struct SegmentProcessingConfig {
+        let segment: RecordingSegment
+        let index: Int
+        let totalSegments: Int
+        let videoTrack: AVMutableCompositionTrack
+        let audioTrack: AVMutableCompositionTrack
+        let insertTime: CMTime
+    }
+    
+    private func processVideoSegment(config: SegmentProcessingConfig) async throws -> CMTime {
+        print("🎬 VideoConcat: Processing segment \(config.index + 1)/\(config.totalSegments)")
+        print("   - ID: \(config.segment.id)")
+        print("   - URI: \(config.segment.uri)")
+        print("   - Duration: \(config.segment.duration)s")
+        print("   - InMs: \(config.segment.inMs ?? 0)")
+        print("   - OutMs: \(config.segment.outMs ?? (config.segment.duration * 1000))")
+        
+        // Report progress
+        self.sendEvent("onProgress", [
+            "progress": [
+                "progress": Float(config.index) / Float(config.totalSegments),
+                "currentSegment": config.index,
+                "phase": "processing"
+            ]
+        ])
+        
+        // Load asset
+        let asset = AVURLAsset(url: URL(string: config.segment.uri)!)
+        print("   - Loading asset...")
+        
+        // Wait for tracks to load
+        try await asset.load(.tracks)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        print("   - Asset tracks loaded")
+        
+        // Get source tracks
+        guard let sourceVideoTrack = videoTracks.first else {
+            print("   ⚠️ VideoConcat: No video track found, skipping segment")
+            return config.insertTime
+        }
+        print("   - Found video track")
+        
+        // Get actual track duration for frame-perfect timing
+        let trackTimeRange = try await sourceVideoTrack.load(.timeRange)
+        let trackDuration = trackTimeRange.duration
+        let trackDurationSeconds = CMTimeGetSeconds(trackDuration)
+        print("   - Track duration: \(trackDurationSeconds)s")
+        
+        // Calculate time range using actual track duration
+        let startTimeMs = config.segment.inMs ?? 0
+        let endTimeMs = config.segment.outMs ?? (trackDurationSeconds * 1000)
+        
+        // Validate trim points
+        let maxDurationMs = trackDurationSeconds * 1000
+        let validatedStartMs = max(0, min(startTimeMs, maxDurationMs))
+        let validatedEndMs = max(validatedStartMs, min(endTimeMs, maxDurationMs))
+        
+        print("   - Validated trim: \(validatedStartMs)ms to \(validatedEndMs)ms")
+        
+        // Convert to track's timescale for frame accuracy
+        let trackTimescale = trackTimeRange.start.timescale
+        let startTime = CMTime(value: Int64(validatedStartMs * Double(trackTimescale) / 1000), timescale: trackTimescale)
+        let endTime = CMTime(value: Int64(validatedEndMs * Double(trackTimescale) / 1000), timescale: trackTimescale)
+        
+        // Ensure we don't exceed track duration and have a valid duration
+        let actualEndTime = CMTimeMinimum(endTime, trackDuration)
+        let timeRange = CMTimeRangeFromTimeToTime(start: startTime, end: actualEndTime)
+        
+        // Validate the time range has a positive duration
+        guard timeRange.duration.isValid && timeRange.duration.seconds > 0 else {
+            print("   ⚠️ VideoConcat: Invalid time range duration")
+            return config.insertTime
+        }
+        
+        print("   - Time range: \(CMTimeGetSeconds(startTime))s to \(CMTimeGetSeconds(actualEndTime))s")
+        print("   - Range duration: \(CMTimeGetSeconds(timeRange.duration))s")
+        
+        // Insert video track with quality preservation
+        try config.videoTrack.insertTimeRange(timeRange, of: sourceVideoTrack, at: config.insertTime)
+        print("   - Inserted video track with quality preservation")
+        
+        // Insert audio if available
+        if let sourceAudioTrack = audioTracks.first {
+            try config.audioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: config.insertTime)
+            print("   - Inserted audio track")
+        } else {
+            print("   - No audio track found")
+        }
+        
+        return CMTimeAdd(config.insertTime, timeRange.duration)
+    }
+    
+    private func setupExportSession(
+        for composition: AVMutableComposition,
+        videoComposition: AVMutableVideoComposition?
+    ) throws -> (AVAssetExportSession, URL) {
+        guard let exportSession = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetHighestQuality
+        ) else {
+            print("❌ VideoConcat: Failed to create export session")
+            throw VideoConcatError.exportSessionFailed
+        }
+        print("✅ VideoConcat: Created export session with highest quality preset")
+        
+        // Configure export settings for maximum quality
+        exportSession.shouldOptimizeForNetworkUse = false
+        exportSession.outputFileType = .mp4
+        
+        // Set video composition for better quality
+        if let videoComposition = videoComposition {
+            exportSession.videoComposition = videoComposition
+            print("✅ VideoConcat: Applied video composition for quality optimization")
+        }
+        
+        // Set up export
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+        
+        exportSession.outputURL = outputURL
+        print("📁 VideoConcat: Output URL: \(outputURL.absoluteString)")
+        
+        return (exportSession, outputURL)
+    }
+    
+    // MARK: - Module Definition
+    
+    public func definition() -> ModuleDefinition {
+        Name("VideoConcat")
         Events("onProgress")
         
         AsyncFunction("export") { (segments: [RecordingSegment]) -> String in
@@ -120,124 +250,28 @@ public class VideoConcatModule: Module {
             }
             print("✅ VideoConcat: Created audio track")
             
-            var insertTime = CMTime.zero
-            
             // Process each segment
+            var insertTime = CMTime.zero
             for (index, segment) in segments.enumerated() {
-                print("🎬 VideoConcat: Processing segment \(index + 1)/\(segments.count)")
-                print("   - ID: \(segment.id)")
-                print("   - URI: \(segment.uri)")
-                print("   - Duration: \(segment.duration)s")
-                print("   - InMs: \(segment.inMs ?? 0)")
-                print("   - OutMs: \(segment.outMs ?? (segment.duration * 1000))")
-                
-                // Report progress
-                self.sendEvent("onProgress", [
-                    "progress": [
-                        "progress": Float(index) / Float(segments.count),
-                        "currentSegment": index,
-                        "phase": "processing"
-                    ]
-                ])
-                
-                // Load asset
-                let asset = AVAsset(url: URL(string: segment.uri)!)
-                print("   - Loading asset...")
-                
-                // Wait for tracks to load
-                try await asset.loadTracks(withMediaType: .video)
-                try await asset.loadTracks(withMediaType: .audio)
-                print("   - Asset tracks loaded")
-                
-                // Get source tracks
-                guard let sourceVideoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-                    print("   ⚠️ VideoConcat: No video track found, skipping segment")
-                    continue
-                }
-                print("   - Found video track")
-                
-                // Get actual track duration for frame-perfect timing
-                let trackDuration = sourceVideoTrack.timeRange.duration
-                let trackDurationSeconds = CMTimeGetSeconds(trackDuration)
-                print("   - Track duration: \(trackDurationSeconds)s")
-                
-                // Calculate time range using actual track duration
-                let startTimeMs = segment.inMs ?? 0
-                let endTimeMs = segment.outMs ?? (trackDurationSeconds * 1000)
-                
-                // Validate trim points
-                let maxDurationMs = trackDurationSeconds * 1000
-                let validatedStartMs = max(0, min(startTimeMs, maxDurationMs))
-                let validatedEndMs = max(validatedStartMs, min(endTimeMs, maxDurationMs))
-                
-                print("   - Validated trim: \(validatedStartMs)ms to \(validatedEndMs)ms")
-                
-                // Convert to track's timescale for frame accuracy
-                let trackTimescale = sourceVideoTrack.timeRange.start.timescale
-                let startTime = CMTime(value: Int64(validatedStartMs * Double(trackTimescale) / 1000), timescale: trackTimescale)
-                let endTime = CMTime(value: Int64(validatedEndMs * Double(trackTimescale) / 1000), timescale: trackTimescale)
-                
-                // Ensure we don't exceed track duration
-                let actualEndTime = CMTimeMinimum(endTime, trackDuration)
-                let timeRange = CMTimeRange(start: startTime, end: actualEndTime)
-                
-                print("   - Time range: \(CMTimeGetSeconds(startTime))s to \(CMTimeGetSeconds(actualEndTime))s")
-                print("   - Range duration: \(CMTimeGetSeconds(timeRange.duration))s")
-                
-                // Insert video track with quality preservation
-                try videoTrack.insertTimeRange(
-                    timeRange,
-                    of: sourceVideoTrack,
-                    at: insertTime
+                let config = SegmentProcessingConfig(
+                    segment: segment,
+                    index: index,
+                    totalSegments: segments.count,
+                    videoTrack: videoTrack,
+                    audioTrack: audioTrack,
+                    insertTime: insertTime
                 )
-                print("   - Inserted video track with quality preservation")
-                
-                // Insert audio if available
-                if let sourceAudioTrack = try await asset.loadTracks(withMediaType: .audio).first {
-                    try audioTrack.insertTimeRange(
-                        timeRange,
-                        of: sourceAudioTrack,
-                        at: insertTime
-                    )
-                    print("   - Inserted audio track")
-                } else {
-                    print("   - No audio track found")
-                }
-                
-                // Update insert point
-                insertTime = composition.duration
-                print("   - Updated insert time to: \(CMTimeGetSeconds(insertTime))s")
+                insertTime = try await processVideoSegment(config: config)
             }
             
             print("🎬 VideoConcat: All segments processed, creating export session")
             
-            // Create export session with highest quality preset
-            guard let exportSession = AVAssetExportSession(
-                asset: composition,
-                presetName: AVAssetExportPresetHighestQuality
-            ) else {
-                print("❌ VideoConcat: Failed to create export session")
-                throw VideoConcatError.exportSessionFailed
-            }
-            print("✅ VideoConcat: Created export session with highest quality preset")
-            
-            // Configure export settings for maximum quality
-            exportSession.shouldOptimizeForNetworkUse = false
-            exportSession.outputFileType = .mp4
-            
-            // Set video composition for better quality
-            if let videoComposition = createVideoComposition(from: composition) {
-                exportSession.videoComposition = videoComposition
-                print("✅ VideoConcat: Applied video composition for quality optimization")
-            }
-            
-            // Set up export
-            let outputURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("mp4")
-            
-            exportSession.outputURL = outputURL
-            print("📁 VideoConcat: Output URL: \(outputURL.absoluteString)")
+            // Set up export session
+            let videoComposition = createVideoComposition(from: composition)
+            let (exportSession, outputURL) = try setupExportSession(
+                for: composition,
+                videoComposition: videoComposition
+            )
             
             // Export
             self.sendEvent("onProgress", [
