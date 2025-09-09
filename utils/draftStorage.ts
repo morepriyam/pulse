@@ -1,5 +1,5 @@
 import { RecordingSegment } from '@/components/RecordingProgressBar';
-import fileStore from '@/utils/fileStore';
+import { fileStore } from '@/utils/fileStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateVideoThumbnail } from './videoThumbnails';
 

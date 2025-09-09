@@ -1,5 +1,5 @@
 import { Draft, DraftStorage } from "@/utils/draftStorage";
-import fileStore from "@/utils/fileStore";
+import { fileStore } from "@/utils/fileStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router } from "expo-router";

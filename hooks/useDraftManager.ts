@@ -1,6 +1,6 @@
 import { RecordingSegment } from "@/components/RecordingProgressBar";
 import { DraftMode, DraftStorage } from "@/utils/draftStorage";
-import fileStore from "@/utils/fileStore";
+import { fileStore } from "@/utils/fileStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
 
