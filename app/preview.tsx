@@ -1,10 +1,16 @@
 import { ThemedText } from "@/components/ThemedText";
+import VideoConcatModule from "@/modules/video-concat";
 import { DraftStorage } from "@/utils/draftStorage";
 import { useEventListener } from "expo";
 import { router, useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useCallback, useEffect, useState } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function PreviewScreen() {
@@ -15,6 +21,14 @@ export default function PreviewScreen() {
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [useSecondPlayer, setUseSecondPlayer] = useState(false);
+  const [isConcatenating, setIsConcatenating] = useState(false);
+  const [concatenatedVideoUri, setConcatenatedVideoUri] = useState<
+    string | null
+  >(null);
+  const [concatProgress, setConcatProgress] = useState(0);
+  const [concatPhase, setConcatPhase] = useState<string>("");
+  const [draft, setDraft] = useState<any>(null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false);
 
   const player1 = useVideoPlayer(null, (player) => {
     if (player) {
@@ -30,11 +44,12 @@ export default function PreviewScreen() {
     }
   });
 
-  const currentPlayer = useSecondPlayer ? player2 : player1;
+  const _currentPlayer = useSecondPlayer ? player2 : player1; // eslint-disable-line @typescript-eslint/no-unused-vars
   const nextPlayer = useSecondPlayer ? player1 : player2;
 
   useEventListener(player1, "playToEnd", () => {
-    if (videoUris.length > 1) {
+    // Only handle segment cycling if we're not in merged video mode
+    if (videoUris.length > 1 && !concatenatedVideoUri) {
       setUseSecondPlayer(true);
       player2.play();
       advanceToNextVideo();
@@ -42,7 +57,8 @@ export default function PreviewScreen() {
   });
 
   useEventListener(player2, "playToEnd", () => {
-    if (videoUris.length > 1) {
+    // Only handle segment cycling if we're not in merged video mode
+    if (videoUris.length > 1 && !concatenatedVideoUri) {
       setUseSecondPlayer(false);
       player1.play();
       advanceToNextVideo();
@@ -66,6 +82,7 @@ export default function PreviewScreen() {
       try {
         const draft = await DraftStorage.getDraftById(draftId);
         if (draft && draft.segments.length > 0) {
+          setDraft(draft);
           const uris = draft.segments.map((segment) => segment.uri);
           setVideoUris(uris);
         } else {
@@ -100,7 +117,7 @@ export default function PreviewScreen() {
     };
 
     setupPlayers();
-  }, [videoUris, isLoading]);
+  }, [videoUris, isLoading, player1, player2]);
 
   useEffect(() => {
     const preloadNext = async () => {
@@ -139,6 +156,70 @@ export default function PreviewScreen() {
     );
   }
 
+  // Add concatenation handler
+  const handleConcatenate = async () => {
+    if (!draftId) return;
+
+    try {
+      console.log("🎬 Starting video concatenation...");
+      setIsConcatenating(true);
+
+      const draft = await DraftStorage.getDraftById(draftId);
+      if (!draft) {
+        console.error("❌ No draft found");
+        return;
+      }
+
+      console.log("📝 Draft loaded:", {
+        id: draft.id,
+        segments: draft.segments.length,
+        totalDuration: draft.totalDuration,
+      });
+
+      // Set up progress listener
+      const progressListener = VideoConcatModule.addListener(
+        "onProgress",
+        (event) => {
+          const { progress, currentSegment, phase } = event.progress;
+          console.log(
+            `📊 Progress: ${Math.round(progress * 100)}% - Segment ${
+              currentSegment + 1
+            } - ${phase}`
+          );
+          setConcatProgress(progress);
+          setConcatPhase(phase);
+        }
+      );
+
+      // Start concatenation
+      console.log("🚀 Calling native export function...");
+      const outputUri = await VideoConcatModule.export(draft.segments);
+      console.log("✅ Concatenation completed:", outputUri);
+
+      // Remove progress listener
+      progressListener?.remove();
+
+      setConcatenatedVideoUri(outputUri);
+
+      // Load concatenated video
+      console.log("📺 Loading concatenated video into player...");
+      setIsLoadingVideo(true);
+
+      await player1.replaceAsync(outputUri);
+
+      // Wait a moment for the video to load its metadata and orientation
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      setIsLoadingVideo(false);
+      player1.play();
+      console.log("▶️ Video playback started");
+    } catch (error) {
+      console.error("❌ Concatenation failed:", error);
+    } finally {
+      setIsConcatenating(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <VideoView
@@ -149,7 +230,7 @@ export default function PreviewScreen() {
         showsTimecodes={false}
         requiresLinearPlayback={true}
         contentFit="cover"
-        nativeControls={false}
+        nativeControls={concatenatedVideoUri ? true : false}
       />
 
       <VideoView
@@ -169,6 +250,42 @@ export default function PreviewScreen() {
       >
         <ThemedText style={styles.closeText}>×</ThemedText>
       </TouchableOpacity>
+
+      {/* Add concatenate button - only show if not concatenated */}
+      {!concatenatedVideoUri && (
+        <TouchableOpacity
+          style={[styles.concatenateButton, { bottom: insets.bottom + 20 }]}
+          onPress={handleConcatenate}
+          disabled={isConcatenating}
+        >
+          <ThemedText style={styles.buttonText}>
+            {isConcatenating ? "Processing..." : "Merge Videos"}
+          </ThemedText>
+        </TouchableOpacity>
+      )}
+
+      {/* Loading overlay */}
+      {(isConcatenating || isLoadingVideo) && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#ffffff" />
+          <ThemedText style={styles.loadingText}>
+            {isLoadingVideo
+              ? "Loading merged video..."
+              : concatPhase === "processing"
+              ? `Processing segment ${
+                  Math.round(concatProgress * draft?.segments.length || 0) + 1
+                }...`
+              : concatPhase === "finalizing"
+              ? "Finalizing video..."
+              : "Merging videos..."}
+          </ThemedText>
+          {!isLoadingVideo && (
+            <ThemedText style={styles.progressText}>
+              {Math.round(concatProgress * 100)}%
+            </ThemedText>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -210,5 +327,40 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textAlignVertical: "center",
     includeFontPadding: false,
+  },
+  concatenateButton: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#ff0000",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  buttonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: "Roboto-Bold",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 20,
+  },
+  loadingText: {
+    color: "#ffffff",
+    marginTop: 20,
+    fontSize: 16,
+  },
+  progressText: {
+    color: "#ffffff",
+    marginTop: 10,
+    fontSize: 24,
+    fontWeight: "bold",
   },
 });

@@ -7,10 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const tabs = ["shorts", "drafts"]; // "post"
 
 export default function CameraLayout() {
-  const insets =
-    typeof useSafeAreaInsets === "function"
-      ? useSafeAreaInsets()
-      : { bottom: 0 };
+  const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const active = pathname.split("/").pop();
 

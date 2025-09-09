@@ -1,4 +1,6 @@
 import { Draft, DraftStorage } from "@/utils/draftStorage";
+import { fileStore } from "@/utils/fileStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -60,6 +62,30 @@ export default function DraftsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
+            // If redo stack belongs to this draft, delete redo files and clear the stack
+            try {
+              const REDO_STACK_KEY = "redo_stack";
+              const savedRedoData = await AsyncStorage.getItem(REDO_STACK_KEY);
+              if (savedRedoData) {
+                try {
+                  const parsed = JSON.parse(savedRedoData);
+                  const segments: any[] = Array.isArray(parsed)
+                    ? parsed
+                    : parsed?.segments || [];
+                  const redoDraftId: string | null = Array.isArray(parsed)
+                    ? null
+                    : parsed?.draftId ?? null;
+                  if (
+                    segments.length > 0 &&
+                    (redoDraftId === draftId || redoDraftId === null)
+                  ) {
+                    await fileStore.deleteUris(segments.map((s: any) => s.uri));
+                    await AsyncStorage.removeItem(REDO_STACK_KEY);
+                  }
+                } catch {}
+              }
+            } catch {}
+
             await DraftStorage.deleteDraft(draftId);
             loadDrafts();
           } catch (error) {

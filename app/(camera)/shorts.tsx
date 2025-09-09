@@ -10,6 +10,7 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
+import { VideoStabilization, mapToNativeVideoStabilization } from "@/constants/camera";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
@@ -51,6 +52,7 @@ export default function ShortsScreen() {
     isContinuingLastDraft,
     showContinuingIndicator,
     handleStartOver,
+    handleStartNew,
     handleSaveAsDraft,
     handleClose,
     handleUndoSegment,
@@ -64,13 +66,16 @@ export default function ShortsScreen() {
   const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
   const [previousCameraFacing, setPreviousCameraFacing] =
     React.useState<CameraType>("back");
+  const [videoStabilizationMode, setVideoStabilizationMode] = React.useState<VideoStabilization>(
+    VideoStabilization.off
+  );
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
 
   // Screen-level touch state for continuous hold recording
   const [screenTouchActive, setScreenTouchActive] = React.useState(false);
-  const [buttonPressActive, setButtonPressActive] = React.useState(false);
+  const [_buttonPressActive, setButtonPressActive] = React.useState(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Zoom state
   const [zoom, setZoom] = React.useState(0);
@@ -167,6 +172,11 @@ export default function ShortsScreen() {
     setTorchEnabled((current) => !current);
   };
 
+  const handleVideoStabilizationChange = (mode: VideoStabilization) => {
+    console.log(`Video stabilization changed to: ${mode}`);
+    setVideoStabilizationMode(mode);
+  };
+
   const handlePreview = () => {
     if (currentDraftId && recordingSegments.length > 0) {
       router.push({
@@ -176,8 +186,11 @@ export default function ShortsScreen() {
     }
   };
 
-  const handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => {
-    await handleSaveAsDraft(segments, selectedDuration);
+  const handleSaveAsDraftWrapper = async (
+    segments: RecordingSegment[],
+    options?: { forceNew?: boolean }
+  ) => {
+    await handleSaveAsDraft(segments, selectedDuration, options);
   };
 
   const handleUndoSegmentWrapper = async () => {
@@ -293,6 +306,7 @@ export default function ShortsScreen() {
                 facing={cameraFacing}
                 enableTorch={torchEnabled}
                 zoom={zoom}
+                videoStabilizationMode={mapToNativeVideoStabilization(videoStabilizationMode)}
               />
             </Animated.View>
           </PinchGestureHandler>
@@ -305,6 +319,8 @@ export default function ShortsScreen() {
               cameraFacing={
                 isCameraSwitching ? previousCameraFacing : cameraFacing
               }
+              videoStabilizationMode={videoStabilizationMode}
+              onVideoStabilizationChange={handleVideoStabilizationChange}
             />
           )}
 
@@ -350,6 +366,7 @@ export default function ShortsScreen() {
             <CloseButton
               segments={recordingSegments}
               onStartOver={handleStartOver}
+              onStartNew={handleStartNew}
               onSaveAsDraft={handleSaveAsDraftWrapper}
               hasStartedOver={hasStartedOver}
               onClose={handleCloseWrapper}

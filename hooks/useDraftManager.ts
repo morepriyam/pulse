@@ -1,5 +1,6 @@
 import { RecordingSegment } from "@/components/RecordingProgressBar";
 import { DraftMode, DraftStorage } from "@/utils/draftStorage";
+import { fileStore } from "@/utils/fileStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
 
@@ -19,7 +20,12 @@ interface DraftManagerActions {
   setRecordingSegments: (segments: RecordingSegment[]) => void;
   setRedoStack: (stack: RecordingSegment[]) => void;
   handleStartOver: () => void;
-  handleSaveAsDraft: (segments: RecordingSegment[], selectedDuration: number) => Promise<void>;
+  handleStartNew: () => void;
+  handleSaveAsDraft: (
+    segments: RecordingSegment[],
+    selectedDuration: number,
+    options?: { forceNew?: boolean }
+  ) => Promise<void>;
   handleClose: () => Promise<void>;
   handleUndoSegment: (selectedDuration: number) => Promise<void>;
   handleRedoSegment: (selectedDuration: number) => Promise<void>;
@@ -50,6 +56,7 @@ export function useDraftManager(
   const [hasStartedOver, setHasStartedOver] = useState(false);
   const [isContinuingLastDraft, setIsContinuingLastDraft] = useState(false);
   const [showContinuingIndicator, setShowContinuingIndicator] = useState(false);
+  const [forceNewNext, setForceNewNext] = useState(false);
 
   const isLoadingDraft = useRef(false);
   const lastSegmentCount = useRef(0);
@@ -78,26 +85,14 @@ export function useDraftManager(
           draftToLoad = await DraftStorage.getDraftById(draftId, mode);
           setIsContinuingLastDraft(false);
         } else {
-          // Only auto-load last draft in camera mode, not in upload mode
-          draftToLoad = mode === 'camera' ? await DraftStorage.getLastModifiedDraft(mode) : null;
-
-          const redoBelongsToCurrentDraft =
-            redoData &&
-            redoData.draftId &&
-            draftToLoad &&
-            redoData.draftId === draftToLoad.id;
-
-          if (
-            redoData &&
-            redoData.segments.length > 0 &&
-            !redoBelongsToCurrentDraft
-          ) {
+          // Preference: if a redo stack exists, do NOT auto-load any draft; let the user continue the redo WIP
+          if (redoData && redoData.segments && redoData.segments.length > 0) {
             draftToLoad = null;
             setIsContinuingLastDraft(false);
           } else {
-            setIsContinuingLastDraft(
-              !!draftToLoad && (!redoData || redoData.segments.length === 0)
-            );
+            // Only auto-load last draft in camera mode, not in upload mode
+            draftToLoad = mode === 'camera' ? await DraftStorage.getLastModifiedDraft(mode) : null;
+            setIsContinuingLastDraft(!!draftToLoad);
           }
         }
 
@@ -106,17 +101,27 @@ export function useDraftManager(
           setCurrentDraftId(draftToLoad.id);
           setOriginalDraftId(draftToLoad.id);
           lastSegmentCount.current = draftToLoad.segments.length;
+        } else {
+          // No draft loaded (e.g., after last-undo). If redo exists, prefer its draftId and load redo stack only.
+          if (redoData && redoData.segments && redoData.segments.length > 0) {
+            if (redoData.draftId) {
+              setOriginalDraftId(redoData.draftId);
+            } else {
+              setOriginalDraftId(null);
+            }
+            // recordingSegments remain empty until user records or presses redo
+          } else {
+            setOriginalDraftId(null);
+          }
         }
 
         if (redoData && redoData.segments) {
-          const shouldLoadRedoStack = draftToLoad
-            ? redoData.draftId === draftToLoad.id
-            : !redoData.draftId;
-
-          if (shouldLoadRedoStack) {
-            setRedoStack(redoData.segments);
+          if (draftToLoad) {
+            const shouldLoadRedoStack = redoData.draftId === draftToLoad.id || !redoData.draftId;
+            setRedoStack(shouldLoadRedoStack ? redoData.segments : []);
           } else {
-            setRedoStack([]);
+            // No draft loaded: always load redo stack to continue last work-in-progress
+            setRedoStack(redoData.segments);
           }
         } else {
           setRedoStack([]);
@@ -190,7 +195,7 @@ export function useDraftManager(
     const saveRedoStack = async () => {
       try {
         const redoData = {
-          draftId: currentDraftId,
+          draftId: currentDraftId ?? originalDraftId ?? null,
           segments: redoStack,
         };
         await AsyncStorage.setItem(REDO_STACK_KEY, JSON.stringify(redoData));
@@ -210,15 +215,31 @@ export function useDraftManager(
     lastSegmentCount.current = 0;
   };
 
-  const handleSaveAsDraft = async (segments: RecordingSegment[], duration: number) => {
+  // Start New: clear local state, arm new-id-on-next-recording, do NOT mark hasStartedOver
+  const handleStartNew = () => {
+    setRecordingSegments([]);
+    setRedoStack([]);
+    setCurrentDraftId(null);
+    setHasStartedOver(false);
+    setForceNewNext(true);
+    lastSegmentCount.current = 0;
+  };
+
+  const handleSaveAsDraft = async (segments: RecordingSegment[], duration: number, options?: { forceNew?: boolean }) => {
     try {
-      if (currentDraftId && !hasStartedOver) {
+      if (currentDraftId && !hasStartedOver && !options?.forceNew) {
         await DraftStorage.updateDraft(currentDraftId, segments, duration);
         console.log("Saved & reset:", currentDraftId);
       } else {
-        const newId = await DraftStorage.saveDraft(segments, duration, mode, draftId);
+        const preferredId = options?.forceNew ? undefined : (originalDraftId || draftId || undefined);
+        const newId = await DraftStorage.saveDraft(segments, duration, mode, preferredId);
         setCurrentDraftId(newId);
-        console.log("New draft & reset:", draftId);
+        if (options?.forceNew) {
+          // Ensure the next recording starts a new id by clearing original
+          setOriginalDraftId(null);
+          setForceNewNext(true);
+        }
+        console.log("New draft & reset:", newId);
       }
 
       handleStartOver();
@@ -240,6 +261,20 @@ export function useDraftManager(
 
     if (recordingSegments.length === 0) {
       try {
+        // If there are redo segments persisted for this draft, delete their files too
+        const savedRedoData = await AsyncStorage.getItem(REDO_STACK_KEY);
+        if (savedRedoData) {
+          try {
+            const parsed = JSON.parse(savedRedoData);
+            const segmentsToDelete = Array.isArray(parsed)
+              ? parsed
+              : parsed?.segments || [];
+            if (segmentsToDelete.length > 0) {
+              await fileStore.deleteUris(segmentsToDelete.map((s: any) => s.uri));
+            }
+          } catch {}
+        }
+
         await AsyncStorage.removeItem(REDO_STACK_KEY);
         setRedoStack([]);
         console.log("Cleared redo stack on close");
@@ -261,7 +296,8 @@ export function useDraftManager(
       if (currentDraftId) {
         try {
           if (updatedSegments.length === 0) {
-            await DraftStorage.deleteDraft(currentDraftId);
+            // Metadata-only delete so redo can recreate the draft; keep files on disk
+            await DraftStorage.deleteDraft(currentDraftId, { keepFiles: true });
             setCurrentDraftId(null);
             setHasStartedOver(false);
             console.log("Draft deleted:", currentDraftId);
@@ -293,7 +329,9 @@ export function useDraftManager(
 
       try {
         if (!currentDraftId) {
-          const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration, mode, draftId);
+          // Re-create using the original draft id if available so existing files (segments/thumb) are reused
+          const preferredId = originalDraftId || draftId;
+          const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration, mode, preferredId || undefined);
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
           console.log("New draft created on redo:", newDraftId);
@@ -315,26 +353,52 @@ export function useDraftManager(
     newSegment: RecordingSegment,
     duration: number
   ) => {
-    setRedoStack([]);
-    const updatedSegments = [...recordingSegments, newSegment];
-    setRecordingSegments(updatedSegments);
+    const prevRedo = redoStack;
 
     try {
-      if (currentDraftId) {
+      // Determine target draft id for file import and metadata save
+      const targetDraftId = forceNewNext
+        ? Date.now().toString()
+        : (currentDraftId ?? draftId ?? Date.now().toString());
+
+      // Ensure directories exist and import the recorded file into managed storage
+      await fileStore.ensureDraftDirs(targetDraftId);
+      const managedUri = await fileStore.importSegment({
+        draftId: targetDraftId,
+        srcUri: newSegment.uri,
+        segmentId: newSegment.id,
+      });
+      console.log(`[draft] Imported segment: ${newSegment.id} -> ${managedUri}`);
+
+      // Clear redo stack in state (new recording invalidates redo)
+      setRedoStack([]);
+
+      // Append the imported segment with managed URI
+      const importedSegment: RecordingSegment = { ...newSegment, uri: managedUri };
+      const updatedSegments = [...recordingSegments, importedSegment];
+      setRecordingSegments(updatedSegments);
+
+      // Persist draft metadata
+      if (currentDraftId && !forceNewNext) {
         await DraftStorage.updateDraft(currentDraftId, updatedSegments, duration);
         console.log("Saved:", currentDraftId);
       } else {
-        // Use provided draftId if available, otherwise generate new one
+        const preferredId = forceNewNext ? targetDraftId : (originalDraftId || draftId || targetDraftId);
         const newDraftId = await DraftStorage.saveDraft(
           updatedSegments,
           duration,
           mode,
-          draftId // Pass through the ID from URL
+          preferredId
         );
         setCurrentDraftId(newDraftId);
+        setOriginalDraftId(preferredId);
         setHasStartedOver(false);
         console.log("New draft:", newDraftId);
+        if (forceNewNext) setForceNewNext(false);
       }
+
+      // Delete redo files now that redo stack is cleared and not referenced
+      if (prevRedo.length > 0) await fileStore.deleteUris(prevRedo.map((s) => s.uri));
 
       lastSegmentCount.current = updatedSegments.length;
     } catch (error) {
@@ -355,6 +419,7 @@ export function useDraftManager(
     setRecordingSegments,
     setRedoStack,
     handleStartOver,
+    handleStartNew,
     handleSaveAsDraft,
     handleClose,
     handleUndoSegment,
