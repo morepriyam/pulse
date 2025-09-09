@@ -3,12 +3,16 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType } from "expo-camera";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
+import VideoStabilizationControl from "./VideoStabilizationControl";
+import { VideoStabilization } from "@/constants/camera";
 
 interface CameraControlsProps {
   onFlipCamera?: () => void;
   onFlashToggle?: () => void;
   torchEnabled?: boolean;
   cameraFacing?: CameraType;
+  videoStabilizationMode?: VideoStabilization;
+  onVideoStabilizationChange?: (mode: VideoStabilization) => void;
 }
 
 export default function CameraControls({
@@ -16,6 +20,8 @@ export default function CameraControls({
   onFlashToggle,
   torchEnabled = false,
   cameraFacing = "back",
+  videoStabilizationMode = VideoStabilization.off,
+  onVideoStabilizationChange,
 }: CameraControlsProps) {
   const getTorchIcon = () => {
     return torchEnabled ? (
@@ -42,6 +48,15 @@ export default function CameraControls({
         >
           {getTorchIcon()}
         </TouchableOpacity>
+      )}
+
+      {/* Video stabilization control */}
+      {onVideoStabilizationChange && (
+        <VideoStabilizationControl
+          stabilizationMode={videoStabilizationMode}
+          onStabilizationModeChange={onVideoStabilizationChange}
+          compact
+        />
       )}
     </View>
   );

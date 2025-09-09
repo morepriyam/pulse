@@ -80,6 +80,17 @@ const defaultSettings = {
 };
 ```
 
+### Video Stabilization
+
+The app includes cross-platform video stabilization controls:
+
+- **iOS**: Full range of stabilization modes (`off`, `standard`, `cinematic`, `cinematicExtended`, `auto`)
+- **Android**: Simple on/off control
+- **Control**: Tap to cycle modes, long-press for mode picker
+- **Platform Mapping**: iOS-specific modes automatically map to "on" on Android
+
+For detailed information, see [VIDEO_STABILIZATION.md](./VIDEO_STABILIZATION.md).
+
 ### Time Options
 
 ```typescript
