@@ -1,4 +1,5 @@
 import { RecordingSegment } from '@/components/RecordingProgressBar';
+import fileStore from '@/utils/fileStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateVideoThumbnail } from './videoThumbnails';
 
@@ -31,15 +32,32 @@ export class DraftStorage {
   ): Promise<string> {
     try {
       const existingDrafts = await this.getAllDrafts();
-      
+
+      // Determine target id up-front to keep thumbs in the same folder
+      const targetId = customId || Date.now().toString();
       let thumbnailUri: string | undefined;
-      if (segments.length > 0 && segments[0].uri) {
-        thumbnailUri = await generateVideoThumbnail(segments[0].uri) || undefined;
+      // Reuse existing thumbnail if present (e.g., redo recreate)
+      const existingThumb = await fileStore.getExistingThumbnailUri(targetId);
+      if (existingThumb) {
+        thumbnailUri = existingThumb;
+      }
+      // Otherwise, generate & import a new thumbnail
+      if (!thumbnailUri && segments.length > 0 && segments[0].uri) {
+        const tempThumb = await generateVideoThumbnail(segments[0].uri);
+        if (tempThumb) {
+          await fileStore.ensureDraftDirs(targetId);
+          thumbnailUri = await fileStore.importThumbnail({
+            draftId: targetId,
+            srcUri: tempThumb,
+            name: 'thumb',
+          });
+        }
       }
       
       const now = new Date();
+      const newDraftId = targetId;
       const newDraft: Draft = {
-        id: customId || Date.now().toString(),
+        id: newDraftId,
         mode,
         segments,
         totalDuration,
@@ -141,8 +159,17 @@ export class DraftStorage {
     }
   }
   
-  static async deleteDraft(id: string): Promise<void> {
+  static async deleteDraft(id: string, options?: { keepFiles?: boolean }): Promise<void> {
     try {
+      // Optionally keep files (used when last-undo should allow redo)
+      if (!options?.keepFiles) {
+        try {
+          await fileStore.deleteDraftDirectory(id);
+        } catch (e) {
+          // Non-fatal: proceed with metadata cleanup
+        }
+      }
+
       const drafts = await this.getAllDrafts();
       const updatedDrafts = drafts.filter(draft => draft.id !== id);
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
