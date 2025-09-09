@@ -11,12 +11,13 @@ import { RecordingSegment } from "./RecordingProgressBar";
 
 export interface CloseOption {
   label: string;
-  action: "startOver" | "saveAsDraft" | "close";
+  action: "startOver" | "startNew" | "saveAsDraft" | "close";
 }
 
 interface CloseButtonProps {
   segments: RecordingSegment[];
   onStartOver: () => void;
+  onStartNew: () => void;
   onSaveAsDraft: (segments: RecordingSegment[]) => void;
   hasStartedOver: boolean;
   onClose: () => void;
@@ -24,7 +25,7 @@ interface CloseButtonProps {
 }
 
 const closeOptions: CloseOption[] = [
-  { label: "Start New", action: "saveAsDraft" },
+  { label: "Start New", action: "startNew" },
   { label: "Start Over", action: "startOver" },
   { label: "Close", action: "close" },
 ];
@@ -32,6 +33,7 @@ const closeOptions: CloseOption[] = [
 export default function CloseButton({
   segments,
   onStartOver,
+  onStartNew,
   onSaveAsDraft,
   hasStartedOver,
   onClose,
@@ -53,6 +55,9 @@ export default function CloseButton({
     switch (option.action) {
       case "startOver":
         onStartOver();
+        break;
+      case "startNew":
+        onStartNew();
         break;
       case "close":
         onClose();

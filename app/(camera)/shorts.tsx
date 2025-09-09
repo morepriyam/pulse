@@ -51,6 +51,7 @@ export default function ShortsScreen() {
     isContinuingLastDraft,
     showContinuingIndicator,
     handleStartOver,
+    handleStartNew,
     handleSaveAsDraft,
     handleClose,
     handleUndoSegment,
@@ -176,8 +177,11 @@ export default function ShortsScreen() {
     }
   };
 
-  const handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => {
-    await handleSaveAsDraft(segments, selectedDuration);
+  const handleSaveAsDraftWrapper = async (
+    segments: RecordingSegment[],
+    options?: { forceNew?: boolean }
+  ) => {
+    await handleSaveAsDraft(segments, selectedDuration, options);
   };
 
   const handleUndoSegmentWrapper = async () => {
@@ -350,6 +354,7 @@ export default function ShortsScreen() {
             <CloseButton
               segments={recordingSegments}
               onStartOver={handleStartOver}
+              onStartNew={handleStartNew}
               onSaveAsDraft={handleSaveAsDraftWrapper}
               hasStartedOver={hasStartedOver}
               onClose={handleCloseWrapper}
