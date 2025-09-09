@@ -119,6 +119,37 @@ const outputUri = await VideoConcatModule.export(segments);
 
 ## Development
 
+### CodeQL Configuration
+
+This project includes automated CodeQL security analysis for Swift/iOS code. The CodeQL workflow is configured to build the React Native iOS project with the following settings:
+
+- **Workspace**: `ios/pulse.xcworkspace`
+- **Scheme**: `pulse`
+- **SDK**: iPhone Simulator SDK
+- **Configuration**: Debug build with code signing disabled
+
+#### Updating Xcode Configuration
+
+If you need to update the workspace name or scheme used by CodeQL:
+
+1. **Workspace Changes**: If you rename the Xcode workspace file, update the `-workspace` parameter in `.github/workflows/codeql.yml`:
+   ```bash
+   -workspace YourNewWorkspace.xcworkspace \
+   ```
+
+2. **Scheme Changes**: If you rename the app scheme, update the `-scheme` parameter in `.github/workflows/codeql.yml`:
+   ```bash
+   -scheme YourNewScheme \
+   ```
+
+3. **Target Changes**: If you add new Swift files or targets, ensure they are included in the main app scheme for CodeQL analysis.
+
+The CodeQL analysis requires:
+- CocoaPods dependencies installed (`pod install`)
+- Code signing disabled (`CODE_SIGNING_ALLOWED=NO`)
+- Metro bundler skipped (`RCT_NO_LAUNCH_PACKAGER=1`, `SKIP_BUNDLING=1`)
+- iPhone simulator build target
+
 ### Project Structure
 
 ```
