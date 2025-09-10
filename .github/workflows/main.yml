@@ -128,6 +128,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Prebuild Android
+        run: |
+          echo "Prebuilding Android project..."
+          npx expo prebuild --platform android --clean
+
       - name: Build Android (Development)
         timeout-minutes: 45
         run: |
@@ -136,7 +141,8 @@ jobs:
           echo "NPM version: $(npm --version)"
           echo "Expo version: $(npx expo --version)"
           echo "Android SDK path: $ANDROID_HOME"
-          npx expo run:android --variant debug --no-bundler --no-install
+          cd android
+          ./gradlew assembleDebug
 
 
   # iOS build job
@@ -182,6 +188,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pods-
 
+      - name: Prebuild iOS
+        run: |
+          echo "Prebuilding iOS project..."
+          npx expo prebuild --platform ios --clean
+
       - name: Install iOS dependencies
         run: |
           cd ios
@@ -191,7 +202,13 @@ jobs:
         timeout-minutes: 45
         run: |
           echo "Building iOS development build..."
-          npx expo run:ios --configuration Debug --no-bundler --no-install
+          cd ios
+          xcodebuild -workspace pulse.xcworkspace \
+            -scheme pulse \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            build
 
 
 
