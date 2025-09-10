@@ -10,12 +10,15 @@ import { ThemedView } from "@/components/ThemedView";
 import TimeSelectorButton from "@/components/TimeSelectorButton";
 import UndoSegmentButton from "@/components/UndoSegmentButton";
 import { useDraftManager } from "@/hooks/useDraftManager";
-import { VideoStabilization, mapToNativeVideoStabilization } from "@/constants/camera";
+import {
+  VideoStabilization,
+  mapToNativeVideoStabilization,
+} from "@/constants/camera";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import {
   PanGestureHandler,
   PinchGestureHandler,
@@ -66,9 +69,8 @@ export default function ShortsScreen() {
   const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
   const [previousCameraFacing, setPreviousCameraFacing] =
     React.useState<CameraType>("back");
-  const [videoStabilizationMode, setVideoStabilizationMode] = React.useState<VideoStabilization>(
-    VideoStabilization.off
-  );
+  const [videoStabilizationMode, setVideoStabilizationMode] =
+    React.useState<VideoStabilization>(VideoStabilization.off);
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -98,6 +100,17 @@ export default function ShortsScreen() {
     remainingTime: number
   ) => {
     console.log(`Recording ${mode}, ${remainingTime}s left`);
+    // Log current stabilization mode and its native mapping at recording start
+    try {
+      const native = mapToNativeVideoStabilization(videoStabilizationMode);
+      console.log(
+        `[Shorts] recording start - stabilization=${videoStabilizationMode} (native=${native})`
+      );
+    } catch (e) {
+      console.log(
+        `[Shorts] failed to map stabilization: ${(e as Error)?.message}`
+      );
+    }
     setCurrentRecordingDuration(0);
     setIsRecording(true);
 
@@ -173,7 +186,17 @@ export default function ShortsScreen() {
   };
 
   const handleVideoStabilizationChange = (mode: VideoStabilization) => {
-    console.log(`Video stabilization changed to: ${mode}`);
+    // Log change and native mapping
+    try {
+      const native = mapToNativeVideoStabilization(mode);
+      console.log(
+        `[Shorts] stabilization changed -> ${mode} (native=${native})`
+      );
+    } catch (e) {
+      console.log(
+        `[Shorts] stabilization mapping error: ${(e as Error)?.message}`
+      );
+    }
     setVideoStabilizationMode(mode);
   };
 
@@ -306,7 +329,13 @@ export default function ShortsScreen() {
                 facing={cameraFacing}
                 enableTorch={torchEnabled}
                 zoom={zoom}
-                videoStabilizationMode={mapToNativeVideoStabilization(videoStabilizationMode)}
+                {...(Platform.OS === "ios"
+                  ? {
+                      videoStabilizationMode: mapToNativeVideoStabilization(
+                        videoStabilizationMode
+                      ),
+                    }
+                  : {})}
               />
             </Animated.View>
           </PinchGestureHandler>

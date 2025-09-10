@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType } from "expo-camera";
 import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import VideoStabilizationControl from "./VideoStabilizationControl";
 import { VideoStabilization } from "@/constants/camera";
 
@@ -23,6 +23,12 @@ export default function CameraControls({
   videoStabilizationMode = VideoStabilization.off,
   onVideoStabilizationChange,
 }: CameraControlsProps) {
+  // Trace prop changes for debugging
+  React.useEffect(() => {
+    console.log(
+      `[CameraControls] facing=${cameraFacing} torch=${torchEnabled} stabilization=${videoStabilizationMode}`
+    );
+  }, [cameraFacing, torchEnabled, videoStabilizationMode]);
   const getTorchIcon = () => {
     return torchEnabled ? (
       <MaterialIcons name="flash-on" size={24} color="white" />
@@ -50,8 +56,8 @@ export default function CameraControls({
         </TouchableOpacity>
       )}
 
-      {/* Video stabilization control */}
-      {onVideoStabilizationChange && (
+      {/* Video stabilization control (iOS only) */}
+      {onVideoStabilizationChange && Platform.OS === "ios" && (
         <VideoStabilizationControl
           stabilizationMode={videoStabilizationMode}
           onStabilizationModeChange={onVideoStabilizationChange}

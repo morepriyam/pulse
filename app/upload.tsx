@@ -14,7 +14,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { CameraType, CameraView } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import * as React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import {
   PanGestureHandler,
   PinchGestureHandler,
@@ -24,6 +24,10 @@ import Animated, {
   useAnimatedGestureHandler,
   useSharedValue,
 } from "react-native-reanimated";
+import {
+  VideoStabilization,
+  mapToNativeVideoStabilization,
+} from "@/constants/camera";
 
 /**
  * Shorts recording screen - main camera interface for creating segmented videos.
@@ -53,7 +57,6 @@ export default function UploadScreen() {
     isContinuingLastDraft: _isContinuingLastDraft, // eslint-disable-line @typescript-eslint/no-unused-vars
     showContinuingIndicator,
     handleStartOver,
-    handleSaveAsDraft,
     handleClose,
     handleUndoSegment,
     handleRedoSegment,
@@ -66,6 +69,8 @@ export default function UploadScreen() {
   const [isCameraSwitching, setIsCameraSwitching] = React.useState(false);
   const [previousCameraFacing, setPreviousCameraFacing] =
     React.useState<CameraType>("back");
+  const [videoStabilizationMode, setVideoStabilizationMode] =
+    React.useState<VideoStabilization>(VideoStabilization.off);
 
   // Recording state
   const [isRecording, setIsRecording] = React.useState(false);
@@ -95,6 +100,17 @@ export default function UploadScreen() {
     remainingTime: number
   ) => {
     console.log(`Recording ${mode}, ${remainingTime}s left`);
+    // Log current stabilization at recording start (iOS only mapping)
+    try {
+      const native = mapToNativeVideoStabilization(videoStabilizationMode);
+      console.log(
+        `[Upload] recording start - stabilization=${videoStabilizationMode} (native=${native})`
+      );
+    } catch (e) {
+      console.log(
+        `[Upload] failed to map stabilization: ${(e as Error)?.message}`
+      );
+    }
     setCurrentRecordingDuration(0);
     setIsRecording(true);
 
@@ -169,6 +185,20 @@ export default function UploadScreen() {
     setTorchEnabled((current) => !current);
   };
 
+  const handleVideoStabilizationChange = (mode: VideoStabilization) => {
+    try {
+      const native = mapToNativeVideoStabilization(mode);
+      console.log(
+        `[Upload] stabilization changed -> ${mode} (native=${native})`
+      );
+    } catch (e) {
+      console.log(
+        `[Upload] stabilization mapping error: ${(e as Error)?.message}`
+      );
+    }
+    setVideoStabilizationMode(mode);
+  };
+
   const handlePreview = () => {
     if (currentDraftId && recordingSegments.length > 0) {
       router.push({
@@ -178,9 +208,7 @@ export default function UploadScreen() {
     }
   };
 
-  const _handleSaveAsDraftWrapper = async (segments: RecordingSegment[]) => { // eslint-disable-line @typescript-eslint/no-unused-vars
-    await handleSaveAsDraft(segments, selectedDuration);
-  };
+  // Removed unused _handleSaveAsDraftWrapper
 
   const handleUndoSegmentWrapper = async () => {
     await handleUndoSegment(selectedDuration);
@@ -295,6 +323,13 @@ export default function UploadScreen() {
                 facing={cameraFacing}
                 enableTorch={torchEnabled}
                 zoom={zoom}
+                {...(Platform.OS === "ios"
+                  ? {
+                      videoStabilizationMode: mapToNativeVideoStabilization(
+                        videoStabilizationMode
+                      ),
+                    }
+                  : {})}
               />
             </Animated.View>
           </PinchGestureHandler>
@@ -307,6 +342,8 @@ export default function UploadScreen() {
               cameraFacing={
                 isCameraSwitching ? previousCameraFacing : cameraFacing
               }
+              videoStabilizationMode={videoStabilizationMode}
+              onVideoStabilizationChange={handleVideoStabilizationChange}
             />
           )}
 
