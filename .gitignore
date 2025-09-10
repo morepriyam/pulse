@@ -38,4 +38,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# FFmpeg build artifacts
+third_party/ffmpeg-build/build/
+third_party/ffmpeg-build/out/
+build/
+*.mp4
+
 app-example
