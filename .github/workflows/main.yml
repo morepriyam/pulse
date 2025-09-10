@@ -105,10 +105,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Expo 
+      - name: Setup Expo and EAS CLI
         run: |
-          npm install -g expo
+          npm install -g expo @expo/eas-cli
           expo --version
+          eas --version
 
       - name: Verify Expo authentication
         run: |
@@ -135,8 +136,9 @@ jobs:
           echo "Node version: $(node --version)"
           echo "NPM version: $(npm --version)"
           echo "Expo version: $(npx expo --version)"
+          echo "EAS version: $(eas --version)"
           echo "Android SDK path: $ANDROID_HOME"
-          npx expo run:android --variant debug --no-device
+          eas build --platform android --profile development --local
 
 
   # iOS build job
