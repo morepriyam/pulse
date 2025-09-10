@@ -131,16 +131,6 @@ jobs:
           echo "Building Android development build..."
           npx expo run:android --variant debug --no-device
 
-      - name: Upload Android artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-artifacts
-          path: |
-            android/app/build/outputs/
-            *.apk
-            *.aab
-          retention-days: 7
 
   # iOS build job
   build-ios:
@@ -178,16 +168,6 @@ jobs:
           echo "Building iOS development build..."
           npx expo run:ios --configuration Debug
 
-      - name: Upload iOS artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-artifacts
-          path: |
-            ios/build/
-            *.ipa
-            *.app
-          retention-days: 7
 
 
   # Build summary job
