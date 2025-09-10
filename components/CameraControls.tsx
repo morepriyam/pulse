@@ -23,12 +23,6 @@ export default function CameraControls({
   videoStabilizationMode = VideoStabilization.off,
   onVideoStabilizationChange,
 }: CameraControlsProps) {
-  // Trace prop changes for debugging
-  React.useEffect(() => {
-    console.log(
-      `[CameraControls] facing=${cameraFacing} torch=${torchEnabled} stabilization=${videoStabilizationMode}`
-    );
-  }, [cameraFacing, torchEnabled, videoStabilizationMode]);
   const getTorchIcon = () => {
     return torchEnabled ? (
       <MaterialIcons name="flash-on" size={24} color="white" />

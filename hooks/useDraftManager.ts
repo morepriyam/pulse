@@ -97,6 +97,7 @@ export function useDraftManager(
         }
 
         if (draftToLoad) {
+          console.log(`[DraftManager] Loaded draft: ${draftToLoad.id} (${draftToLoad.segments.length} segments)`);
           setRecordingSegments(draftToLoad.segments);
           setCurrentDraftId(draftToLoad.id);
           setOriginalDraftId(draftToLoad.id);
@@ -167,7 +168,7 @@ export function useDraftManager(
             recordingSegments,
             selectedDuration
           );
-          console.log("Auto-saved:", currentDraftId);
+          console.log(`[DraftManager] Auto-saved: ${currentDraftId}`);
         } else {
           const newDraftId = await DraftStorage.saveDraft(
             recordingSegments,
@@ -177,7 +178,7 @@ export function useDraftManager(
           );
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
-          console.log("New draft:", newDraftId);
+          console.log(`[DraftManager] Created new draft: ${newDraftId}`);
         }
 
         lastSegmentCount.current = recordingSegments.length;
@@ -208,6 +209,7 @@ export function useDraftManager(
   }, [redoStack, currentDraftId]);
 
   const handleStartOver = () => {
+    console.log("[DraftManager] Starting over - clearing all segments");
     setRecordingSegments([]);
     setRedoStack([]);
     setCurrentDraftId(null);
@@ -229,7 +231,7 @@ export function useDraftManager(
     try {
       if (currentDraftId && !hasStartedOver && !options?.forceNew) {
         await DraftStorage.updateDraft(currentDraftId, segments, duration);
-        console.log("Saved & reset:", currentDraftId);
+        console.log(`[DraftManager] Saved & reset: ${currentDraftId}`);
       } else {
         const preferredId = options?.forceNew ? undefined : (originalDraftId || draftId || undefined);
         const newId = await DraftStorage.saveDraft(segments, duration, mode, preferredId);
@@ -239,7 +241,7 @@ export function useDraftManager(
           setOriginalDraftId(null);
           setForceNewNext(true);
         }
-        console.log("New draft & reset:", newId);
+        console.log(`[DraftManager] New draft & reset: ${newId}`);
       }
 
       handleStartOver();
@@ -253,7 +255,7 @@ export function useDraftManager(
     if (hasStartedOver && originalDraftId && recordingSegments.length === 0) {
       try {
         await DraftStorage.deleteDraft(originalDraftId);
-        console.log("Deleted original:", originalDraftId);
+        console.log(`[DraftManager] WHOLE DRAFT DELETED - Original: ${originalDraftId}`);
       } catch (error) {
         console.error("Delete failed:", error);
       }
@@ -270,6 +272,7 @@ export function useDraftManager(
               ? parsed
               : parsed?.segments || [];
             if (segmentsToDelete.length > 0) {
+              console.log(`[DraftManager] Closing - Deleting ${segmentsToDelete.length} redo files`);
               await fileStore.deleteUris(segmentsToDelete.map((s: any) => s.uri));
             }
           } catch {}
@@ -277,7 +280,6 @@ export function useDraftManager(
 
         await AsyncStorage.removeItem(REDO_STACK_KEY);
         setRedoStack([]);
-        console.log("Cleared redo stack on close");
       } catch (error) {
         console.error("Failed to clear redo stack:", error);
       }
@@ -300,10 +302,10 @@ export function useDraftManager(
             await DraftStorage.deleteDraft(currentDraftId, { keepFiles: true });
             setCurrentDraftId(null);
             setHasStartedOver(false);
-            console.log("Draft deleted:", currentDraftId);
+            console.log(`[DraftManager] WHOLE DRAFT DELETED - Undo (metadata only): ${currentDraftId}`);
           } else {
             await DraftStorage.updateDraft(currentDraftId, updatedSegments, duration);
-            console.log("Undo saved:", currentDraftId);
+            console.log(`[DraftManager] Undo - Updated draft: ${currentDraftId}`);
           }
         } catch (error) {
           console.error("Undo failed:", error);
@@ -334,10 +336,10 @@ export function useDraftManager(
           const newDraftId = await DraftStorage.saveDraft(updatedSegments, duration, mode, preferredId || undefined);
           setCurrentDraftId(newDraftId);
           setHasStartedOver(false);
-          console.log("New draft created on redo:", newDraftId);
+          console.log(`[DraftManager] Redo - Created new draft: ${newDraftId}`);
         } else {
           await DraftStorage.updateDraft(currentDraftId, updatedSegments, duration);
-          console.log("Redo saved:", currentDraftId);
+          console.log(`[DraftManager] Redo - Updated draft: ${currentDraftId}`);
         }
       } catch (error) {
         console.error("Redo failed:", error);
@@ -360,6 +362,8 @@ export function useDraftManager(
       const targetDraftId = forceNewNext
         ? Date.now().toString()
         : (currentDraftId ?? draftId ?? Date.now().toString());
+      
+      console.log(`[DraftManager] Recording segment - Target draft ID: ${targetDraftId}`);
 
       // Ensure directories exist and import the recorded file into managed storage
       await fileStore.ensureDraftDirs(targetDraftId);
@@ -368,7 +372,6 @@ export function useDraftManager(
         srcUri: newSegment.uri,
         segmentId: newSegment.id,
       });
-      console.log(`[draft] Imported segment: ${newSegment.id} -> ${managedUri}`);
 
       // Clear redo stack in state (new recording invalidates redo)
       setRedoStack([]);
@@ -381,7 +384,7 @@ export function useDraftManager(
       // Persist draft metadata
       if (currentDraftId && !forceNewNext) {
         await DraftStorage.updateDraft(currentDraftId, updatedSegments, duration);
-        console.log("Saved:", currentDraftId);
+        console.log(`[DraftManager] Recording segment - Updated existing draft: ${currentDraftId}`);
       } else {
         const preferredId = forceNewNext ? targetDraftId : (originalDraftId || draftId || targetDraftId);
         const newDraftId = await DraftStorage.saveDraft(
@@ -393,12 +396,15 @@ export function useDraftManager(
         setCurrentDraftId(newDraftId);
         setOriginalDraftId(preferredId);
         setHasStartedOver(false);
-        console.log("New draft:", newDraftId);
+        console.log(`[DraftManager] Recording segment - Created new draft: ${newDraftId}`);
         if (forceNewNext) setForceNewNext(false);
       }
 
       // Delete redo files now that redo stack is cleared and not referenced
-      if (prevRedo.length > 0) await fileStore.deleteUris(prevRedo.map((s) => s.uri));
+      if (prevRedo.length > 0) {
+        console.log(`[DraftManager] Deleting ${prevRedo.length} redo files`);
+        await fileStore.deleteUris(prevRedo.map((s) => s.uri));
+      }
 
       lastSegmentCount.current = updatedSegments.length;
     } catch (error) {

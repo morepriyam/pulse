@@ -43,6 +43,7 @@ export class DraftStorage {
       }
       // Otherwise, generate & import a new thumbnail
       if (!thumbnailUri && segments.length > 0 && segments[0].uri) {
+        console.log(`[DraftStorage] Generating thumbnail for draft: ${targetId}`);
         const tempThumb = await generateVideoThumbnail(segments[0].uri);
         if (tempThumb) {
           await fileStore.ensureDraftDirs(targetId);
@@ -51,6 +52,9 @@ export class DraftStorage {
             srcUri: tempThumb,
             name: 'thumb',
           });
+          console.log(`[DraftStorage] Thumbnail generated and imported for draft: ${targetId}`);
+        } else {
+          console.log(`[DraftStorage] Failed to generate thumbnail for draft: ${targetId}`);
         }
       }
       
@@ -71,6 +75,7 @@ export class DraftStorage {
       updatedDrafts.push(newDraft);
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
       
+      console.log(`[DraftStorage] Saved draft: ${newDraft.id} (${segments.length} segments, ${totalDuration}s, mode: ${mode})`);
       return newDraft.id;
     } catch (error) {
       console.error('Error saving draft:', error);
@@ -95,6 +100,7 @@ export class DraftStorage {
       );
       
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
+      console.log(`[DraftStorage] Updated draft: ${id} (${segments.length} segments, ${totalDuration}s)`);
     } catch (error) {
       console.error('Error updating draft:', error);
       throw error;
@@ -115,6 +121,9 @@ export class DraftStorage {
         current.lastModified.getTime() > latest.lastModified.getTime() ? current : latest
       );
       
+      if (mostRecent) {
+        console.log(`[DraftStorage] Found last modified draft: ${mostRecent.id} (${mostRecent.segments.length} segments, mode: ${mostRecent.mode})`);
+      }
       return mostRecent;
     } catch (error) {
       console.error('Error getting last modified draft:', error);
@@ -150,7 +159,11 @@ export class DraftStorage {
       const draft = drafts.find(draft => draft.id === id);
       // If mode is specified, check if draft matches the mode
       if (draft && mode && draft.mode !== mode) {
+        console.log(`[DraftStorage] Draft ${id} mode mismatch: expected ${mode}, got ${draft.mode}`);
         return null;
+      }
+      if (draft) {
+        console.log(`[DraftStorage] Retrieved draft: ${id} (${draft.segments.length} segments, mode: ${draft.mode})`);
       }
       return draft || null;
     } catch (error) {
@@ -173,6 +186,7 @@ export class DraftStorage {
       const drafts = await this.getAllDrafts();
       const updatedDrafts = drafts.filter(draft => draft.id !== id);
       await AsyncStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(updatedDrafts));
+      console.log(`[DraftStorage] Deleted draft: ${id} (files ${options?.keepFiles ? 'kept' : 'deleted'})`);
     } catch (error) {
       console.error('Error deleting draft:', error);
       throw error;
