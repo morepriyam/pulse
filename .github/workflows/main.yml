@@ -126,9 +126,10 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build Android (Development)
+        timeout-minutes: 45
         run: |
           echo "Building Android development build..."
-          npx expo run:android --variant debug || echo "Local Android build completed with warnings"
+          npx expo run:android --variant debug
 
       - name: Upload Android artifacts
         if: always()
@@ -185,9 +186,10 @@ jobs:
           pod install --repo-update
 
       - name: Build iOS (Development)
+        timeout-minutes: 45
         run: |
           echo "Building iOS development build..."
-          npx expo run:ios --configuration Debug --simulator || echo "Local iOS build completed with warnings"
+          npx expo run:ios --configuration Debug --simulator
 
       - name: Upload iOS artifacts
         if: always()
