@@ -99,18 +99,6 @@ export default function UploadScreen() {
     mode: "tap" | "hold",
     remainingTime: number
   ) => {
-    console.log(`Recording ${mode}, ${remainingTime}s left`);
-    // Log current stabilization at recording start (iOS only mapping)
-    try {
-      const native = mapToNativeVideoStabilization(videoStabilizationMode);
-      console.log(
-        `[Upload] recording start - stabilization=${videoStabilizationMode} (native=${native})`
-      );
-    } catch (e) {
-      console.log(
-        `[Upload] failed to map stabilization: ${(e as Error)?.message}`
-      );
-    }
     setCurrentRecordingDuration(0);
     setIsRecording(true);
 
@@ -124,10 +112,6 @@ export default function UploadScreen() {
     remainingTime: number
   ) => {
     setCurrentRecordingDuration(currentDuration);
-
-    if (remainingTime <= 0) {
-      console.log("Time limit reached");
-    }
   };
 
   const handleRecordingComplete = async (
@@ -135,8 +119,6 @@ export default function UploadScreen() {
     mode: "tap" | "hold",
     duration: number
   ) => {
-    console.log(`${mode} done: ${duration}s`);
-
     setCurrentRecordingDuration(0);
     setIsRecording(false);
 
@@ -186,16 +168,6 @@ export default function UploadScreen() {
   };
 
   const handleVideoStabilizationChange = (mode: VideoStabilization) => {
-    try {
-      const native = mapToNativeVideoStabilization(mode);
-      console.log(
-        `[Upload] stabilization changed -> ${mode} (native=${native})`
-      );
-    } catch (e) {
-      console.log(
-        `[Upload] stabilization mapping error: ${(e as Error)?.message}`
-      );
-    }
     setVideoStabilizationMode(mode);
   };
 

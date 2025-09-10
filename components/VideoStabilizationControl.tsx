@@ -23,20 +23,6 @@ export default function VideoStabilizationControl({
 }: VideoStabilizationControlProps) {
   const capabilities = getSupportedVideoStabilizationModes();
 
-  // Log capabilities and mode; include dependencies so linter passes
-  React.useEffect(() => {
-    console.log(
-      `[VideoStabilizationControl] supported=${
-        capabilities.isSupported
-      } modes=[${capabilities.supportedModes.join(", ")}]`
-    );
-    console.log(`[VideoStabilizationControl] mode: ${stabilizationMode}`);
-  }, [
-    capabilities.isSupported,
-    capabilities.supportedModes,
-    stabilizationMode,
-  ]);
-
   const getStabilizationIcon = (): "video-stable" => {
     return "video-stable";
   };
@@ -54,9 +40,6 @@ export default function VideoStabilizationControl({
 
   const handleStabilizationToggle = () => {
     if (!capabilities.isSupported) {
-      console.log(
-        "[VideoStabilizationControl] toggle attempted but not supported"
-      );
       Alert.alert(
         "Not Supported",
         "Video stabilization is not supported on this device."
@@ -70,9 +53,6 @@ export default function VideoStabilizationControl({
         ? VideoStabilization.on
         : VideoStabilization.off;
 
-    console.log(
-      `[VideoStabilizationControl] toggling: ${stabilizationMode} -> ${nextMode}`
-    );
     onStabilizationModeChange(nextMode);
   };
 

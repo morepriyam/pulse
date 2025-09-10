@@ -99,18 +99,6 @@ export default function ShortsScreen() {
     mode: "tap" | "hold",
     remainingTime: number
   ) => {
-    console.log(`Recording ${mode}, ${remainingTime}s left`);
-    // Log current stabilization mode and its native mapping at recording start
-    try {
-      const native = mapToNativeVideoStabilization(videoStabilizationMode);
-      console.log(
-        `[Shorts] recording start - stabilization=${videoStabilizationMode} (native=${native})`
-      );
-    } catch (e) {
-      console.log(
-        `[Shorts] failed to map stabilization: ${(e as Error)?.message}`
-      );
-    }
     setCurrentRecordingDuration(0);
     setIsRecording(true);
 
@@ -124,10 +112,6 @@ export default function ShortsScreen() {
     remainingTime: number
   ) => {
     setCurrentRecordingDuration(currentDuration);
-
-    if (remainingTime <= 0) {
-      console.log("Time limit reached");
-    }
   };
 
   const handleRecordingComplete = async (
@@ -135,8 +119,6 @@ export default function ShortsScreen() {
     mode: "tap" | "hold",
     duration: number
   ) => {
-    console.log(`${mode} done: ${duration}s`);
-
     setCurrentRecordingDuration(0);
     setIsRecording(false);
 
@@ -186,17 +168,6 @@ export default function ShortsScreen() {
   };
 
   const handleVideoStabilizationChange = (mode: VideoStabilization) => {
-    // Log change and native mapping
-    try {
-      const native = mapToNativeVideoStabilization(mode);
-      console.log(
-        `[Shorts] stabilization changed -> ${mode} (native=${native})`
-      );
-    } catch (e) {
-      console.log(
-        `[Shorts] stabilization mapping error: ${(e as Error)?.message}`
-      );
-    }
     setVideoStabilizationMode(mode);
   };
 

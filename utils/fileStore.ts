@@ -50,7 +50,7 @@ export const fileStore = {
         await FileSystem.deleteAsync(srcUri, { idempotent: true });
       } catch {}
     }
-    console.log(`[fileStore] Segment imported: ${finalDst}`);
+    console.log(`[fileStore] Imported segment: ${segmentId}`);
     return finalDst;
   },
 
@@ -58,13 +58,12 @@ export const fileStore = {
     const dir = paths.draftDir(draftId);
     const info = await FileSystem.getInfoAsync(dir);
     if (info.exists) {
-      console.log(`[fileStore] Deleting draft directory: ${dir}`);
+      console.log(`[fileStore] Deleting draft: ${draftId}`);
       await FileSystem.deleteAsync(dir, { idempotent: true });
     }
   },
 
   deleteUris: async (uris: string[]) => {
-    if (uris.length > 0) console.log(`[fileStore] Deleting ${uris.length} file(s)`);
     await Promise.all(
       uris.map(async (u) => {
         try {
@@ -89,7 +88,6 @@ export const fileStore = {
         await FileSystem.deleteAsync(srcUri, { idempotent: true });
       } catch {}
     }
-    console.log(`[fileStore] Thumbnail imported: ${dst}`);
     return dst;
   },
 
