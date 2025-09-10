@@ -26,35 +26,39 @@ export interface VideoStabilizationCapabilities {
  */
 export function mapToNativeVideoStabilization(
   mode: VideoStabilization
-): 'off' | 'standard' {
-  switch (mode) {
-    case VideoStabilization.off:
-      return 'off';
-    case VideoStabilization.on:
-      return 'standard';
-    default:
-      return 'off';
+): 'off' | 'standard' | 'cinematic' | 'auto' {
+  // Use the best available mode on iOS, and default to 'off' elsewhere
+  if (Platform.OS === 'ios') {
+    switch (mode) {
+      case VideoStabilization.off:
+        return 'off';
+      case VideoStabilization.on:
+        // Prefer 'cinematic' for strongest stabilization (action-like)
+        return 'cinematic';
+      default:
+        return 'off';
+    }
   }
+
+  // On Android (and other platforms), we disable stabilization entirely
+  return 'off';
 }
 
 /**
  * Get supported video stabilization modes for the current platform
  */
 export function getSupportedVideoStabilizationModes(): VideoStabilizationCapabilities {
-  if (Platform.OS === 'ios' || Platform.OS === 'android') {
-    // Both iOS and Android support simple on/off
+  if (Platform.OS === 'ios') {
+    // iOS: expose the simple on/off control (mapped to native 'off'/'auto')
     return {
       isSupported: true,
-      supportedModes: [
-        VideoStabilization.off,
-        VideoStabilization.on,
-      ],
-    };
-  } else {
-    // Web or other platforms - no support for now
-    return {
-      isSupported: false,
-      supportedModes: [],
+      supportedModes: [VideoStabilization.off, VideoStabilization.on],
     };
   }
+
+  // Android and other platforms: disable/hide stabilization UI entirely
+  return {
+    isSupported: false,
+    supportedModes: [],
+  };
 }
