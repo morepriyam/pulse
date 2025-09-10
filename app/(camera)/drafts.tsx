@@ -79,7 +79,11 @@ export default function DraftsScreen() {
                     segments.length > 0 &&
                     (redoDraftId === draftId || redoDraftId === null)
                   ) {
-                    await fileStore.deleteUris(segments.map((s: any) => s.uri));
+                    // Convert relative paths to absolute paths for deletion
+                    const absoluteUris = segments.map((s: any) =>
+                      fileStore.toAbsolutePath(s.uri)
+                    );
+                    await fileStore.deleteUris(absoluteUris);
                     await AsyncStorage.removeItem(REDO_STACK_KEY);
                   }
                 } catch {}
@@ -143,7 +147,10 @@ export default function DraftsScreen() {
       >
         <View style={styles.draftContent}>
           {item.thumbnail && (
-            <Image source={{ uri: item.thumbnail }} style={styles.thumbnail} />
+            <Image
+              source={{ uri: fileStore.toAbsolutePath(item.thumbnail) }}
+              style={styles.thumbnail}
+            />
           )}
           <View style={styles.draftInfo}>
             <Text style={styles.draftTitle}>

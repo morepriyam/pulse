@@ -1,12 +1,18 @@
 import * as FileSystem from 'expo-file-system';
 
-const BASE_DIR = `${FileSystem.documentDirectory}pulse/`;
+// Use documentDirectory for persistent user data (correct for Expo 2025)
+// This directory is designed to persist across app restarts and updates
+const RELATIVE_BASE_DIR = 'pulse/';
 
 const paths = {
-  baseDir: () => BASE_DIR,
-  draftDir: (draftId: string) => `${BASE_DIR}drafts/${draftId}/`,
-  segmentsDir: (draftId: string) => `${BASE_DIR}drafts/${draftId}/segments/`,
-  thumbsDir: (draftId: string) => `${BASE_DIR}drafts/${draftId}/thumbs/`,
+  baseDir: () => `${FileSystem.documentDirectory}${RELATIVE_BASE_DIR}`,
+  draftDir: (draftId: string) => `${FileSystem.documentDirectory}${RELATIVE_BASE_DIR}drafts/${draftId}/`,
+  segmentsDir: (draftId: string) => `${FileSystem.documentDirectory}${RELATIVE_BASE_DIR}drafts/${draftId}/segments/`,
+  thumbsDir: (draftId: string) => `${FileSystem.documentDirectory}${RELATIVE_BASE_DIR}drafts/${draftId}/thumbs/`,
+  // Relative paths for storage in metadata
+  relativeDraftDir: (draftId: string) => `${RELATIVE_BASE_DIR}drafts/${draftId}/`,
+  relativeSegmentsDir: (draftId: string) => `${RELATIVE_BASE_DIR}drafts/${draftId}/segments/`,
+  relativeThumbsDir: (draftId: string) => `${RELATIVE_BASE_DIR}drafts/${draftId}/thumbs/`,
 };
 
 function getExtensionFromUri(uri: string): string {
@@ -19,6 +25,20 @@ function getExtensionFromUri(uri: string): string {
     }
   } catch {}
   return 'mp4';
+}
+
+// Convert absolute path to relative path for storage
+function toRelativePath(absolutePath: string): string {
+  const docDir = FileSystem.documentDirectory || '';
+  if (absolutePath.startsWith(docDir)) {
+    return absolutePath.substring(docDir.length);
+  }
+  return absolutePath;
+}
+
+// Convert relative path to absolute path for file operations
+function toAbsolutePath(relativePath: string): string {
+  return `${FileSystem.documentDirectory}${relativePath}`;
 }
 
 export const fileStore = {
@@ -51,7 +71,8 @@ export const fileStore = {
       } catch {}
     }
     console.log(`[fileStore] Imported segment: ${segmentId}`);
-    return finalDst;
+    // Return relative path for storage in metadata
+    return toRelativePath(finalDst);
   },
 
   deleteDraftDirectory: async (draftId: string) => {
@@ -88,7 +109,8 @@ export const fileStore = {
         await FileSystem.deleteAsync(srcUri, { idempotent: true });
       } catch {}
     }
-    return dst;
+    // Return relative path for storage in metadata
+    return toRelativePath(dst);
   },
 
   getExistingThumbnailUri: async (draftId: string): Promise<string | null> => {
@@ -99,9 +121,116 @@ export const fileStore = {
       const items = await FileSystem.readDirectoryAsync(dir);
       if (items.length === 0) return null;
       const preferred = items.find((n) => n.startsWith('thumb.')) || items[0];
-      return `${dir}${preferred}`;
+      const fullPath = `${dir}${preferred}`;
+      
+      // Verify the file actually exists
+      const fileInfo = await FileSystem.getInfoAsync(fullPath);
+      if (!fileInfo.exists) return null;
+      
+      // Return relative path for storage in metadata
+      return toRelativePath(fullPath);
     } catch {
       return null;
+    }
+  },
+
+  // Validate that a file exists and is accessible
+  validateFileExists: async (uri: string): Promise<boolean> => {
+    try {
+      const info = await FileSystem.getInfoAsync(uri);
+      return info.exists;
+    } catch {
+      return false;
+    }
+  },
+
+  // Convert relative path to absolute path for file operations
+  toAbsolutePath: (relativePath: string): string => {
+    return toAbsolutePath(relativePath);
+  },
+
+  // Convert absolute path to relative path for storage
+  toRelativePath: (absolutePath: string): string => {
+    return toRelativePath(absolutePath);
+  },
+
+  // Convert segments with relative paths to absolute paths for use
+  convertSegmentsToAbsolute: (segments: any[]): any[] => {
+    return segments.map(segment => ({
+      ...segment,
+      uri: fileStore.toAbsolutePath(segment.uri)
+    }));
+  },
+
+  // Get all files in a draft directory for cleanup
+  getDraftFiles: async (draftId: string): Promise<string[]> => {
+    const segmentsDir = paths.segmentsDir(draftId);
+    const thumbsDir = paths.thumbsDir(draftId);
+    const files: string[] = [];
+    
+    try {
+      // Get segment files
+      const segInfo = await FileSystem.getInfoAsync(segmentsDir);
+      if (segInfo.exists) {
+        const segFiles = await FileSystem.readDirectoryAsync(segmentsDir);
+        files.push(...segFiles.map(f => `${segmentsDir}${f}`));
+      }
+      
+      // Get thumbnail files
+      const thumbInfo = await FileSystem.getInfoAsync(thumbsDir);
+      if (thumbInfo.exists) {
+        const thumbFiles = await FileSystem.readDirectoryAsync(thumbsDir);
+        files.push(...thumbFiles.map(f => `${thumbsDir}${f}`));
+      }
+    } catch (error) {
+      console.warn(`[fileStore] Error reading draft files for ${draftId}:`, error);
+    }
+    
+    return files;
+  },
+
+  // Debug utility to check storage status
+  debugStorageStatus: async (): Promise<void> => {
+    try {
+      const baseDir = paths.baseDir();
+      console.log(`[fileStore] Base directory: ${baseDir}`);
+      const baseInfo = await FileSystem.getInfoAsync(baseDir);
+      console.log(`[fileStore] Base directory exists: ${baseInfo.exists}`);
+      
+      if (baseInfo.exists) {
+        const items = await FileSystem.readDirectoryAsync(baseDir);
+        console.log(`[fileStore] Base directory contents:`, items);
+        
+        // Check drafts directory
+        const draftsDir = `${baseDir}drafts/`;
+        const draftsInfo = await FileSystem.getInfoAsync(draftsDir);
+        if (draftsInfo.exists) {
+          const draftDirs = await FileSystem.readDirectoryAsync(draftsDir);
+          console.log(`[fileStore] Draft directories:`, draftDirs);
+          
+          // Check a few draft directories for files
+          for (const draftDir of draftDirs.slice(0, 3)) {
+            const draftPath = `${draftsDir}${draftDir}/`;
+            const segmentsPath = `${draftPath}segments/`;
+            const thumbsPath = `${draftPath}thumbs/`;
+            
+            const segInfo = await FileSystem.getInfoAsync(segmentsPath);
+            const thumbInfo = await FileSystem.getInfoAsync(thumbsPath);
+            
+            if (segInfo.exists) {
+              const segFiles = await FileSystem.readDirectoryAsync(segmentsPath);
+              console.log(`[fileStore] Draft ${draftDir} segments:`, segFiles);
+            }
+            
+            if (thumbInfo.exists) {
+              const thumbFiles = await FileSystem.readDirectoryAsync(thumbsPath);
+              console.log(`[fileStore] Draft ${draftDir} thumbnails:`, thumbFiles);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[fileStore] Debug error:`, error);
     }
   },
 };
