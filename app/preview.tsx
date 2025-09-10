@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/ThemedText";
 import VideoConcatModule from "@/modules/video-concat";
 import { DraftStorage } from "@/utils/draftStorage";
+import { fileStore } from "@/utils/fileStore";
 import { useEventListener } from "expo";
 import { router, useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
@@ -83,7 +84,10 @@ export default function PreviewScreen() {
         const draft = await DraftStorage.getDraftById(draftId);
         if (draft && draft.segments.length > 0) {
           setDraft(draft);
-          const uris = draft.segments.map((segment) => segment.uri);
+          // Convert relative paths to absolute paths for video playback
+          const uris = draft.segments.map((segment) =>
+            fileStore.toAbsolutePath(segment.uri)
+          );
           setVideoUris(uris);
         } else {
           router.back();

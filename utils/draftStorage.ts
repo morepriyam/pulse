@@ -44,7 +44,9 @@ export class DraftStorage {
       // Otherwise, generate & import a new thumbnail
       if (!thumbnailUri && segments.length > 0 && segments[0].uri) {
         console.log(`[DraftStorage] Generating thumbnail for draft: ${targetId}`);
-        const tempThumb = await generateVideoThumbnail(segments[0].uri);
+        // Convert relative path to absolute path for thumbnail generation
+        const absoluteUri = fileStore.toAbsolutePath(segments[0].uri);
+        const tempThumb = await generateVideoThumbnail(absoluteUri);
         if (tempThumb) {
           await fileStore.ensureDraftDirs(targetId);
           thumbnailUri = await fileStore.importThumbnail({
@@ -122,9 +124,21 @@ export class DraftStorage {
       );
       
       if (mostRecent) {
-        console.log(`[DraftStorage] Found last modified draft: ${mostRecent.id} (${mostRecent.segments.length} segments, mode: ${mostRecent.mode})`);
+        // Validate the draft's files exist before returning
+        const validatedDraft = await this.getDraftById(mostRecent.id, mode);
+        if (validatedDraft) {
+          console.log(`[DraftStorage] Found last modified draft: ${validatedDraft.id} (${validatedDraft.segments.length} segments, mode: ${validatedDraft.mode})`);
+          return validatedDraft;
+        } else {
+          console.log(`[DraftStorage] Last modified draft ${mostRecent.id} is corrupted, trying next most recent`);
+          // Try to find the next most recent valid draft
+          const remainingDrafts = filteredDrafts.filter(d => d.id !== mostRecent.id);
+          if (remainingDrafts.length > 0) {
+            return this.getLastModifiedDraft(mode);
+          }
+        }
       }
-      return mostRecent;
+      return null;
     } catch (error) {
       console.error('Error getting last modified draft:', error);
       return null;
@@ -162,7 +176,35 @@ export class DraftStorage {
         console.log(`[DraftStorage] Draft ${id} mode mismatch: expected ${mode}, got ${draft.mode}`);
         return null;
       }
+      
       if (draft) {
+        // Validate that all segment files still exist
+        const validSegments = [];
+        for (const segment of draft.segments) {
+          // Convert relative path to absolute path for validation
+          const absoluteUri = fileStore.toAbsolutePath(segment.uri);
+          const exists = await fileStore.validateFileExists(absoluteUri);
+          if (exists) {
+            validSegments.push(segment);
+          } else {
+            console.warn(`[DraftStorage] Segment file missing: ${segment.uri}`);
+          }
+        }
+        
+        // If no valid segments remain, the draft is corrupted
+        if (validSegments.length === 0 && draft.segments.length > 0) {
+          console.warn(`[DraftStorage] Draft ${id} has no valid segments, removing from storage`);
+          await this.deleteDraft(id);
+          return null;
+        }
+        
+        // Update draft with valid segments only
+        if (validSegments.length !== draft.segments.length) {
+          console.log(`[DraftStorage] Updating draft ${id} with ${validSegments.length} valid segments (removed ${draft.segments.length - validSegments.length} missing)`);
+          await this.updateDraft(id, validSegments, draft.totalDuration);
+          draft.segments = validSegments;
+        }
+        
         console.log(`[DraftStorage] Retrieved draft: ${id} (${draft.segments.length} segments, mode: ${draft.mode})`);
       }
       return draft || null;
