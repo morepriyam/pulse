@@ -129,7 +129,7 @@ jobs:
         timeout-minutes: 45
         run: |
           echo "Building Android development build..."
-          npx expo run:android --variant debug
+          npx expo run:android --variant debug --no-device
 
       - name: Upload Android artifacts
         if: always()
