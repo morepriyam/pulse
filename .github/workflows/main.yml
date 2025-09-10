@@ -136,7 +136,7 @@ jobs:
           echo "NPM version: $(npm --version)"
           echo "Expo version: $(npx expo --version)"
           echo "Android SDK path: $ANDROID_HOME"
-          npx expo run:android --variant debug --no-bundler
+          npx expo run:android --variant debug --no-bundler --no-install
 
 
   # iOS build job
