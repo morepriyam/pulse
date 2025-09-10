@@ -8,9 +8,6 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Weekly scans (2025 best practice)
 
-env:
-  NODE_VERSION: '20'
-
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -33,25 +30,15 @@ jobs:
           build-mode: manual
         - language: java-kotlin
           build-mode: manual
-        # Additional 2025 supported languages for comprehensive coverage
-        - language: python
-          build-mode: none
-        - language: go
-          build-mode: none
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Automatically detect and set CodeQL languages (2025 best practice)
-    - name: Set CodeQL Languages
-      uses: github/codeql-action/setup-codeql-languages@v1
-      with:
-        languages: ${{ matrix.language }}
-
     - name: Setup Node.js
+      if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ env.NODE_VERSION }}
+        node-version: '20'
         cache: 'npm'
 
     # Setup Java for Kotlin/Java builds
@@ -81,12 +68,6 @@ jobs:
       if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
       run: npm ci
 
-    - name: Setup Expo
-      if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
-      run: |
-        npm install -g expo
-        expo --version
-
     - name: Install CocoaPods
       if: matrix.language == 'swift'
       run: |
@@ -112,18 +93,6 @@ jobs:
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
         restore-keys: |
           ${{ runner.os }}-gradle-
-
-    - name: Prebuild iOS
-      if: matrix.language == 'swift'
-      run: |
-        echo "Prebuilding iOS project..."
-        npx expo prebuild --platform ios --clean
-
-    - name: Prebuild Android
-      if: matrix.language == 'java-kotlin'
-      run: |
-        echo "Prebuilding Android project..."
-        npx expo prebuild --platform android --clean
 
     - name: Install iOS dependencies
       if: matrix.language == 'swift'
