@@ -189,7 +189,7 @@ jobs:
         timeout-minutes: 45
         run: |
           echo "Building iOS development build..."
-          npx expo run:ios --configuration Debug --simulator
+          npx expo run:ios --configuration Debug
 
       - name: Upload iOS artifacts
         if: always()
