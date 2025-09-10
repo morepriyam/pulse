@@ -1,7 +1,10 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
-import { Alert, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
-import { VideoStabilization, getSupportedVideoStabilizationModes } from "@/constants/camera";
+import { Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import {
+  VideoStabilization,
+  getSupportedVideoStabilizationModes,
+} from "@/constants/camera";
 import { ThemedText } from "./ThemedText";
 
 interface VideoStabilizationControlProps {
@@ -45,9 +48,10 @@ export default function VideoStabilizationControl({
     }
 
     // Simple toggle between off and on
-    const nextMode = stabilizationMode === VideoStabilization.off 
-      ? VideoStabilization.on 
-      : VideoStabilization.off;
+    const nextMode =
+      stabilizationMode === VideoStabilization.off
+        ? VideoStabilization.on
+        : VideoStabilization.off;
 
     onStabilizationModeChange(nextMode);
   };
@@ -61,17 +65,10 @@ export default function VideoStabilizationControl({
   if (compact) {
     return (
       <TouchableOpacity
-        style={[
-          styles.compactButton,
-          isActive && styles.activeButton,
-        ]}
+        style={[styles.compactButton, isActive && styles.activeButton]}
         onPress={handleStabilizationToggle}
       >
-        <MaterialIcons
-          name={getStabilizationIcon()}
-          size={24}
-          color="white"
-        />
+        <MaterialIcons name={getStabilizationIcon()} size={24} color="white" />
       </TouchableOpacity>
     );
   }
@@ -79,17 +76,10 @@ export default function VideoStabilizationControl({
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        style={[
-          styles.button,
-          isActive && styles.activeButton,
-        ]}
+        style={[styles.button, isActive && styles.activeButton]}
         onPress={handleStabilizationToggle}
       >
-        <MaterialIcons
-          name={getStabilizationIcon()}
-          size={20}
-          color="white"
-        />
+        <MaterialIcons name={getStabilizationIcon()} size={20} color="white" />
         <ThemedText style={styles.buttonText}>
           {getStabilizationLabel(stabilizationMode)}
         </ThemedText>
