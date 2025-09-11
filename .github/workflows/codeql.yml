@@ -1,15 +1,4 @@
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
-#
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
-#
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
-name: "CodeQL Advanced"
+name: "CodeQL Analysis"
 
 on:
   push:
@@ -17,25 +6,15 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '15 16 * * 3'
+    - cron: '0 0 * * 0'  # Weekly scans (2025 best practice)
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Runner size impacts CodeQL analysis time. To learn more, please see:
-    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
-    #   - https://gh.io/supported-runners-and-hardware-resources
-    #   - https://gh.io/using-larger-runners (GitHub.com only)
-    # Consider using larger runners or machines with greater resources for possible analysis time improvements.
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     permissions:
-      # required for all workflows
       security-events: write
-
-      # required to fetch internal or private CodeQL packs
       packages: read
-
-      # only required for workflows in private repositories
       actions: read
       contents: read
 
@@ -49,29 +28,95 @@ jobs:
           build-mode: none
         - language: swift
           build-mode: manual
-        # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
-        # Use `c-cpp` to analyze code written in C, C++ or both
-        # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
-        # Use 'javascript-typescript' to analyze code written in JavaScript, TypeScript or both
-        # To learn more about changing the languages that are analyzed or customizing the build mode for your analysis,
-        # see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning.
-        # If you are analyzing a compiled language, you can modify the 'build-mode' for that language to customize how
-        # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
+        - language: java-kotlin
+          build-mode: manual
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Add any setup steps before running the `github/codeql-action/init` action.
-    # This includes steps like installing compilers or runtimes (`actions/setup-node`
-    # or others). This is typically only required for manual builds.
-    
-    # Setup Node.js for React Native builds
     - name: Setup Node.js
-      if: matrix.language == 'swift'
+      if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
+
+    # Setup Java for Kotlin/Java builds
+    - name: Setup Java
+      if: matrix.language == 'java-kotlin'
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    # Setup Android SDK for Kotlin/Java builds
+    - name: Setup Android SDK
+      if: matrix.language == 'java-kotlin'
+      uses: android-actions/setup-android@v3
+      with:
+        packages: 'platforms;android-34 build-tools;34.0.0'
+
+    # Setup Xcode for Swift builds
+    - name: Setup Xcode
+      if: matrix.language == 'swift'
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: 'latest-stable'
+
+    - name: Install dependencies
+      if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
+      run: npm ci
+
+    - name: Setup Expo
+      if: matrix.language == 'swift' || matrix.language == 'java-kotlin'
+      run: |
+        npm install -g expo
+        expo --version
+
+    - name: Install CocoaPods
+      if: matrix.language == 'swift'
+      run: |
+        sudo gem install cocoapods
+        pod --version
+
+    - name: Cache CocoaPods
+      if: matrix.language == 'swift'
+      uses: actions/cache@v4
+      with:
+        path: ios/Pods
+        key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pods-
+
+
+    - name: Cache Gradle dependencies
+      if: matrix.language == 'java-kotlin'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Prebuild Android
+      if: matrix.language == 'java-kotlin'
+      run: |
+        echo "Prebuilding Android project..."
+        npx expo prebuild --platform android --clean
+
+    - name: Prebuild iOS
+      if: matrix.language == 'swift'
+      run: |
+        echo "Prebuilding iOS project..."
+        npx expo prebuild --platform ios --clean --no-install
+
+    - name: Install iOS dependencies
+      if: matrix.language == 'swift'
+      run: |
+        cd ios
+        pod install --repo-update
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
@@ -79,62 +124,65 @@ jobs:
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
-        # If you wish to specify custom queries, you can do so here or in a config file.
-        # By default, queries listed here will override any specified in a config file.
-        # Prefix the list here with "+" to use these queries and those in the config file.
 
-        # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
-        # queries: security-extended,security-and-quality
+    # Autobuild for languages that support it (2025 best practice)
+    - name: Autobuild
+      if: matrix.build-mode == 'none'
+      uses: github/codeql-action/autobuild@v3
 
-    # Build React Native iOS project for Swift CodeQL analysis
-    - name: Build React Native iOS
+    # Build projects for CodeQL analysis (manual build mode)
+    - name: Build for CodeQL Analysis
       if: matrix.build-mode == 'manual'
       shell: bash
+      timeout-minutes: 120
       run: |
         set -e
         
         if [ "${{ matrix.language }}" = "swift" ]; then
           echo "Building React Native iOS project for CodeQL analysis..."
-          
-          # Install JavaScript dependencies
-          echo "Installing npm dependencies..."
-          npm ci
-          
-          # Install iOS dependencies
-          echo "Installing iOS dependencies..."
           cd ios
           
-          # Install CocoaPods dependencies
-          pod install --repo-update
-          
-          # Build the iOS project with proper settings for CodeQL
-          echo "Building iOS project for CodeQL analysis..."
-          xcodebuild \
-            -workspace pulse.xcworkspace \
+          # Use the same build command that works in main.yml
+          xcodebuild -workspace pulse.xcworkspace \
             -scheme pulse \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            RCT_NO_LAUNCH_PACKAGER=1 \
-            SKIP_BUNDLING=1 \
-            build 2>&1 | tee build.log
-            
-          echo "iOS build completed successfully for CodeQL analysis"
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,id=07770167-BCCB-4FCA-BCCD-DA7C1E9F2FC2' \
+            build
+        elif [ "${{ matrix.language }}" = "java-kotlin" ]; then
+          echo "Building Android project for CodeQL analysis..."
+          cd android
+          ./gradlew assembleDebug
         else
           echo "Manual build mode not implemented for language: ${{ matrix.language }}"
           exit 1
         fi
+
+    # Fallback build strategy for iOS if main build fails
+    - name: Fallback iOS Build
+      if: matrix.language == 'swift' && failure()
+      shell: bash
+      timeout-minutes: 30
+      run: |
+        echo "Attempting fallback iOS build with minimal configuration..."
+        cd ios
+        
+        # Try a minimal build using the same approach as main.yml
+        xcodebuild -workspace pulse.xcworkspace \
+          -scheme pulse \
+          -configuration Debug \
+          -sdk iphonesimulator \
+          -destination 'platform=iOS Simulator,id=07770167-BCCB-4FCA-BCCD-DA7C1E9F2FC2' \
+          build-for-testing
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
 
-    # Upload SARIF file on build failure for debugging
+    # Upload SARIF file on failure for debugging
     - name: Upload failed CodeQL SARIF
-      if: failure() && matrix.language == 'swift'
+      if: failure()
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: ${{ runner.temp }}/codeql-failed-run.sarif
