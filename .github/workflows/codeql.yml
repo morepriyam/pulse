@@ -54,8 +54,7 @@ jobs:
       if: matrix.language == 'java-kotlin'
       uses: android-actions/setup-android@v3
       with:
-        api-level: 34
-        build-tools: 34.0.0
+        packages: 'platforms;android-34 build-tools;34.0.0'
 
     # Setup Xcode for Swift builds
     - name: Setup Xcode
