@@ -88,6 +88,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pods-
 
+
     - name: Cache Gradle dependencies
       if: matrix.language == 'java-kotlin'
       uses: actions/cache@v4
@@ -109,7 +110,7 @@ jobs:
       if: matrix.language == 'swift'
       run: |
         echo "Prebuilding iOS project..."
-        npx expo prebuild --platform ios --clean
+        npx expo prebuild --platform ios --clean --no-install
 
     - name: Install iOS dependencies
       if: matrix.language == 'swift'
@@ -133,13 +134,15 @@ jobs:
     - name: Build for CodeQL Analysis
       if: matrix.build-mode == 'manual'
       shell: bash
-      timeout-minutes: 45
+      timeout-minutes: 120
       run: |
         set -e
         
         if [ "${{ matrix.language }}" = "swift" ]; then
           echo "Building React Native iOS project for CodeQL analysis..."
           cd ios
+          
+          # Use the same build command that works in main.yml
           xcodebuild -workspace pulse.xcworkspace \
             -scheme pulse \
             -configuration Debug \
@@ -155,7 +158,32 @@ jobs:
           exit 1
         fi
 
+    # Fallback build strategy for iOS if main build fails
+    - name: Fallback iOS Build
+      if: matrix.language == 'swift' && failure()
+      shell: bash
+      timeout-minutes: 30
+      run: |
+        echo "Attempting fallback iOS build with minimal configuration..."
+        cd ios
+        
+        # Try a minimal build using the same approach as main.yml
+        xcodebuild -workspace pulse.xcworkspace \
+          -scheme pulse \
+          -configuration Debug \
+          -sdk iphonesimulator \
+          -destination 'platform=iOS Simulator,id=07770167-BCCB-4FCA-BCCD-DA7C1E9F2FC2' \
+          build-for-testing
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
+
+    # Upload SARIF file on failure for debugging
+    - name: Upload failed CodeQL SARIF
+      if: failure()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ runner.temp }}/codeql-failed-run.sarif
+      continue-on-error: true
