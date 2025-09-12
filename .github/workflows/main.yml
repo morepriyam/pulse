@@ -194,7 +194,7 @@ jobs:
             -scheme pulse \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
+            -destination 'platform=iOS Simulator' \
             build
 
 
