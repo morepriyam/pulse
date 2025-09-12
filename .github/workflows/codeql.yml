@@ -147,7 +147,7 @@ jobs:
             -scheme pulse \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,id=07770167-BCCB-4FCA-BCCD-DA7C1E9F2FC2' \
+            -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
             build
         elif [ "${{ matrix.language }}" = "java-kotlin" ]; then
           echo "Building Android project for CodeQL analysis..."
@@ -168,12 +168,12 @@ jobs:
         cd ios
         
         # Try a minimal build using the same approach as main.yml
-        xcodebuild -workspace pulse.xcworkspace \
-          -scheme pulse \
-          -configuration Debug \
-          -sdk iphonesimulator \
-          -destination 'platform=iOS Simulator,id=07770167-BCCB-4FCA-BCCD-DA7C1E9F2FC2' \
-          build-for-testing
+          xcodebuild -workspace pulse.xcworkspace \
+            -scheme pulse \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
+            build-for-testing
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
