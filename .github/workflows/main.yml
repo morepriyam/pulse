@@ -197,11 +197,15 @@ jobs:
           AVAILABLE_SDK=$(xcodebuild -showsdks | grep iphonesimulator | grep -v "26.0" | tail -1 | awk '{print $NF}' || echo "iphonesimulator")
           echo "Using SDK: $AVAILABLE_SDK"
           
+          # Get available simulators and use the first iPhone simulator
+          SIMULATOR_NAME=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "iPhone 16")
+          echo "Using Simulator: $SIMULATOR_NAME"
+          
           xcodebuild -workspace pulse.xcworkspace \
             -scheme pulse \
             -configuration Debug \
             -sdk "$AVAILABLE_SDK" \
-            -destination 'platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME" \
             build
 
 
