@@ -190,10 +190,17 @@ jobs:
         run: |
           echo "Building iOS development build..."
           cd ios
+          
+          echo "Available SDKs:"
+          xcodebuild -showsdks | grep iphonesimulator || true
+          
+          AVAILABLE_SDK=$(xcodebuild -showsdks | grep iphonesimulator | grep -v "26.0" | tail -1 | awk '{print $NF}' || echo "iphonesimulator")
+          echo "Using SDK: $AVAILABLE_SDK"
+          
           xcodebuild -workspace pulse.xcworkspace \
             -scheme pulse \
             -configuration Debug \
-            -sdk iphonesimulator \
+            -sdk "$AVAILABLE_SDK" \
             -destination 'platform=iOS Simulator' \
             build
 
