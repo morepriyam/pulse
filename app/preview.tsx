@@ -195,9 +195,17 @@ export default function PreviewScreen() {
         }
       );
 
+      // Convert relative paths to absolute paths for native module
+      const segmentsWithAbsolutePaths = draft.segments.map((segment) => ({
+        ...segment,
+        uri: fileStore.toAbsolutePath(segment.uri),
+      }));
+
       // Start concatenation
       console.log("🚀 Calling native export function...");
-      const outputUri = await VideoConcatModule.export(draft.segments);
+      const outputUri = await VideoConcatModule.export(
+        segmentsWithAbsolutePaths
+      );
       console.log("✅ Concatenation completed:", outputUri);
 
       // Remove progress listener
@@ -209,16 +217,26 @@ export default function PreviewScreen() {
       console.log("📺 Loading concatenated video into player...");
       setIsLoadingVideo(true);
 
-      await player1.replaceAsync(outputUri);
+      try {
+        await player1.replaceAsync(outputUri);
 
-      // Wait a moment for the video to load its metadata and orientation
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Wait a moment for the video to load its metadata and orientation
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setIsLoadingVideo(false);
-      player1.play();
-      console.log("▶️ Video playback started");
+        setIsLoadingVideo(false);
+        player1.play();
+        console.log("▶️ Video playback started");
+      } catch (videoLoadError) {
+        console.error("❌ Failed to load concatenated video:", videoLoadError);
+        // Reset the concatenated video state if loading fails
+        setConcatenatedVideoUri(null);
+        setIsLoadingVideo(false);
+        throw videoLoadError; // Re-throw to be caught by outer catch
+      }
     } catch (error) {
       console.error("❌ Concatenation failed:", error);
+      // Reset states on any error
+      setConcatenatedVideoUri(null);
     } finally {
       setIsConcatenating(false);
     }

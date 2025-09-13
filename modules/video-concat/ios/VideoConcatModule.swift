@@ -117,9 +117,20 @@ public class VideoConcatModule: Module {
             ]
         ])
         
-        // Load asset
-        let asset = AVURLAsset(url: URL(string: config.segment.uri)!)
-        print("   - Loading asset...")
+        // Load asset - ensure we have a valid file URL
+        guard let fileURL = URL(string: config.segment.uri) else {
+            print("   ❌ VideoConcat: Invalid URL: \(config.segment.uri)")
+            throw VideoConcatError.exportFailed("Invalid file URL: \(config.segment.uri)")
+        }
+        
+        // Verify the file exists
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("   ❌ VideoConcat: File does not exist: \(fileURL.path)")
+            throw VideoConcatError.exportFailed("File does not exist: \(fileURL.path)")
+        }
+        
+        let asset = AVURLAsset(url: fileURL)
+        print("   - Loading asset from: \(fileURL.path)")
         
         // Wait for tracks to load
         try await asset.load(.tracks)
@@ -227,6 +238,11 @@ public class VideoConcatModule: Module {
         AsyncFunction("export") { (segments: [RecordingSegment]) -> String in
             print("🎬 VideoConcat: Starting export with \(segments.count) segments")
             
+            // Log segment details for debugging
+            for (index, segment) in segments.enumerated() {
+                print("   Segment \(index + 1): \(segment.uri)")
+            }
+            
             // Create composition
             let composition = AVMutableComposition()
             print("🎬 VideoConcat: Created AVMutableComposition")
@@ -283,13 +299,27 @@ public class VideoConcatModule: Module {
             ])
             
             print("🎬 VideoConcat: Starting export...")
-            try await exportSession.export()
-            print("✅ VideoConcat: Export completed")
             
-            guard exportSession.status == .completed else {
-                print("❌ VideoConcat: Export failed with status: \(exportSession.status.rawValue)")
-                print("   - Error: \(exportSession.error?.localizedDescription ?? "unknown error")")
-                throw VideoConcatError.exportFailed(exportSession.error?.localizedDescription ?? "unknown error")
+            // Export with timeout handling
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                exportSession.exportAsynchronously {
+                    switch exportSession.status {
+                    case .completed:
+                        print("✅ VideoConcat: Export completed")
+                        continuation.resume()
+                    case .failed:
+                        let errorMsg = exportSession.error?.localizedDescription ?? "unknown error"
+                        print("❌ VideoConcat: Export failed with status: \(exportSession.status.rawValue)")
+                        print("   - Error: \(errorMsg)")
+                        continuation.resume(throwing: VideoConcatError.exportFailed(errorMsg))
+                    case .cancelled:
+                        print("❌ VideoConcat: Export cancelled")
+                        continuation.resume(throwing: VideoConcatError.exportFailed("Export was cancelled"))
+                    default:
+                        print("❌ VideoConcat: Export ended with unexpected status: \(exportSession.status.rawValue)")
+                        continuation.resume(throwing: VideoConcatError.exportFailed("Unexpected export status: \(exportSession.status.rawValue)"))
+                    }
+                }
             }
             
             // Final progress

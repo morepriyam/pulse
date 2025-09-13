@@ -142,12 +142,21 @@ jobs:
           echo "Building React Native iOS project for CodeQL analysis..."
           cd ios
           
-          # Use the same build command that works in main.yml
+          echo "Available SDKs:"
+          xcodebuild -showsdks | grep iphonesimulator || true
+          
+          AVAILABLE_SDK=$(xcodebuild -showsdks | grep iphonesimulator | grep -v "26.0" | tail -1 | awk '{print $NF}' || echo "iphonesimulator")
+          echo "Using SDK: $AVAILABLE_SDK"
+          
+          # Get available simulators and use the first iPhone simulator
+          SIMULATOR_NAME=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "iPhone 16")
+          echo "Using Simulator: $SIMULATOR_NAME"
+          
           xcodebuild -workspace pulse.xcworkspace \
             -scheme pulse \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
+            -sdk "$AVAILABLE_SDK" \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME" \
             build
         elif [ "${{ matrix.language }}" = "java-kotlin" ]; then
           echo "Building Android project for CodeQL analysis..."
@@ -158,7 +167,6 @@ jobs:
           exit 1
         fi
 
-    # Fallback build strategy for iOS if main build fails
     - name: Fallback iOS Build
       if: matrix.language == 'swift' && failure()
       shell: bash
@@ -167,13 +175,19 @@ jobs:
         echo "Attempting fallback iOS build with minimal configuration..."
         cd ios
         
-        # Try a minimal build using the same approach as main.yml
-          xcodebuild -workspace pulse.xcworkspace \
-            -scheme pulse \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
-            build-for-testing
+        AVAILABLE_SDK=$(xcodebuild -showsdks | grep iphonesimulator | grep -v "26.0" | tail -1 | awk '{print $NF}' || echo "iphonesimulator")
+        echo "Fallback using SDK: $AVAILABLE_SDK"
+        
+        # Get available simulators and use the first iPhone simulator
+        SIMULATOR_NAME=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "iPhone 16")
+        echo "Fallback using Simulator: $SIMULATOR_NAME"
+        
+        xcodebuild -workspace pulse.xcworkspace \
+          -scheme pulse \
+          -configuration Debug \
+          -sdk "$AVAILABLE_SDK" \
+          -destination "platform=iOS Simulator,name=$SIMULATOR_NAME" \
+          build-for-testing
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
