@@ -3,9 +3,10 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
  */
 
-import '@/global.css';
-
 import { Platform } from 'react-native';
+
+/** Pulse brand red — accent for the record button, primary actions, highlights. */
+export const Accent = '#F01E21';
 
 export const Colors = {
   light: {
@@ -14,6 +15,9 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    border: '#E4E4E9',
+    accent: Accent,
+    onAccent: '#ffffff',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +25,9 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    border: '#2A2A2E',
+    accent: Accent,
+    onAccent: '#ffffff',
   },
 } as const;
 
