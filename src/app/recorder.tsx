@@ -1,15 +1,61 @@
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { CameraType, CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView, SymbolViewProps } from 'expo-symbols';
+import { createVideoPlayer, VideoThumbnail } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
 
-type LocalSegment = { id: string; uri: string };
+type LocalSegment = { id: string; uri: string; thumbnail?: VideoThumbnail };
+
+type Player = ReturnType<typeof createVideoPlayer>;
+
+/** Resolves once the player has loaded enough to extract frames (or errors / times out). */
+function whenReady(player: Player): Promise<void> {
+  return new Promise((resolve) => {
+    if (player.status === 'readyToPlay') return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      sub.remove();
+      resolve();
+    };
+    const sub = player.addListener('statusChange', ({ status }) => {
+      if (status === 'readyToPlay' || status === 'error') done();
+    });
+    const timer = setTimeout(done, 5000); // safety net so a stuck load can't hang
+  });
+}
+
+/** First-frame thumbnail for a freshly recorded clip (expo-video, §thumbnails). */
+async function makeThumbnail(uri: string): Promise<VideoThumbnail | undefined> {
+  let player: Player | undefined;
+  try {
+    player = createVideoPlayer(uri);
+    await whenReady(player); // generation returns [] if the asset isn't loaded yet
+    const thumbs = await player.generateThumbnailsAsync(0, { maxWidth: 96, maxHeight: 128 });
+    return thumbs[0];
+  } catch (e) {
+    console.warn('[thumb] failed for', uri, e);
+    return undefined; // keep the placeholder icon if extraction fails
+  } finally {
+    player?.release();
+  }
+}
+
+// Full set of expo-camera stabilization modes (§2.2 — richer than the original's on/off).
+const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
+type StabilizationMode = (typeof STABILIZATION_MODES)[number];
+const STABILIZATION_LABELS: Record<StabilizationMode, string> = {
+  off: 'Off',
+  standard: 'Std',
+  cinematic: 'Cine',
+  auto: 'Auto',
+};
 
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
@@ -19,6 +65,12 @@ export default function RecorderScreen() {
   const [segments, setSegments] = useState<LocalSegment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [facing, setFacing] = useState<CameraType>('back');
+  const [torch, setTorch] = useState(false);
+  // Default 'off' so the preview FOV matches what gets recorded (no zoom jump at
+  // record start). Stabilization crops the recording connection and expo-camera
+  // can't crop the preview to match, so the richer modes stay opt-in.
+  const [stabilization, setStabilization] = useState<StabilizationMode>('off');
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHolding = useRef(false);
 
@@ -41,7 +93,14 @@ export default function RecorderScreen() {
     try {
       const video = await cameraRef.current.recordAsync();
       if (video?.uri) {
-        setSegments((prev) => [...prev, { id: String(Date.now()), uri: video.uri }]);
+        const id = String(Date.now());
+        const uri = video.uri;
+        // Show the clip right away; fill in its thumbnail when it's ready.
+        setSegments((prev) => [...prev, { id, uri }]);
+        void makeThumbnail(uri).then((thumbnail) => {
+          if (!thumbnail) return;
+          setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, thumbnail } : s)));
+        });
       }
     } catch {
       // recording was interrupted — drop it.
@@ -56,6 +115,21 @@ export default function RecorderScreen() {
 
   function deleteSegment(id: string) {
     setSegments((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function flipCamera() {
+    setFacing((prev) => {
+      const next = prev === 'back' ? 'front' : 'back';
+      if (next === 'front') setTorch(false); // torch is back-camera only
+      return next;
+    });
+  }
+
+  function cycleStabilization() {
+    setStabilization((prev) => {
+      const i = STABILIZATION_MODES.indexOf(prev);
+      return STABILIZATION_MODES[(i + 1) % STABILIZATION_MODES.length];
+    });
   }
 
   // --- Permission gate -------------------------------------------------------
@@ -98,7 +172,9 @@ export default function RecorderScreen() {
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         mode="video"
-        facing="back"
+        facing={facing}
+        enableTorch={torch}
+        videoStabilizationMode={stabilization}
         onCameraReady={() => setCameraReady(true)}
       />
 
@@ -107,7 +183,29 @@ export default function RecorderScreen() {
           <CloseButton onPress={() => router.back()} />
         </View>
 
-        <View style={styles.spacer} pointerEvents="box-none" />
+        <View style={styles.spacer} pointerEvents="box-none">
+          <View style={[styles.rail, { top: insets.top + Spacing.six }]}>
+            <ControlButton
+              icon="arrow.triangle.2.circlepath.camera"
+              label="Flip camera"
+              onPress={flipCamera}
+            />
+            <ControlButton
+              icon={torch ? 'bolt.fill' : 'bolt.slash.fill'}
+              label={torch ? 'Turn off flash' : 'Turn on flash'}
+              tint={torch ? Accent : '#fff'}
+              disabled={facing === 'front'}
+              onPress={() => setTorch((t) => !t)}
+            />
+            <ControlButton
+              icon="gyroscope"
+              label={`Stabilization: ${STABILIZATION_LABELS[stabilization]}`}
+              caption={STABILIZATION_LABELS[stabilization]}
+              tint={stabilization === 'off' ? '#fff' : Accent}
+              onPress={cycleStabilization}
+            />
+          </View>
+        </View>
 
         <View style={[styles.bottom, { paddingBottom: insets.bottom + Spacing.three }]} pointerEvents="box-none">
           <Pressable
@@ -127,13 +225,17 @@ export default function RecorderScreen() {
                 contentContainerStyle={styles.barContent}>
                 {segments.map((segment) => (
                   <View key={segment.id} style={styles.thumb}>
-                    <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
+                    {segment.thumbnail ? (
+                      <Image source={segment.thumbnail} style={styles.thumbImage} contentFit="cover" />
+                    ) : (
+                      <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
+                    )}
                     <Pressable
                       onPress={() => deleteSegment(segment.id)}
                       hitSlop={6}
                       style={styles.thumbDelete}
                       accessibilityLabel="Delete clip">
-                      <SymbolView name="xmark.circle.fill" size={20} tintColor="#fff" />
+                      <SymbolView name="xmark" size={11} weight="bold" tintColor="#fff" />
                     </Pressable>
                   </View>
                 ))}
@@ -167,6 +269,37 @@ function CloseButton({ onPress, top }: { onPress?: () => void; top?: number }) {
   );
 }
 
+function ControlButton({
+  icon,
+  label,
+  onPress,
+  tint = '#fff',
+  caption,
+  disabled = false,
+}: {
+  icon: SymbolViewProps['name'];
+  label: string;
+  onPress: () => void;
+  tint?: string;
+  caption?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.controlWrap, { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 }]}>
+      <View style={styles.control}>
+        <SymbolView name={icon} size={24} weight="medium" tintColor={tint} />
+      </View>
+      {caption && <Text style={[styles.controlCaption, { color: tint }]}>{caption}</Text>}
+    </Pressable>
+  );
+}
+
 const RECORD_SIZE = 76;
 
 const styles = StyleSheet.create({
@@ -194,6 +327,24 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
+
+  // Right-side control rail
+  rail: {
+    position: 'absolute',
+    right: Spacing.three,
+    gap: Spacing.three,
+    alignItems: 'center',
+  },
+  controlWrap: { alignItems: 'center', gap: 2 },
+  control: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  controlCaption: { fontSize: 10, fontWeight: '600' },
 
   // Bottom controls
   bottom: { alignItems: 'center', gap: Spacing.three },
@@ -230,7 +381,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thumbDelete: { position: 'absolute', top: -6, right: -6 },
+  thumbImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: Spacing.two },
+  thumbDelete: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   nextButton: {
     width: 48,
     height: 48,
