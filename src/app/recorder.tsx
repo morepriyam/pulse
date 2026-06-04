@@ -4,8 +4,10 @@ import { router } from 'expo-router';
 import { SymbolView, SymbolViewProps } from 'expo-symbols';
 import { createVideoPlayer, VideoThumbnail } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Sortable from 'react-native-sortables';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -73,6 +75,7 @@ export default function RecorderScreen() {
   const [stabilization, setStabilization] = useState<StabilizationMode>('off');
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHolding = useRef(false);
+  const barScrollRef = useAnimatedRef<Animated.ScrollView>();
 
   const granted = !!camPermission?.granted && !!micPermission?.granted;
   const askedOnce = useRef(false);
@@ -219,27 +222,39 @@ export default function RecorderScreen() {
 
           {segments.length > 0 && (
             <View style={styles.bar}>
-              <ScrollView
+              <Animated.ScrollView
+                ref={barScrollRef}
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                style={styles.barScroll}
                 contentContainerStyle={styles.barContent}>
-                {segments.map((segment) => (
-                  <View key={segment.id} style={styles.thumb}>
-                    {segment.thumbnail ? (
-                      <Image source={segment.thumbnail} style={styles.thumbImage} contentFit="cover" />
-                    ) : (
-                      <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
-                    )}
-                    <Pressable
-                      onPress={() => deleteSegment(segment.id)}
-                      hitSlop={6}
-                      style={styles.thumbDelete}
-                      accessibilityLabel="Delete clip">
-                      <SymbolView name="xmark" size={11} weight="bold" tintColor="#fff" />
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
+                <Sortable.Grid
+                  rows={1}
+                  rowHeight={THUMB_HEIGHT}
+                  columnGap={Spacing.two}
+                  data={segments}
+                  keyExtractor={(s) => s.id}
+                  scrollableRef={barScrollRef}
+                  autoScrollDirection="horizontal"
+                  onDragEnd={({ data }) => setSegments(data)}
+                  renderItem={({ item }) => (
+                    <View style={styles.thumb}>
+                      {item.thumbnail ? (
+                        <Image source={item.thumbnail} style={styles.thumbImage} contentFit="cover" />
+                      ) : (
+                        <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
+                      )}
+                      <Pressable
+                        onPress={() => deleteSegment(item.id)}
+                        hitSlop={6}
+                        style={styles.thumbDelete}
+                        accessibilityLabel="Delete clip">
+                        <SymbolView name="xmark" size={11} weight="bold" tintColor="#fff" />
+                      </Pressable>
+                    </View>
+                  )}
+                />
+              </Animated.ScrollView>
 
               <Pressable
                 onPress={() => router.push('/timeline')}
@@ -301,6 +316,7 @@ function ControlButton({
 }
 
 const RECORD_SIZE = 76;
+const THUMB_HEIGHT = 64;
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: '#000' },
@@ -372,10 +388,11 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  barContent: { gap: Spacing.two, alignItems: 'center', paddingRight: Spacing.two },
+  barScroll: { flex: 1 },
+  barContent: { alignItems: 'center', paddingRight: Spacing.two },
   thumb: {
     width: 48,
-    height: 64,
+    height: THUMB_HEIGHT,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
