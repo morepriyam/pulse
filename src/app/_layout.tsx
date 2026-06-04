@@ -14,7 +14,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
           <MigrationGate>
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
+              <Stack.Screen name="timeline" options={{ presentation: 'fullScreenModal' }} />
+            </Stack>
           </MigrationGate>
           <StatusBar style="auto" />
         </ThemeProvider>

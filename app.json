@@ -18,7 +18,12 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.pulsenew"
     },
     "web": {
       "output": "static",
@@ -36,7 +41,16 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Pulse uses your camera to record videos.",
+          "microphonePermission": "Pulse uses your microphone to record audio with your videos."
+        }
+      ],
+      "./plugins/with-disable-script-sandboxing"
     ],
     "experiments": {
       "typedRoutes": true,
