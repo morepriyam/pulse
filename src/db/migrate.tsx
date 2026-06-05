@@ -8,7 +8,6 @@ import { db } from './client';
 
 const centered = { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 } as const;
 
-/** Applies pending migrations on startup; gates the app until the schema is ready. */
 export function MigrationGate({ children }: { children: React.ReactNode }) {
   const { success, error } = useMigrations(db, migrations);
 

@@ -55,11 +55,11 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <DraftCard
               name={item.name}
-              thumbnailUri={item.thumbnail}
+              firstSegmentFilename={item.firstSegmentFilename}
               segmentCount={item.segmentCount}
               durationMs={item.durationMs}
               lastModified={item.lastModified}
-              onPress={() => router.push('/recorder')}
+              onPress={() => router.push({ pathname: '/recorder', params: { draftId: item.id } })}
             />
           )}
         />

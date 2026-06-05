@@ -8,7 +8,6 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-// Placeholder — the timeline editor (Milestone 0) is built in a later step.
 export default function TimelineScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();

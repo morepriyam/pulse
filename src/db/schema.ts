@@ -10,7 +10,7 @@ export const projects = sqliteTable('projects', {
   mode: text('mode', { enum: ['camera', 'upload'] })
     .notNull()
     .default('camera'),
-  // Relative path to the first-frame thumbnail (absolutized at runtime).
+  // Reserved cover frame; currently thumbnails are derived at runtime from the first clip.
   thumbnail: text('thumbnail'),
   // Per-draft upload destination (§4).
   uploadServer: text('upload_server'),
@@ -34,6 +34,7 @@ export const segments = sqliteTable('segments', {
   trimStartMs: integer('trim_start_ms'),
   trimEndMs: integer('trim_end_ms'),
   durationMs: integer('duration_ms').notNull(),
+  // Reserved; thumbnails are derived at runtime from the clip file.
   thumbnail: text('thumbnail'),
 });
 
