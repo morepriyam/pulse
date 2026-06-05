@@ -1,62 +1,84 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { DraftCard } from '@/components/draft-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import { Spacing } from '@/constants/theme';
+import { devClearDrafts, devSeedDraft, draftListQuery } from '@/db/drafts';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { data: drafts } = useLiveQuery(draftListQuery);
+
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
+        <ThemedText type="title">Pulse</ThemedText>
+        {__DEV__ && (
+          <View style={styles.devRow}>
+            <Pressable onPress={devSeedDraft} hitSlop={8}>
+              <ThemedText themeColor="accent" type="small">
+                + seed
+              </ThemedText>
+            </Pressable>
+            <Pressable onPress={devClearDrafts} hitSlop={8}>
+              <ThemedText themeColor="textSecondary" type="small">
+                clear
+              </ThemedText>
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      {drafts.length === 0 ? (
+        <View style={styles.empty}>
+          <SymbolView name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
+          <ThemedText style={styles.emptyTitle}>No drafts yet</ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.emptyHint}>
+            Tap + to record your first video.
           </ThemedText>
-        </ThemedView>
+        </View>
+      ) : (
+        <FlatList
+          data={drafts}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: insets.bottom + Spacing.six + Spacing.four },
+          ]}
+          renderItem={({ item }) => (
+            <DraftCard
+              name={item.name}
+              firstSegmentFilename={item.firstSegmentFilename}
+              segmentCount={item.segmentCount}
+              durationMs={item.durationMs}
+              lastModified={item.lastModified}
+              onPress={() => router.push({ pathname: '/recorder', params: { draftId: item.id } })}
+            />
+          )}
+        />
+      )}
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
+      <Pressable
+        onPress={() => router.push('/recorder')}
+        accessibilityRole="button"
+        accessibilityLabel="New recording"
+        style={({ pressed }) => [
+          styles.fab,
+          {
+            backgroundColor: theme.accent,
+            bottom: insets.bottom + Spacing.four,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}>
+        <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
+      </Pressable>
     </ThemedView>
   );
 }
@@ -64,35 +86,50 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  header: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    paddingBottom: Spacing.two,
   },
-  heroSection: {
+  devRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  list: {
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.two,
+  },
+  empty: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.five,
   },
-  title: {
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    lineHeight: 26,
+  },
+  emptyHint: {
     textAlign: 'center',
   },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  fab: {
+    position: 'absolute',
+    right: Spacing.four,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
 });
