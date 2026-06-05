@@ -98,28 +98,3 @@ export async function deleteDraft(draftId: string): Promise<void> {
   await db.delete(projects).where(eq(projects.id, draftId));
   deleteDraftDir(draftId);
 }
-
-// Dev-only helpers for exercising the reactive list with throwaway data.
-
-let seedCounter = 0;
-
-export async function devSeedDraft() {
-  const id = `dev-${Date.now()}-${seedCounter++}`;
-  await db.insert(projects).values({ id, name: `Sample ${seedCounter}` });
-  await db.insert(segments).values([
-    { id: `${id}-a`, projectId: id, order: 0, originalFilename: 'dev/a.mp4', durationMs: 8200 },
-    {
-      id: `${id}-b`,
-      projectId: id,
-      order: 1,
-      originalFilename: 'dev/b.mp4',
-      durationMs: 6000,
-      trimStartMs: 1000,
-      trimEndMs: 4000,
-    },
-  ]);
-}
-
-export async function devClearDrafts() {
-  await db.delete(projects);
-}
