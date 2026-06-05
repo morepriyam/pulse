@@ -2,7 +2,7 @@
 
 > **What this is.** A snapshot of where the build actually stands vs. the design docs, the gaps that matter, and a phased plan to continue. Pick this up later as the working checklist. Reconcile against the decisions in [pulse-new-plan.md](pulse-new-plan.md) (forward decisions) and [pulse-original-features.md](pulse-original-features.md) (behavior spec).
 >
-> **Captured:** 2026-06-04, branch `feat/foundation-home`. Update as phases land.
+> **Captured:** 2026-06-04 · **last updated:** 2026-06-05 (Phase A landed, recorder refactor + tooling, commit `4c7aac8`), branch `feat/foundation-home`. Update as phases land.
 
 ---
 
@@ -19,18 +19,24 @@
 | Home / Drafts (screen #1)                | [src/app/index.tsx](../src/app/index.tsx)           | ✅ reactive `useLiveQuery`, draft cards, FAB, empty state, dev seed/clear (§2.0)                                                                       |
 | Theme (light/dark + red accent)          | [src/constants/theme.ts](../src/constants/theme.ts) | ✅ §2.4                                                                                                                                                |
 
-### Uncommitted — recorder + dev-build infra (current working diff) 🚧
+### Committed — recorder (Phase A) + dev-build infra ✅
 
 | Piece                                      | File                                                                                      | Status                                                                                                              |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Deps added                                 | [package.json](../package.json)                                                           | `expo-camera`, `expo-file-system`, `expo-video`                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Camera/storage deps                        | [package.json](../package.json)                                                           | `expo-camera`, `expo-file-system`, `expo-video` — all now in use                                                  |
 | Config: permissions, package id, plugins   | [app.json](../app.json)                                                                   | Android camera/record perms, `expo-camera` plugin + permission strings, `expo-video` plugin, custom prebuild plugin |
-| Prebuild plugin: disable script sandboxing | [plugins/with-disable-script-sandboxing.js](../plugins/with-disable-script-sandboxing.js) | ✅ lets bundle phase write dev-server `ip.txt` on device builds                                                     |
-| Routes registered as full-screen modals    | [src/app/\_layout.tsx](../src/app/_layout.tsx)                                            | ✅ `recorder` + `timeline` (§2.0)                                                                                   |
-| Recorder screen (#2)                       | [src/app/recorder.tsx](../src/app/recorder.tsx)                                           | 🚧 partial — see gaps below                                                                                         |
-| Timeline screen (#3)                       | [src/app/timeline.tsx](../src/app/timeline.tsx)                                           | 🚧 **stub placeholder only**                                                                                        |
+| Prebuild plugin: disable script sandboxing | [plugins/with-disable-script-sandboxing.js](../plugins/with-disable-script-sandboxing.js) | ✅ lets bundle phase write dev-server `ip.txt` on device builds                                                    |
+| Routes registered as full-screen modals    | [src/app/\_layout.tsx](../src/app/_layout.tsx)                                            | ✅ `recorder` + `timeline` (§2.0)                                                                                  |
+| Recorder screen (#2)                       | [src/app/recorder.tsx](../src/app/recorder.tsx) + [src/features/recorder/](../src/features/recorder/) | ✅ **Phase A complete** — draft-backed, persisted, resumable (see §3)                                  |
+| Timeline screen (#3)                       | [src/app/timeline.tsx](../src/app/timeline.tsx)                                           | 🚧 **stub placeholder only** — next milestone                                                                     |
 
-**Recorder — what works:** `CameraView`, JIT camera+mic permission gate with Settings fallback (§2.3 ✅), tap-to-record start/stop, bottom segment bar with inline ✕ delete, `→` to `/timeline` (§2.1 layout ✅).
+**Recorder — what works:** `CameraView`; JIT camera+mic permission gate with Settings fallback (§2.3); tap-to-record start/stop; clips persisted to the document dir + autosaved as `segments` rows; segment bar driven by `useLiveQuery` with inline ✕ delete and hold+drag reorder; real first-frame thumbnails (runtime); camera controls (flip / flash / stabilization); lazy draft creation + empty-draft cleanup; resume a draft from Home via `draftId`; `→` carries `draftId` to `/timeline`.
+
+### Code structure & tooling
+
+- **Feature-scoped modules.** The recorder lives in [src/features/recorder/](../src/features/recorder/): `use-recorder` (draft + recording state/actions), `use-recorder-permissions`, and presentational `permission-gate` / `camera-controls` / `segment-bar` / `close-button`. [recorder.tsx](../src/app/recorder.tsx) is a thin orchestrator. Convention going forward: `components/` = shared, `features/<screen>/` = feature-scoped.
+- **Media utils.** [src/utils/video.ts](../src/utils/video.ts) (`generateThumbnail` cached by uri, `getDurationMs`) and [src/utils/file-store.ts](../src/utils/file-store.ts) (relative-path clip storage over the SDK 56 `File`/`Directory`/`Paths` API).
+- **Formatting/lint.** Prettier configured ([.prettierrc.json](../.prettierrc.json), `npm run format` / `format:check`) and wired into ESLint via `eslint-config-prettier`. Codebase is tsc-, lint-, and Prettier-clean.
 
 ---
 
@@ -48,11 +54,8 @@ This was the architectural seam to close first; both screens depend on it. Close
 
 ### Other missing recorder pieces (§2.1 / §2.2)
 
-hold-to-record · `+` import (`expo-image-picker`) · hold+drag reorder · tap-to-preview · camera controls (flip/flash/stabilize/zoom) via `@expo/ui` + `expo-symbols` + `expo-glass-effect` · pinch/drag-zoom gesture glue.
-
-### Unused-yet deps
-
-`expo-video` (for preview/playback) and `expo-file-system` are installed but not used yet.
+Still to do (polish, Phase D): hold-to-record · `+` import (`expo-image-picker`) · tap-to-preview a clip · pinch/drag zoom gesture · glass-effect styling on the control rail (`@expo/ui` + `expo-glass-effect`).
+Done: flip/flash/stabilization controls, hold+drag reorder.
 
 ---
 
@@ -96,14 +99,14 @@ Goal: the doc's actual Milestone 0, now testable because Phase A made segments r
 ### Phase D — Upload (§4) and the rest
 
 - [ ] Upload screen (#4): inline merged preview (tap→fullscreen via `expo-video`), `tus-js-client` v4 + SQLite `urlStorage`/`fileReader` (§4), per-draft destination picker (#5), pause/resume UI.
-- [ ] Recorder polish (§2.1/2.2): hold-to-record, `+` import, hold+drag reorder, tap-to-preview, camera controls (`@expo/ui` + `expo-symbols` + `expo-glass-effect`), pinch/drag zoom glue.
+- [ ] Recorder polish (§2.1/2.2): hold-to-record, `+` import, tap-to-preview, glass-effect control rail (`@expo/ui` + `expo-glass-effect`), pinch/drag zoom glue. (Flip/flash/stabilization + hold+drag reorder already done.)
 - [ ] Deferred to the end per docs: `.pulse` transfer (§9), onboarding (§5), rebrand (§2.4).
 
 ---
 
 ## 4. Key recommendation
 
-**Do Phase A before more timeline work.** It's the architectural seam the docs designed around (everything flows through the draft model, §1.0b), and it unblocks the dev-seed path that makes the real Milestone 0 testable on a simulator.
+**Phase A is done — Phase B (the timeline editor, real Milestone 0) is next.** Segments are now real DB rows, so start by making the dev-seed path real: drop 2–3 short clips with deliberately mismatched res/fps/codec under `assets/dev/`, have `DEV_SEED_SEGMENTS` copy them into a draft dir, and route straight into `/timeline` — so the editor is buildable/testable on a simulator with no camera. Then build the timeline UI ([timeline.tsx](../src/app/timeline.tsx)) as non-destructive metadata writes (§1.0a/§1.0c), with `draftId` already being passed in from the recorder's `→`. Prototype the native export module (Phase C) early — it's the single biggest rebuild risk.
 
 ## 5. Invariants to honor (don't regress these)
 
