@@ -49,8 +49,15 @@ Mirror the **real video surfaces the app meets**, and span enough variety to str
 - **Codec:** mix H.264 and HEVC. **Container:** mix QuickTime (camera) and plain MP4 (shared).
 - **Length:** ~12–24s so there's room to trim.
 
-## Size / git
+## Size / git (Git LFS)
 
-The clips (~25 MB total) are **committed directly** so `+ seed` works straight after a clone with no
-extra tooling. They rarely change; regenerate with the script rather than hand-editing. If this set
-grows much larger, move it to Git LFS (`git lfs track "assets/dev/*.mp4"`) to keep history lean.
+The clips (~25 MB) are stored in **Git LFS** (`assets/dev/*.mp4`) and fetched on a normal clone, so
+`+ seed` works out of the box — just have `git lfs` installed. The regen master
+(`fixtures/bbb_master.mov`, ~400 MB) is **also** in LFS but **excluded from normal clones** via
+[`.lfsconfig`](../../.lfsconfig); fetch it only when regenerating:
+
+```sh
+git lfs pull --include "fixtures/*.mov"   # the make-dev-fixtures script does this automatically
+```
+
+They rarely change — regenerate with the script rather than hand-editing.

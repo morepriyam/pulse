@@ -23,15 +23,27 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/assets/dev"
-# Master is cached persistently (it's 400+ MB — never committed); override with BBB_MASTER.
-SRC="${BBB_MASTER:-$HOME/.cache/pulse-dev-fixtures/bbb_master.mov}"
+# Master lives in the repo at fixtures/bbb_master.mov via Git LFS, but is excluded from normal
+# clones (.lfsconfig) since it's 400+ MB. Fetch on demand: git lfs pull --include "fixtures/*.mov"
+# Override the path with BBB_MASTER=/path.
+SRC="${BBB_MASTER:-$ROOT/fixtures/bbb_master.mov}"
 MASTER_URL="https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 command -v ffmpeg >/dev/null || { echo "ffmpeg not found (brew install ffmpeg)"; exit 1; }
 mkdir -p "$OUT"
 rm -f "$OUT"/*.mp4
-[ -f "$SRC" ] || { echo ">>> downloading master to $SRC"; mkdir -p "$(dirname "$SRC")"; curl -L --fail -o "$SRC" "$MASTER_URL"; }
+# Resolve the master. On a fresh clone the LFS-tracked file is a small pointer (fetchexclude),
+# so pull it on demand; if it's still not a real video, download it.
+is_real_video() { [ -f "$1" ] && [ "$(wc -c <"$1")" -gt 1000000 ]; }
+if ! is_real_video "$SRC"; then
+  if [ -f "$SRC" ] && command -v git >/dev/null && git -C "$ROOT" rev-parse >/dev/null 2>&1; then
+    echo ">>> fetching master from Git LFS"; git -C "$ROOT" lfs pull --include "fixtures/*.mov" || true
+  fi
+  if ! is_real_video "$SRC"; then
+    echo ">>> downloading master to $SRC"; mkdir -p "$(dirname "$SRC")"; curl -L --fail -o "$SRC" "$MASTER_URL"
+  fi
+fi
 
 # name | orient(portrait|land) | display geom | fps | codec | container | start | dur
 #   portrait geom scales to the UPRIGHT display size (WxH, H>W); the script transposes it into a
