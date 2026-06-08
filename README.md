@@ -4,6 +4,15 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 ## Get started
 
+> **Git LFS required.** The dev-seed video fixtures in `assets/dev/*.mp4` are stored in [Git LFS](https://git-lfs.com). Install it **before/after cloning** or those files arrive as tiny pointer stubs and the dev `+ seed` button breaks:
+>
+> ```bash
+> brew install git-lfs && git lfs install   # one-time
+> git lfs pull                              # if you cloned before installing
+> ```
+>
+> The ~400 MB fixture-regen master (`fixtures/bbb_master.mov`) is intentionally **excluded** from normal clones (see `.lfsconfig`); fetch it only when regenerating fixtures: `git lfs pull --include "fixtures/*.mov"`.
+
 1. Install dependencies
 
    ```bash
@@ -15,6 +24,8 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    ```bash
    npx expo start
    ```
+
+   This app uses native modules (`expo-camera`), so it needs a **dev build** (`npm run ios` / `npm run android`), not Expo Go. In a dev build, the Home screen has `+ seed` / `clear` buttons that create/remove a "Dev sample" draft from the bundled `assets/dev/` clips — so the editor is exercisable on a simulator with no camera. See [assets/dev/README.md](assets/dev/README.md) and [docs/implementation-status.md](docs/implementation-status.md).
 
 In the output, you'll find options to open the app in a
 

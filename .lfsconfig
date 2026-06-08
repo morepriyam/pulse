@@ -1,0 +1,5 @@
+# Don't auto-download the big regen master on clone/checkout — it's only needed to regenerate
+# the dev-seed fixtures. Fetch it on demand with: git lfs pull --include "fixtures/*.mov"
+# The small assets/dev/*.mp4 clips are still fetched normally.
+[lfs]
+	fetchexclude = fixtures/*.mov
