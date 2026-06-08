@@ -21,9 +21,33 @@ const SEED_DRAFT_ID = 'dev-seed';
  * so paths must be static string literals — no variables, no globbing.
  */
 const FIXTURES: { module: number; label: string }[] = [
-  // { module: require('../../assets/dev/portrait-1080p-h264.mp4'), label: 'portrait 1080p h264' },
-  // { module: require('../../assets/dev/landscape-4k-60fps-hevc.mp4'), label: 'landscape 4k60 hevc' },
-  // { module: require('../../assets/dev/square-720p.mp4'), label: 'square 720p' },
+  // primary surface: short-form portrait (matches the recorder / iPhone Camera — coded landscape
+  // + 90deg rotation metadata, QuickTime container). The h264 one mirrors this recorder exactly.
+  {
+    module: require('../../assets/dev/portrait-1080p-30fps-h264.mp4'),
+    label: 'portrait 1080p 30fps h264 (recorder match)',
+  },
+  {
+    module: require('../../assets/dev/portrait-1080p-30fps-hevc.mp4'),
+    label: 'portrait 1080p 30fps hevc (iPhone default)',
+  },
+  {
+    module: require('../../assets/dev/portrait-1080p-60fps-hevc.mp4'),
+    label: 'portrait 1080p 60fps hevc',
+  },
+  {
+    module: require('../../assets/dev/portrait-4k-60fps-hevc.mp4'),
+    label: 'portrait 4k 60fps hevc',
+  },
+  // added later from Photos / shared: landscape to normalize into the portrait timeline
+  {
+    module: require('../../assets/dev/landscape-1080p-30fps-h264.mp4'),
+    label: 'landscape 1080p 30fps h264 (shared mp4)',
+  },
+  {
+    module: require('../../assets/dev/landscape-4k-30fps-hevc.mp4'),
+    label: 'landscape 4k 30fps hevc (photos)',
+  },
 ];
 
 /**
