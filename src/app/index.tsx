@@ -8,7 +8,8 @@ import { DraftCard } from '@/components/draft-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { devClearDrafts, devSeedDraft, draftListQuery } from '@/db/drafts';
+import { draftListQuery } from '@/db/drafts';
+import { clearDrafts, seedDraft } from '@/dev/seed';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
@@ -22,12 +23,12 @@ export default function HomeScreen() {
         <ThemedText type="title">Pulse</ThemedText>
         {__DEV__ && (
           <View style={styles.devRow}>
-            <Pressable onPress={devSeedDraft} hitSlop={8}>
+            <Pressable onPress={() => void seedDraft()} hitSlop={8}>
               <ThemedText themeColor="accent" type="small">
                 + seed
               </ThemedText>
             </Pressable>
-            <Pressable onPress={devClearDrafts} hitSlop={8}>
+            <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
               <ThemedText themeColor="textSecondary" type="small">
                 clear
               </ThemedText>
