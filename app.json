@@ -47,7 +47,8 @@
           "microphonePermission": "Pulse uses your microphone to record audio with your videos."
         }
       ],
-      "./plugins/with-disable-script-sandboxing"
+      "./plugins/with-disable-script-sandboxing",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
