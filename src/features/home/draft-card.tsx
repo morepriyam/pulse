@@ -1,15 +1,12 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { VideoThumbnail } from 'expo-video';
-import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { absolutize } from '@/utils/file-store';
+import { useThumbnail } from '@/hooks/use-thumbnail';
 import { formatClipCount, formatDuration, formatRelativeDate } from '@/utils/format';
-import { generateThumbnail } from '@/utils/video';
-import { ThemedText } from './themed-text';
 
 type Props = {
   name: string | null;
@@ -30,20 +27,7 @@ export function DraftCard({
   onPress,
 }: Props) {
   const theme = useTheme();
-  const [thumbnail, setThumbnail] = useState<VideoThumbnail>();
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      const t = firstSegmentFilename
-        ? await generateThumbnail(absolutize(firstSegmentFilename))
-        : undefined;
-      if (active) setThumbnail(t);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [firstSegmentFilename]);
+  const thumbnail = useThumbnail(firstSegmentFilename);
 
   return (
     <Pressable

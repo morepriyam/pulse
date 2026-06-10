@@ -1,52 +1,66 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { VideoThumbnail } from 'expo-video';
-import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedRef } from 'react-native-reanimated';
+import Animated, { useAnimatedRef, useScrollViewOffset } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 
 import { Accent, Spacing } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
-import { absolutize } from '@/utils/file-store';
-import { generateThumbnail } from '@/utils/video';
-
-const THUMB_HEIGHT = 64;
+import { useThumbnail } from '@/hooks/use-thumbnail';
+import { PlayheadCursor, type Cursor } from './playhead-cursor';
+import { SCRUB_LANE, THUMB_HEIGHT, THUMB_WIDTH, TRACK_GAP } from './track-metrics';
 
 type Props = {
   segments: Segment[];
   onReorder: (ids: string[]) => void;
   onDelete: (id: string) => void;
+  onSelect: (id: string) => void;
   onNext?: () => void;
+  cursor?: Cursor;
 };
 
-export function SegmentBar({ segments, onReorder, onDelete, onNext }: Props) {
+export function SegmentBar({ segments, onReorder, onDelete, onSelect, onNext, cursor }: Props) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // Owned here (not in PlayheadCursor) so the offset is already tracked when the cursor
+  // mounts on a bar the user scrolled before opening the preview.
+  const scrollOffset = useScrollViewOffset(scrollRef);
 
   if (segments.length === 0) return null;
 
   return (
     <View style={styles.bar}>
-      <Animated.ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.scroll}
-        contentContainerStyle={styles.content}>
-        <Sortable.Grid
-          rows={1}
-          rowHeight={THUMB_HEIGHT}
-          columnGap={Spacing.two}
-          data={segments}
-          keyExtractor={(s) => s.id}
-          scrollableRef={scrollRef}
-          autoScrollDirection="horizontal"
-          onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
-          renderItem={({ item }) => (
-            <SegmentThumb segment={item} onDelete={() => onDelete(item.id)} />
-          )}
-        />
-      </Animated.ScrollView>
+      {/* The scrub lane is reserved in BOTH modes so the bar never changes height (and
+          therefore never shifts) when a preview opens. */}
+      <View style={styles.viewport}>
+        <Animated.ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.content}>
+          <Sortable.Grid
+            rows={1}
+            rowHeight={THUMB_HEIGHT}
+            columnGap={TRACK_GAP}
+            data={segments}
+            keyExtractor={(s) => s.id}
+            scrollableRef={scrollRef}
+            autoScrollDirection="horizontal"
+            onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
+            renderItem={({ item }) => (
+              <SegmentThumb
+                segment={item}
+                active={cursor?.activeId === item.id}
+                onSelect={() => onSelect(item.id)}
+                onDelete={() => onDelete(item.id)}
+              />
+            )}
+          />
+        </Animated.ScrollView>
+
+        {cursor && (
+          <PlayheadCursor cursor={cursor} segments={segments} scrollOffset={scrollOffset} />
+        )}
+      </View>
 
       {onNext && (
         <Pressable
@@ -61,21 +75,26 @@ export function SegmentBar({ segments, onReorder, onDelete, onNext }: Props) {
   );
 }
 
-function SegmentThumb({ segment, onDelete }: { segment: Segment; onDelete: () => void }) {
-  const [thumbnail, setThumbnail] = useState<VideoThumbnail>();
-
-  useEffect(() => {
-    let active = true;
-    void generateThumbnail(absolutize(segment.originalFilename)).then((t) => {
-      if (active) setThumbnail(t);
-    });
-    return () => {
-      active = false;
-    };
-  }, [segment.originalFilename]);
+function SegmentThumb({
+  segment,
+  active,
+  onSelect,
+  onDelete,
+}: {
+  segment: Segment;
+  active: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const thumbnail = useThumbnail(segment.originalFilename);
 
   return (
-    <View style={styles.thumb}>
+    // Sortable.Touchable cooperates with the grid's long-press drag (a plain Pressable
+    // can fire its onPress after a completed drag, popping the preview unexpectedly).
+    <Sortable.Touchable
+      onTap={onSelect}
+      accessibilityLabel="Preview clip"
+      style={[styles.thumb, active && styles.thumbActive]}>
       {thumbnail ? (
         <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
       ) : (
@@ -88,7 +107,7 @@ function SegmentThumb({ segment, onDelete }: { segment: Segment; onDelete: () =>
         accessibilityLabel="Delete clip">
         <SymbolView name="xmark" size={11} weight="bold" tintColor="#fff" />
       </Pressable>
-    </View>
+    </Sortable.Touchable>
   );
 }
 
@@ -104,15 +123,19 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  scroll: { flex: 1 },
+  viewport: { flex: 1, overflow: 'hidden', paddingBottom: SCRUB_LANE },
   content: { alignItems: 'center', paddingRight: Spacing.two },
   thumb: {
-    width: 48,
+    width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  thumbActive: {
+    borderWidth: 2,
+    borderColor: Accent,
   },
   thumbImage: {
     position: 'absolute',

@@ -13,7 +13,8 @@ export const draftListQuery = db
     name: projects.name,
     lastModified: projects.lastModified,
     segmentCount: count(segments.id),
-    durationMs: sql<number>`coalesce(sum(coalesce(${segments.trimEndMs} - ${segments.trimStartMs}, ${segments.durationMs})), 0)`,
+    // Effective (trimmed) duration; per-edge null fallback MUST match utils/segment-window.ts.
+    durationMs: sql<number>`coalesce(sum(coalesce(${segments.trimEndMs}, ${segments.durationMs}) - coalesce(${segments.trimStartMs}, 0)), 0)`,
     // Cover frame is derived at runtime from the first clip's file.
     firstSegmentFilename: sql<
       string | null
