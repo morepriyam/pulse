@@ -17,6 +17,7 @@ type Props = {
   facing: CameraType;
   torch: boolean;
   stabilization: StabilizationMode;
+  disabled?: boolean;
   onFlip: () => void;
   onToggleTorch: () => void;
   onCycleStabilization: () => void;
@@ -27,6 +28,7 @@ export function CameraControls({
   facing,
   torch,
   stabilization,
+  disabled = false,
   onFlip,
   onToggleTorch,
   onCycleStabilization,
@@ -36,13 +38,14 @@ export function CameraControls({
       <ControlButton
         icon="arrow.triangle.2.circlepath.camera"
         label="Flip camera"
+        disabled={disabled}
         onPress={onFlip}
       />
       <ControlButton
         icon={torch ? 'bolt.fill' : 'bolt.slash.fill'}
         label={torch ? 'Turn off flash' : 'Turn on flash'}
         tint={torch ? Accent : '#fff'}
-        disabled={facing === 'front'}
+        disabled={disabled || facing === 'front'}
         onPress={onToggleTorch}
       />
       <ControlButton
@@ -50,6 +53,7 @@ export function CameraControls({
         label={`Stabilization: ${STABILIZATION_LABELS[stabilization]}`}
         caption={STABILIZATION_LABELS[stabilization]}
         tint={stabilization === 'off' ? '#fff' : Accent}
+        disabled={disabled}
         onPress={onCycleStabilization}
       />
     </View>

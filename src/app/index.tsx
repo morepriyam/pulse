@@ -4,12 +4,12 @@ import { SymbolView } from 'expo-symbols';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DraftCard } from '@/components/draft-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { draftListQuery } from '@/db/drafts';
 import { clearDrafts, seedDraft } from '@/dev/seed';
+import { DraftCard } from '@/features/home/draft-card';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
