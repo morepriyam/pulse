@@ -1,21 +1,109 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionMenu, type Anchor, type MenuAction } from '@/components/action-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { draftListQuery } from '@/db/drafts';
+import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
 import { clearDrafts, seedDraft } from '@/dev/seed';
 import { DraftCard } from '@/features/home/draft-card';
 import { useTheme } from '@/hooks/use-theme';
+
+type DraftRef = { id: string; name: string | null; anchor: Anchor };
 
 export default function HomeScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { data: drafts } = useLiveQuery(draftListQuery);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  // The draft whose action menu (rename, delete, …) is open; null when closed.
+  const [actionsDraft, setActionsDraft] = useState<DraftRef | null>(null);
+  // Name shown ahead of the DB write; dropped once the live query reflects it.
+  const [pendingRename, setPendingRename] = useState<{ id: string; name: string | null } | null>(
+    null,
+  );
+  // Rows hidden optimistically while their delete is in flight.
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
+
+  if (pendingRename && drafts.some((d) => d.id === pendingRename.id && d.name === pendingRename.name)) {
+    setPendingRename(null);
+  }
+  // Once a delete lands (row gone from the query), stop tracking it so the set stays small.
+  if (deletingIds.size) {
+    const live = new Set(drafts.map((d) => d.id));
+    if ([...deletingIds].some((id) => !live.has(id))) {
+      setDeletingIds(new Set([...deletingIds].filter((id) => live.has(id))));
+    }
+  }
+
+  const visibleDrafts = drafts.filter((d) => !deletingIds.has(d.id));
+
+  const submitRename = (draftId: string, currentName: string | null, input: string) => {
+    setEditingDraftId(null);
+    const name = input || null;
+    if (name === currentName) return;
+    setPendingRename({ id: draftId, name });
+    renameDraft(draftId, name).catch(() => {
+      setPendingRename(null);
+      Alert.alert('Rename failed', 'The draft name could not be saved.');
+    });
+  };
+
+  const confirmDelete = (draft: DraftRef) => {
+    Alert.alert(
+      'Delete draft?',
+      `“${draft.name || 'Untitled'}” and its clips will be permanently deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setDeletingIds((prev) => new Set(prev).add(draft.id));
+            deleteDraft(draft.id).catch(() => {
+              setDeletingIds((prev) => {
+                const next = new Set(prev);
+                next.delete(draft.id);
+                return next;
+              });
+              Alert.alert('Delete failed', 'The draft could not be deleted.');
+            });
+          },
+        },
+      ],
+    );
+  };
+
+  // Built per-render from the open draft; new options are added here (§extensible menu).
+  const menuActions: MenuAction[] = actionsDraft
+    ? [
+        {
+          key: 'rename',
+          label: 'Rename',
+          icon: 'pencil',
+          onPress: () => {
+            setEditingDraftId(actionsDraft.id);
+            setActionsDraft(null);
+          },
+        },
+        {
+          key: 'delete',
+          label: 'Delete',
+          icon: 'trash',
+          destructive: true,
+          onPress: () => {
+            const draft = actionsDraft;
+            setActionsDraft(null);
+            confirmDelete(draft);
+          },
+        },
+      ]
+    : [];
 
   return (
     <ThemedView style={styles.container}>
@@ -37,7 +125,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {drafts.length === 0 ? (
+      {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
           <SymbolView name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
           <ThemedText style={styles.emptyTitle}>No drafts yet</ThemedText>
@@ -47,7 +135,7 @@ export default function HomeScreen() {
         </View>
       ) : (
         <FlatList
-          data={drafts}
+          data={visibleDrafts}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.list,
@@ -55,16 +143,27 @@ export default function HomeScreen() {
           ]}
           renderItem={({ item }) => (
             <DraftCard
-              name={item.name}
+              name={pendingRename?.id === item.id ? pendingRename.name : item.name}
               firstSegmentFilename={item.firstSegmentFilename}
               segmentCount={item.segmentCount}
               durationMs={item.durationMs}
               lastModified={item.lastModified}
+              editing={editingDraftId === item.id}
               onPress={() => router.push({ pathname: '/recorder', params: { draftId: item.id } })}
+              onLongPress={() => setEditingDraftId(item.id)}
+              onMore={(anchor) => setActionsDraft({ id: item.id, name: item.name, anchor })}
+              onSubmitName={(input) => submitRename(item.id, item.name, input)}
             />
           )}
         />
       )}
+
+      <ActionMenu
+        visible={actionsDraft !== null}
+        anchor={actionsDraft?.anchor ?? null}
+        actions={menuActions}
+        onClose={() => setActionsDraft(null)}
+      />
 
       <Pressable
         onPress={() => router.push('/recorder')}
