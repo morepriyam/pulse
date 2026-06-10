@@ -96,6 +96,7 @@ export default function RecorderScreen() {
               isPlaying={preview.isPlaying}
               onTogglePlay={preview.togglePlay}
               onClose={() => setPreviewId(null)}
+              onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
             />
           </View>
         )}
