@@ -19,13 +19,18 @@ type Props = {
   cursor?: Cursor;
 };
 
-export function SegmentBar({ segments, onReorder, onDelete, onSelect, onNext, cursor }: Props) {
+export function SegmentBar(props: Props) {
+  // Gate BEFORE the hooks mount: useScrollViewOffset warns on every empty-draft render
+  // while its ref has no ScrollView attached, so the hooks live in Bar below.
+  if (props.segments.length === 0) return null;
+  return <Bar {...props} />;
+}
+
+function Bar({ segments, onReorder, onDelete, onSelect, onNext, cursor }: Props) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   // Owned here (not in PlayheadCursor) so the offset is already tracked when the cursor
   // mounts on a bar the user scrolled before opening the preview.
   const scrollOffset = useScrollViewOffset(scrollRef);
-
-  if (segments.length === 0) return null;
 
   return (
     <View style={styles.bar}>
