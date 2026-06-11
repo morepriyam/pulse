@@ -46,7 +46,9 @@ export function ActionMenu({ visible, anchor, actions, onClose }: Props) {
 
   const estHeight = actions.length * EST_ROW_HEIGHT + Spacing.two;
   const openUp = anchor.y + anchor.height + GAP + estHeight > screenH - insets.bottom;
-  const top = openUp ? Math.max(insets.top, anchor.y - GAP - estHeight) : anchor.y + anchor.height + GAP;
+  const top = openUp
+    ? Math.max(insets.top, anchor.y - GAP - estHeight)
+    : anchor.y + anchor.height + GAP;
   // Pin the menu's right edge to the anchor's right edge, kept on-screen.
   const right = Math.max(insets.right + Spacing.two, screenW - (anchor.x + anchor.width));
 
@@ -66,7 +68,10 @@ export function ActionMenu({ visible, anchor, actions, onClose }: Props) {
                   accessibilityLabel={action.label}
                   style={({ pressed }) => [
                     styles.row,
-                    i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+                    i > 0 && {
+                      borderTopWidth: StyleSheet.hairlineWidth,
+                      borderTopColor: theme.border,
+                    },
                     pressed && { backgroundColor: theme.backgroundSelected },
                   ]}>
                   <ThemedText style={[styles.rowLabel, { color: tint }]}>{action.label}</ThemedText>

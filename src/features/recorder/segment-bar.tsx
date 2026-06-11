@@ -97,7 +97,10 @@ function SegmentThumb({
     <View style={[styles.thumb, active && styles.thumbActive]}>
       {/* Sortable.Touchable cooperates with the grid's long-press drag (a plain Pressable
           can fire its onPress after a completed drag, popping the preview unexpectedly). */}
-      <Sortable.Touchable onTap={onSelect} accessibilityLabel="Preview clip" style={styles.thumbTouch}>
+      <Sortable.Touchable
+        onTap={onSelect}
+        accessibilityLabel="Preview clip"
+        style={styles.thumbTouch}>
         {thumbnail ? (
           <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
         ) : (

@@ -30,7 +30,10 @@ export default function HomeScreen() {
   // Rows hidden optimistically while their delete is in flight.
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
 
-  if (pendingRename && drafts.some((d) => d.id === pendingRename.id && d.name === pendingRename.name)) {
+  if (
+    pendingRename &&
+    drafts.some((d) => d.id === pendingRename.id && d.name === pendingRename.name)
+  ) {
     setPendingRename(null);
   }
   // Once a delete lands (row gone from the query), stop tracking it so the set stays small.
