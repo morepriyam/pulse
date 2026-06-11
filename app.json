@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.pulse-new"
+      "bundleIdentifier": "com.anonymous.pulse-new",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Pulse needs photo library access to save your edited videos."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +22,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "package": "com.anonymous.pulsenew"
     },
     "web": {
@@ -48,6 +55,7 @@
         }
       ],
       "./plugins/with-disable-script-sandboxing",
+      "./plugins/with-video-trim",
       "expo-image"
     ],
     "experiments": {

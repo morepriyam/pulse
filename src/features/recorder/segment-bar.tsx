@@ -91,7 +91,8 @@ function SegmentThumb({
   onSelect: () => void;
   onDelete: () => void;
 }) {
-  const thumbnail = useThumbnail(segment.originalFilename);
+  // Cover the EFFECTIVE clip — the edited file once trimmed, else the pristine original.
+  const thumbnail = useThumbnail(segment.editedFilename ?? segment.originalFilename);
 
   return (
     <View style={[styles.thumb, active && styles.thumbActive]}>

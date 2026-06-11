@@ -3,10 +3,16 @@ import { Directory, File, Paths } from 'expo-file-system';
 // Clips live under the document directory (safe from system eviction). The DB stores
 // relative paths only; we absolutize at runtime so the sandbox container can change
 // between launches without invalidating references (§2.2).
-//   drafts/{draftId}/segments/{segmentId}.mp4
+//   drafts/{draftId}/segments/{segmentId}.mp4         — pristine original
+//   drafts/{draftId}/segments/{segmentId}.edited.mp4  — re-encoded editor output
 
 export function segmentRelPath(draftId: string, segmentId: string): string {
   return `drafts/${draftId}/segments/${segmentId}.mp4`;
+}
+
+/** The edited (RNVT output) file's relative path — coexists with the pristine original. */
+export function editedSegmentRelPath(draftId: string, segmentId: string): string {
+  return `drafts/${draftId}/segments/${segmentId}.edited.mp4`;
 }
 
 export function absolutize(relPath: string): string {
@@ -43,6 +49,23 @@ export async function copyIntoSegments(
   if (dest.exists) dest.delete();
   await new File(srcUri).copy(dest);
   return segmentRelPath(draftId, segmentId);
+}
+
+/**
+ * Move an RNVT editor output (in app cache/files) into the draft's segments dir as the
+ * segment's `.edited.mp4`, replacing any prior edit; returns its relative path (§ destructive trim).
+ */
+export async function importTrimmedFile(
+  srcUri: string,
+  draftId: string,
+  segmentId: string,
+): Promise<string> {
+  const dir = new Directory(Paths.document, 'drafts', draftId, 'segments');
+  dir.create({ intermediates: true, idempotent: true });
+  const dest = new File(dir, `${segmentId}.edited.mp4`);
+  if (dest.exists) dest.delete();
+  await new File(srcUri).move(dest);
+  return editedSegmentRelPath(draftId, segmentId);
 }
 
 /** Delete a clip file. Caller must ensure no other segment references it (splits can share a file). */

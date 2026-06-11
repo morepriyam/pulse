@@ -13,12 +13,12 @@ export const draftListQuery = db
     name: projects.name,
     lastModified: projects.lastModified,
     segmentCount: count(segments.id),
-    // Effective (trimmed) duration; per-edge null fallback MUST match utils/segment-window.ts.
-    durationMs: sql<number>`coalesce(sum(coalesce(${segments.trimEndMs}, ${segments.durationMs}) - coalesce(${segments.trimStartMs}, 0)), 0)`,
-    // Cover frame is derived at runtime from the first clip's file.
+    // Effective duration = sum of each clip's edited duration (if edited) else its original.
+    durationMs: sql<number>`coalesce(sum(coalesce(${segments.editedDurationMs}, ${segments.durationMs})), 0)`,
+    // Cover frame is derived at runtime from the first clip's effective (edited ?? original) file.
     firstSegmentFilename: sql<
       string | null
-    >`(select original_filename from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
+    >`(select coalesce(edited_filename, original_filename) from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
   })
   .from(projects)
   .leftJoin(segments, eq(segments.projectId, projects.id))
@@ -72,7 +72,40 @@ export async function deleteSegment(segmentId: string): Promise<void> {
     .from(segments)
     .where(eq(segments.originalFilename, seg.originalFilename));
   if (stillReferenced === 0) deleteSegmentFile(seg.originalFilename);
+  // The edited file is per-segment (never shared) — always safe to delete with the row.
+  if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
 
+  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
+}
+
+/** Apply a destructive edit: point the segment at its new re-encoded file + duration. */
+export async function setEdited(
+  segmentId: string,
+  editedFilename: string,
+  editedDurationMs: number,
+): Promise<void> {
+  const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
+  if (!seg) return;
+  // Replacing a prior edit — drop the old file first (importTrimmedFile writes a fresh one).
+  if (seg.editedFilename && seg.editedFilename !== editedFilename) {
+    deleteSegmentFile(seg.editedFilename);
+  }
+  await db
+    .update(segments)
+    .set({ editedFilename, editedDurationMs })
+    .where(eq(segments.id, segmentId));
+  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
+}
+
+/** Reset a segment back to its pristine original — delete the edited file, clear the columns. */
+export async function resetEdit(segmentId: string): Promise<void> {
+  const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
+  if (!seg) return;
+  if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
+  await db
+    .update(segments)
+    .set({ editedFilename: null, editedDurationMs: null })
+    .where(eq(segments.id, segmentId));
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
 

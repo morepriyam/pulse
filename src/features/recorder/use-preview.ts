@@ -9,15 +9,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Segment } from '@/db/schema';
 import { absolutize } from '@/utils/file-store';
 import { clamp } from '@/utils/math';
-import { effMs, indexAtGlobalMs, inMs, outMs, segmentOffsets } from '@/utils/segment-window';
+import {
+  effFile,
+  effMs,
+  indexAtGlobalMs,
+  inMs,
+  outMs,
+  segmentOffsets,
+} from '@/utils/segment-window';
 
 /** Tolerance for "playhead reached the clip's out-point" (ms). */
 const END_EPSILON_MS = 60;
 
 /**
  * In-recorder preview state: drives one `expo-video` player across a draft's segments
- * (sequential playback respecting each clip's trim window §1.0c), tracks the active clip,
- * the source playhead, and a draft-global playhead for the segment-bar cursor.
+ * (sequential playback of each clip's effective file — edited if present, else original),
+ * tracks the active clip, the source playhead, and a draft-global playhead for the bar cursor.
  *
  * `anchorId` is the tapped segment that opened the preview — `null` means preview closed;
  * the hook stays mounted with a stopped, unloaded player.
@@ -116,12 +123,12 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
       }
     };
 
-    if (loadedFileRef.current === active.originalFilename) {
+    if (loadedFileRef.current === effFile(active)) {
       begin();
     } else {
-      loadedFileRef.current = active.originalFilename;
+      loadedFileRef.current = effFile(active);
       swapInFlightRef.current = true;
-      void player.replaceAsync(absolutize(active.originalFilename)).then(begin);
+      void player.replaceAsync(absolutize(effFile(active))).then(begin);
     }
     return () => {
       cancelled = true;
@@ -228,7 +235,7 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
       // Keep the pending offset fresh: if a load is in flight, drag frames would otherwise
       // be dropped — begin() lands on the latest one instead.
       pendingSeekRef.current = sourceMs;
-      if (loadedFileRef.current === seg.originalFilename) {
+      if (loadedFileRef.current === effFile(seg)) {
         player.currentTime = sourceMs / 1000;
         setPositionMs(sourceMs);
         if (seg.id !== selectedId) setSelectedId(seg.id);
