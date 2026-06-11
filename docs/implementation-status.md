@@ -2,7 +2,7 @@
 
 > **What this is.** A snapshot of where the build actually stands vs. the design docs, the gaps that matter, and a phased plan to continue. Pick this up later as the working checklist. Reconcile against the decisions in [pulse-new-plan.md](pulse-new-plan.md) (forward decisions) and [pulse-original-features.md](pulse-original-features.md) (behavior spec).
 >
-> **Captured:** 2026-06-04 · **last updated:** 2026-06-10 (**direction change: no separate timeline screen** — editing moves into the recorder. In-recorder preview landed + verified on the iOS simulator: tap-a-clip preview modal, sequential trim-aware playback with auto-advance, draggable playhead cursor over the segment bar. Trim UI is the next milestone; split/reset deferred). Update as phases land.
+> **Captured:** 2026-06-04 · **last updated:** 2026-06-10 (**major reversal: `react-native-video-trim` (RNVT) re-adopted — see [pulse-new-plan.md](pulse-new-plan.md) §1.** Editing is now RNVT's full-screen native editor (trim + crop/rotate/flip/mute/speed), and export is RNVT `merge()` (FFmpeg) — the custom AVFoundation/Media3 module is dropped. This **supersedes** the 2026-06-02 "drop RNVT / native-only / non-destructive" direction and the in-recorder custom preview (moved to branch `backup/in-recorder-preview`). Trim is now **destructive** (`editedFilename`), originals kept. Code + config landed and static-verified (tsc/lint/format clean, migration `0001`, prebuild applies plugin); native dev-build runtime test still pending). Update as phases land.
 
 ---
 
@@ -12,7 +12,7 @@
 
 | Piece                                    | File                                                | Status                                                                                                                                                 |
 | ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Drizzle schema (`projects` + `segments`) | [src/db/schema.ts](../src/db/schema.ts)             | ✅ encodes §1.0c non-destructive model: `originalFilename` never mutated; `trimStartMs`/`trimEndMs` as metadata; split = 2nd row sharing the same file |
+| Drizzle schema (`projects` + `segments`) | [src/db/schema.ts](../src/db/schema.ts)             | ✅ destructive-edit model (migration `0001`): `originalFilename` kept pristine; `editedFilename`/`editedDurationMs` hold RNVT's re-encoded output; effective = `edited ?? original`. `trimStartMs`/`trimEndMs` now dead |
 | DB connection                            | [src/db/client.ts](../src/db/client.ts)             | ✅ single conn, `enableChangeListener` (powers `useLiveQuery`), `foreign_keys = ON` for segment→project cascade                                        |
 | Reactive drafts query                    | [src/db/drafts.ts](../src/db/drafts.ts)             | ✅ `draftListQuery` with trim-aware effective duration `coalesce(trimEnd - trimStart, duration)` (§3)                                                  |
 | Migration gate                           | [src/db/migrate.tsx](../src/db/migrate.tsx)         | ✅ blocks app start until schema ready                                                                                                                 |
@@ -90,19 +90,21 @@ Not blocking — recorded here so they aren't forgotten:
 - **`deleteSegment` shared-file guard is untested** — the "delete file only if no sibling references `originalFilename`" branch only matters once the timeline introduces splits (two rows sharing a file). Re-verify when Phase B splits land.
 - **Reorder during/after a concurrent write** — `reorderSegments` is transactional and the bar feeds off the live query directly (no local mirror); confirmed stable in manual testing, but worth a look if record-while-dragging ever becomes possible.
 
-### Phase B — Real Milestone 0: timeline editor on dev-seeded clips
+### Phase B — Editing via RNVT editor (replaces the custom preview/timeline)
 
-Goal: the doc's actual Milestone 0, now testable because Phase A made segments real DB rows.
+Goal: tap a clip → RNVT's full-screen native editor; save → destructive `editedFilename`. Code landed 2026-06-10; **native dev-build runtime test pending**.
 
-- [x] **Dev-seed fixtures** ✅ **2026-06-08** — six bundled clips under [assets/dev/](../assets/dev/) (Git LFS), portrait-weighted and realistic (mixed res/fps/codec/container, iPhone-accurate rotation metadata). [src/dev/seed.ts](../src/dev/seed.ts) `seedDraft()` copies them into `drafts/dev-seed/segments/` and inserts segments via the production path; `clearDrafts()` tears it down. Idempotent (fixed `dev-seed` id). Wired to Home `+ seed`/`clear`. Verified on simulator. _Note: routes into `/timeline` (the stub) — the actual editor is the next bullet._
-- [x] **In-recorder preview** (replaces the timeline screen, 2026-06-10, simulator-verified) — [use-preview.ts](../src/features/recorder/use-preview.ts) (one shared player, trim-aware sequential playback, auto-advance, global-timeline math, scrub seeking), [preview-modal.tsx](../src/features/recorder/preview-modal.tsx) (playback surface over the camera area; bar stays visible), [playhead-cursor.tsx](../src/features/recorder/playhead-cursor.tsx) (draggable cursor over the bar, rendered outside the ScrollView so it never fights scroll/sortables gestures). **Upright portrait playback confirmed** on the fixtures' real rotation matrices; landscape letterboxes. Playback is already trim-aware (the `inMs`/`outMs`/`effMs` window math reads the schema's trim columns; they're all null until the trim UI lands).
-- [ ] **Trim UI** — next milestone: a compact strip in the preview modal spanning the active clip's full `durationMs` with draggable in/out handles → live seek while dragging → a `setTrim` mutation on release (nulls = natural bounds, min window ~400ms, re-extendable). Non-destructive metadata only (§1.0a/§1.0c). A reference implementation exists on the local branch `backup/timeline-v1` (the `handle(edge)` gesture builder in `src/features/timeline/clip.tsx` there — not on `main`).
-- [ ] **Split / Reset** — deferred (schema already supports splits: 2nd row sharing `originalFilename`).
+- [x] **Dev-seed fixtures** ✅ **2026-06-08** — six bundled clips under [assets/dev/](../assets/dev/) (Git LFS), portrait-weighted and realistic (mixed res/fps/codec/container, iPhone-accurate rotation metadata). [src/dev/seed.ts](../src/dev/seed.ts) `seedDraft()` copies them into `drafts/dev-seed/segments/` and inserts segments via the production path; `clearDrafts()` tears it down. Idempotent. Wired to Home `+ seed`/`clear`. These mismatched clips are the test set for both the RNVT editor and `merge()`.
+- [x] **RNVT editor wiring** (2026-06-10) — [use-video-trim.ts](../src/features/recorder/use-video-trim.ts) mounts RNVT listeners and `openTrim(segment)` → `showEditor(absolutize(original), …)` on the **pristine original**; `onFinishTrimming` → [`importTrimmedFile`](../src/utils/file-store.ts) moves the re-encoded output into the draft as `{segmentId}.edited.mp4` → [`setEdited`](../src/db/drafts.ts). Config: `enablePreciseTrimming: true`, `enableEditTools: true` (crop/rotate/flip/mute/speed), red `trimmerColor`, `saveToPhoto: false`. Launched from a **✂ button in the preview modal** (left of the 🗑 delete) for the active previewed clip; opening it closes the preview so re-opening plays the fresh edit.
+- [x] **In-recorder preview kept** — `use-preview`/`preview-modal`/`playhead-cursor` were retained (not removed) and **re-pointed at the effective file** (`editedFilename ?? originalFilename` via `segment-window.effFile`): tap a thumb → sequential playback + draggable playhead; edits show up because playback uses the edited file. Thumbnails are tap-to-preview + ✕-delete only. (`backup/in-recorder-preview` still holds the pre-RNVT snapshot.)
+- [x] **Destructive model** — schema gained `editedFilename`/`editedDurationMs` (migration `0001`); originals kept pristine, re-edit re-opens the original, `resetEdit` clears it. Effective file/duration = `edited ?? original` everywhere (thumbnails, `draftListQuery`, export). The old `trimStartMs`/`trimEndMs` columns are now dead.
+- [ ] **Runtime test** — pending a native dev build: `showEditor` + transforms on each fixture, `editedFilename`/thumbnail/duration update, re-tap re-opens original, reset restores.
+- [ ] **Reset UI** — `resetEdit` mutation exists; a "reset to original" affordance on edited thumbs is unwired.
 
-### Phase C — Native export module (the rebuild risk, §1.0)
+### Phase C — Export (deferred; RNVT `merge()` tested then removed)
 
-- [ ] **Custom Expo native module** over AVFoundation (`AVMutableComposition`) / Media3 (`Transformer`): `export(segments)` composing each in/out window → one mp4 in `Paths.cache`; `getDuration()`. **Single biggest risk** — prove `export` on the dev-seeded mismatched clips early.
-- [ ] **Editor `Done`** → run export → navigate to Upload with the merged file.
+- [x] **`merge()` proven on-device, then removed (2026-06-10).** A simulator run confirmed `merge()` composes all effective files (edited ?? original) into one playable mp4 (`trimmedVideo_merged_*.mp4`, ~39 MB), and the throwaway preview played it. **But it was too slow** (sim software encoder; ~minutes for 6 mixed clips), so per the user the `→` button is **back to a placeholder Alert** ("Export coming soon"), `merge()`/`export-preview.tsx` were removed. The custom AVFoundation/Media3 module remains dropped. `react-native-video-trim` stays installed — used only for `showEditor`.
+- [ ] **Real export TBD** — decide the export path later (RNVT `merge()` accepted-but-slow, or revisit). Wire `→` → export → Upload (Phase D) when the Upload screen lands.
 
 ### Phase D — Upload (§4) and the rest
 
@@ -114,12 +116,12 @@ Goal: the doc's actual Milestone 0, now testable because Phase A made segments r
 
 ## 4. Key recommendation
 
-**Phase A is done, the dev-seed path is real, and the in-recorder preview is landed + simulator-verified — the trim UI is the next step.** Editing now lives inside the recorder (no timeline screen): tap-a-clip preview, trim-aware sequential playback with auto-advance, and the draggable playhead all work on the dev-seed draft, and **upright portrait playback is verified for real** (the fixtures' rotation matrices through `expo-video`). Next: the trim strip in the preview modal (drag in/out → a `setTrim` mutation; reference on `backup/timeline-v1`), then **prototype the native export module (Phase C) early** on these mismatched clips — it's the single biggest rebuild risk. Re-verify everything on a physical device before Phase C (simulator has no camera; record-mode interplay with preview is only UI-verified there).
+**The pipeline pivoted to `react-native-video-trim` for editing; export is deferred.** Editing = RNVT's native `showEditor` (destructive `editedFilename`, originals kept); the custom AVFoundation/Media3 module is dropped. **Fully verified on the iOS simulator (2026-06-10)** via a dev build with FFmpegKit: dev-seed loads, tap→preview plays, **✂→RNVT editor trims** (DB confirmed `edited_filename` + `edited_duration_ms = 15338` exact, original kept), thumbnails/duration update reactively, delete cleans up both files, reorder persists. RNVT `merge()` export was also proven (one ~39 MB mp4, played) **but removed for being too slow** — `→` is a placeholder Alert again; `react-native-video-trim` stays only for `showEditor`. The custom preview's pre-RNVT snapshot lives on `backup/in-recorder-preview`.
 
 ## 5. Invariants to honor (don't regress these)
 
 - **Relative-path storage** for segment/thumb URIs; absolutize only at runtime (§2.2).
-- **Non-destructive edits** — never mutate `originalFilename`; trims/splits are metadata; a file is written only at export (§1.0c).
+- **Originals stay pristine** — never mutate `originalFilename`; edits write a separate `editedFilename` (RNVT output), and re-editing always re-opens the original (no compounding re-encode). Effective file/duration = `edited ?? original`.
 - **Trust native duration**, not JS timers, for segment length (orig §4.2 / §11).
 - **Autosave on segment-complete** (+ delete/reorder/trim/rename) as single-row writes (§3).
 - **Recorder and editor communicate only through the draft model**, never a live session object (§1.0b).
