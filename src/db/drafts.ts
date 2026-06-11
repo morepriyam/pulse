@@ -90,7 +90,7 @@ export async function reorderSegments(orderedIds: string[]): Promise<void> {
   });
 }
 
-export async function renameDraft(draftId: string, name: string): Promise<void> {
+export async function renameDraft(draftId: string, name: string | null): Promise<void> {
   await db.update(projects).set({ name, lastModified: now }).where(eq(projects.id, draftId));
 }
 
