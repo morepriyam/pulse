@@ -16,6 +16,7 @@ export default function RootLayout() {
           <MigrationGate>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
+              <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
             </Stack>
           </MigrationGate>
           <StatusBar style="auto" />

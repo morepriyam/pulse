@@ -1,6 +1,6 @@
 import { CameraView } from 'expo-camera';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -57,6 +57,16 @@ export default function RecorderScreen() {
   // the floating trash above the bar has clear space.
   const [dragging, setDragging] = useState(false);
 
+  // While the Export screen is presented over this one, the recorder is unfocused — drop the
+  // camera session so it isn't capturing (and burning power) behind the modal. Restored on return.
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
       { text: 'Cancel', style: 'cancel' },
@@ -73,7 +83,7 @@ export default function RecorderScreen() {
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
-        active={!previewing}
+        active={!previewing && focused}
         mode="video"
         facing={facing}
         enableTorch={torch && !previewing}
@@ -167,13 +177,7 @@ export default function RecorderScreen() {
                 : undefined
             }
             onNext={
-              draftId
-                ? () =>
-                    Alert.alert(
-                      'Export coming soon',
-                      'Merging and uploading the draft lands in a later milestone. Your edits are saved.',
-                    )
-                : undefined
+              draftId ? () => router.push({ pathname: '/export', params: { draftId } }) : undefined
             }
           />
         </View>
