@@ -76,6 +76,10 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
   })();
   const active = activeIndex >= 0 ? segments[activeIndex] : null;
   const activeId = active?.id ?? null;
+  // The active clip's effective file — changes when it's edited (a new `editedFilename`).
+  // The load effect keys on this so an edit to the CURRENT clip reloads it in place
+  // (e.g. returning from the RNVT editor while still in the preview).
+  const activeFile = active ? effFile(active) : null;
 
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
 
@@ -134,7 +138,7 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, activeFile]);
 
   useEventListener(player, 'statusChange', ({ status }: { status: string }) => {
     if (status === 'error') {
@@ -205,6 +209,12 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     [player, activeId, active],
   );
 
+  /** Pause playback without changing the selection (e.g. while the RNVT editor is open). */
+  const pause = useCallback(() => {
+    wantPlayRef.current = false;
+    player.pause();
+  }, [player]);
+
   const togglePlay = useCallback(() => {
     if (player.playing) {
       player.pause();
@@ -256,6 +266,7 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     globalMs,
     totalMs,
     togglePlay,
+    pause,
     selectSegment,
     seekToGlobalMs,
   };

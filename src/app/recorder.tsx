@@ -11,12 +11,13 @@ import { CloseButton } from '@/features/recorder/close-button';
 import { PermissionGate } from '@/features/recorder/permission-gate';
 import { PreviewModal } from '@/features/recorder/preview-modal';
 import { SegmentBar } from '@/features/recorder/segment-bar';
+import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
 import { useVideoTrim } from '@/features/recorder/use-video-trim';
 
-const RECORD_SIZE = 76;
+const RECORD_SIZE = RECORD_BUTTON_SIZE;
 
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
@@ -51,6 +52,10 @@ export default function RecorderScreen() {
 
   // Trimming = RNVT's full-screen editor, launched from the ✂ button in the preview modal.
   const { openTrim } = useVideoTrim(draftId);
+
+  // True while a clip is being dragged (reorder / drag-to-trash) — hides the record button so
+  // the floating trash above the bar has clear space.
+  const [dragging, setDragging] = useState(false);
 
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
@@ -102,9 +107,11 @@ export default function RecorderScreen() {
               onTrim={() => {
                 const seg = preview.active;
                 if (!seg) return;
-                // Close the preview so returning from the editor lands in record mode and
-                // re-opening the clip plays the fresh edit (the preview loads per activeId).
-                setPreviewId(null);
+                // Stay in the preview on this clip after the editor closes — edits are
+                // usually done together, so this saves a tap. Pause the underlying player
+                // while the editor is open; on save, usePreview reloads the clip's new
+                // effective file (its load effect keys on the edited filename).
+                preview.pause();
                 openTrim(seg);
               }}
               onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
@@ -115,22 +122,40 @@ export default function RecorderScreen() {
         <View
           style={[styles.bottom, { paddingBottom: insets.bottom + Spacing.three }]}
           pointerEvents="box-none">
-          <Pressable
-            onPress={toggleRecording}
-            disabled={!cameraReady || previewing}
-            accessibilityRole="button"
-            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-            style={[styles.recordOuter, { opacity: cameraReady && !previewing ? 1 : 0.4 }]}>
-            <View style={isRecording ? styles.recordInnerActive : styles.recordInner} />
-          </Pressable>
+          {/* Record button is hidden entirely while previewing — the preview surface owns the
+              screen then. During a drag it's faded out (opacity 0, layout kept) so the floating
+              trash above the bar has clear space and nothing shifts. */}
+          {!previewing && (
+            <Pressable
+              onPress={toggleRecording}
+              disabled={!cameraReady || dragging}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+              style={[styles.recordOuter, { opacity: dragging ? 0 : cameraReady ? 1 : 0.4 }]}>
+              <View style={isRecording ? styles.recordInnerActive : styles.recordInner} />
+            </Pressable>
+          )}
 
           <SegmentBar
             segments={segments}
             onReorder={reorderSegments}
-            onDelete={confirmDeleteSegment}
+            // Drag-to-trash deletes immediately (the deliberate drag IS the confirmation) —
+            // no Alert here, unlike the preview modal's 🗑 which still confirms.
+            onDelete={deleteSegment}
+            onDragActiveChange={setDragging}
             onSelect={(id) => {
               if (previewing) preview.selectSegment(id);
               else if (!isRecording) setPreviewId(id);
+            }}
+            onEdit={(id) => {
+              // Hold a thumb → open the editor directly. Does NOT enter preview, so from the
+              // recorder it returns to the recorder; from preview it stays in preview
+              // (same as the ✂ button). Never opens preview as a side effect.
+              if (isRecording) return;
+              const seg = segments.find((s) => s.id === id);
+              if (!seg) return;
+              if (previewing) preview.pause();
+              openTrim(seg);
             }}
             cursor={
               previewing
