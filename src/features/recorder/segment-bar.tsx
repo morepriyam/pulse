@@ -19,13 +19,18 @@ type Props = {
   cursor?: Cursor;
 };
 
-export function SegmentBar({ segments, onReorder, onDelete, onSelect, onNext, cursor }: Props) {
+export function SegmentBar(props: Props) {
+  // Gate BEFORE the hooks mount: useScrollViewOffset warns on every empty-draft render
+  // while its ref has no ScrollView attached, so the hooks live in Bar below.
+  if (props.segments.length === 0) return null;
+  return <Bar {...props} />;
+}
+
+function Bar({ segments, onReorder, onDelete, onSelect, onNext, cursor }: Props) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   // Owned here (not in PlayheadCursor) so the offset is already tracked when the cursor
   // mounts on a bar the user scrolled before opening the preview.
   const scrollOffset = useScrollViewOffset(scrollRef);
-
-  if (segments.length === 0) return null;
 
   return (
     <View style={styles.bar}>
@@ -89,17 +94,19 @@ function SegmentThumb({
   const thumbnail = useThumbnail(segment.originalFilename);
 
   return (
-    // Sortable.Touchable cooperates with the grid's long-press drag (a plain Pressable
-    // can fire its onPress after a completed drag, popping the preview unexpectedly).
-    <Sortable.Touchable
-      onTap={onSelect}
-      accessibilityLabel="Preview clip"
-      style={[styles.thumb, active && styles.thumbActive]}>
-      {thumbnail ? (
-        <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
-      ) : (
-        <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
-      )}
+    <View style={[styles.thumb, active && styles.thumbActive]}>
+      {/* Sortable.Touchable cooperates with the grid's long-press drag (a plain Pressable
+          can fire its onPress after a completed drag, popping the preview unexpectedly). */}
+      <Sortable.Touchable onTap={onSelect} accessibilityLabel="Preview clip" style={styles.thumbTouch}>
+        {thumbnail ? (
+          <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
+        ) : (
+          <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
+        )}
+      </Sortable.Touchable>
+
+      {/* Sibling overlay (not a child of the Touchable) so a tap here deletes WITHOUT also
+          firing the Touchable's onTap that opens the preview. */}
       <Pressable
         onPress={onDelete}
         hitSlop={6}
@@ -107,7 +114,7 @@ function SegmentThumb({
         accessibilityLabel="Delete clip">
         <SymbolView name="xmark" size={11} weight="bold" tintColor="#fff" />
       </Pressable>
-    </Sortable.Touchable>
+    </View>
   );
 }
 
@@ -130,6 +137,10 @@ const styles = StyleSheet.create({
     height: THUMB_HEIGHT,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  thumbTouch: {
+    flex: 1,
+    borderRadius: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
   },

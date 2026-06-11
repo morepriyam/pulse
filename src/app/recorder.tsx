@@ -49,6 +49,12 @@ export default function RecorderScreen() {
   const preview = usePreview(segments, previewId);
   const previewing = previewId != null;
 
+  const confirmDeleteSegment = (id: string) =>
+    Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteSegment(id) },
+    ]);
+
   if (!permissions.ready) return <ThemedView style={styles.fill} />;
   if (!permissions.granted) {
     return <PermissionGate blocked={permissions.blocked} onRequest={permissions.request} />;
@@ -90,6 +96,7 @@ export default function RecorderScreen() {
               isPlaying={preview.isPlaying}
               onTogglePlay={preview.togglePlay}
               onClose={() => setPreviewId(null)}
+              onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
             />
           </View>
         )}
@@ -109,7 +116,7 @@ export default function RecorderScreen() {
           <SegmentBar
             segments={segments}
             onReorder={reorderSegments}
-            onDelete={deleteSegment}
+            onDelete={confirmDeleteSegment}
             onSelect={(id) => {
               if (previewing) preview.selectSegment(id);
               else if (!isRecording) setPreviewId(id);

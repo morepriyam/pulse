@@ -9,6 +9,7 @@ type Props = {
   isPlaying: boolean;
   onTogglePlay: () => void;
   onClose: () => void;
+  onDelete: () => void;
 };
 
 /**
@@ -17,7 +18,7 @@ type Props = {
  * ✕ on the card closes. `contentFit="contain"` on black lets the native player honor each
  * clip's rotation matrix, so portrait clips render upright (§1.0a).
  */
-export function PreviewModal({ player, isPlaying, onTogglePlay, onClose }: Props) {
+export function PreviewModal({ player, isPlaying, onTogglePlay, onClose, onDelete }: Props) {
   return (
     <View style={styles.card}>
       <Pressable style={styles.surface} onPress={onTogglePlay} accessibilityLabel="Toggle playback">
@@ -41,8 +42,17 @@ export function PreviewModal({ player, isPlaying, onTogglePlay, onClose }: Props
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel="Close preview"
-        style={styles.close}>
+        style={[styles.badge, styles.close]}>
         <SymbolView name="xmark" size={14} weight="semibold" tintColor="#fff" />
+      </Pressable>
+
+      <Pressable
+        onPress={onDelete}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Delete clip"
+        style={[styles.badge, styles.delete]}>
+        <SymbolView name="trash" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
     </View>
   );
@@ -77,15 +87,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 4,
   },
-  close: {
+  badge: {
     position: 'absolute',
     top: Spacing.two,
-    left: Spacing.two,
     width: 28,
     height: 28,
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  close: {
+    left: Spacing.two,
+  },
+  delete: {
+    right: Spacing.two,
   },
 });

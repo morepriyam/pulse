@@ -27,17 +27,27 @@ export function useRecorder(initialDraftId?: string) {
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
 
-  // Drop a draft this session created but left empty (recorded then deleted) so it doesn't
-  // litter Home. Resumed drafts are never touched — their segments may still be loading.
+  // Drop an empty draft on leave so it doesn't litter Home: either one we created this
+  // session and never kept a clip in, or a resumed draft whose every clip was deleted.
+  // A resumed draft we never saw load (segments still []) is left alone — deleting it
+  // would nuke a draft that simply hadn't loaded yet.
   const sessionDraftId = useRef<string | null>(null);
+  const draftIdRef = useRef<string | null>(initialDraftId ?? null);
   const segmentCount = useRef(0);
+  const everHadSegments = useRef(false);
+  useEffect(() => {
+    draftIdRef.current = draftId;
+  }, [draftId]);
   useEffect(() => {
     segmentCount.current = segments.length;
+    if (segments.length > 0) everHadSegments.current = true;
   }, [segments]);
   useEffect(
     () => () => {
-      if (sessionDraftId.current && segmentCount.current === 0) {
-        void deleteDraft(sessionDraftId.current);
+      const id = draftIdRef.current;
+      const safeToDelete = sessionDraftId.current != null || everHadSegments.current;
+      if (id && segmentCount.current === 0 && safeToDelete) {
+        void deleteDraft(id);
       }
     },
     [],
