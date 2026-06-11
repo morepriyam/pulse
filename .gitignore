@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# stray Lefthook template dropped by the RNVT submodule's yarn install (not used by this app)
+/lefthook.yml
