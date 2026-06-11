@@ -1,15 +1,17 @@
 import type { Segment } from '@/db/schema';
 
-// The single TS definition of a segment's non-destructive trim window over its original
-// file (§1.0c): null trim edges fall back to the clip's natural bounds, and the effective
-// duration is the window's length. The SQL in src/db/drafts.ts (`draftListQuery`) mirrors
-// these semantics and must stay in sync.
+// Draft-global timeline math for the in-recorder preview. Under the destructive-edit model
+// each clip plays its EFFECTIVE file in full — the re-encoded `editedFilename` once edited,
+// else the pristine `originalFilename` — so there is no in/out window: in = 0, out =
+// effective duration. The SQL in src/db/drafts.ts (`draftListQuery`) mirrors `effMs`.
 
-/** The window's in-point (absolute ms into the original file). */
-export const inMs = (s: Segment) => s.trimStartMs ?? 0;
-/** The window's out-point (absolute ms into the original file). */
-export const outMs = (s: Segment) => s.trimEndMs ?? s.durationMs;
-/** The window's length — what the clip contributes to the draft's timeline. */
+/** The clip's effective media file (edited if present, else the original). */
+export const effFile = (s: Segment) => s.editedFilename ?? s.originalFilename;
+/** In-point — always 0 (the file is already physically trimmed). */
+export const inMs = (_s: Segment) => 0;
+/** Out-point = the effective file's full duration. */
+export const outMs = (s: Segment) => s.editedDurationMs ?? s.durationMs;
+/** What the clip contributes to the draft's timeline. */
 export const effMs = (s: Segment) => Math.max(0, outMs(s) - inMs(s));
 
 /** Draft-global prefix sums: `offsets[i]` = total effective ms before clip `i`. */

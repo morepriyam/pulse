@@ -14,6 +14,7 @@ import { SegmentBar } from '@/features/recorder/segment-bar';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
+import { useVideoTrim } from '@/features/recorder/use-video-trim';
 
 const RECORD_SIZE = 76;
 
@@ -39,15 +40,17 @@ export default function RecorderScreen() {
     reorderSegments,
   } = useRecorder(draftIdParam);
 
-  // Preview mode (§1.0a): a tapped segment opens the in-recorder preview over the camera
-  // area; `null` means record mode. The camera stays mounted but its session pauses.
+  // Preview mode: a tapped segment opens the in-recorder preview over the camera area;
+  // `null` means record mode. The camera stays mounted but its session pauses.
   const [previewId, setPreviewId] = useState<string | null>(null);
   // Derived as a render-phase adjustment so NO deletion path (✕ taps racing the live
-  // query, future swipe-to-delete, clear-draft) can strand an open preview with zero
-  // segments — which would disable the whole recorder with no close affordance left.
+  // query, clear-draft) can strand an open preview with zero segments.
   if (previewId != null && segments.length === 0) setPreviewId(null);
   const preview = usePreview(segments, previewId);
   const previewing = previewId != null;
+
+  // Trimming = RNVT's full-screen editor, launched from the ✂ button in the preview modal.
+  const { openTrim } = useVideoTrim(draftId);
 
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
@@ -96,6 +99,14 @@ export default function RecorderScreen() {
               isPlaying={preview.isPlaying}
               onTogglePlay={preview.togglePlay}
               onClose={() => setPreviewId(null)}
+              onTrim={() => {
+                const seg = preview.active;
+                if (!seg) return;
+                // Close the preview so returning from the editor lands in record mode and
+                // re-opening the clip plays the fresh edit (the preview loads per activeId).
+                setPreviewId(null);
+                openTrim(seg);
+              }}
               onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
             />
           </View>

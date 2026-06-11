@@ -20,9 +20,12 @@ export const projects = sqliteTable('projects', {
 });
 
 /**
- * A clip on the timeline. The original media is never mutated; trims/splits are
- * non-destructive metadata over it (§1.0c). A split is a second row pointing at
- * the same `originalFilename` with a different in/out window.
+ * A clip on the timeline. The `originalFilename` recording/import is never mutated.
+ * Editing is DESTRUCTIVE via react-native-video-trim: the editor (trim + transforms)
+ * writes a new re-encoded file, stored as `editedFilename`. Re-editing always re-opens
+ * the pristine original (no compounding loss); reset = delete the edited file + null
+ * the edited columns. The effective file is `editedFilename ?? originalFilename` and the
+ * effective duration is `editedDurationMs ?? durationMs`.
  */
 export const segments = sqliteTable('segments', {
   id: text('id').primaryKey(),
@@ -30,10 +33,15 @@ export const segments = sqliteTable('segments', {
     .notNull()
     .references(() => projects.id, { onDelete: 'cascade' }),
   order: integer('sort_order').notNull(),
+  // Pristine source clip (relative path) — never mutated.
   originalFilename: text('original_filename').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  // Re-encoded editor output (relative path) + its duration; null until edited.
+  editedFilename: text('edited_filename'),
+  editedDurationMs: integer('edited_duration_ms'),
+  // Dead under the destructive model (kept to avoid a destructive drop migration).
   trimStartMs: integer('trim_start_ms'),
   trimEndMs: integer('trim_end_ms'),
-  durationMs: integer('duration_ms').notNull(),
   // Reserved; thumbnails are derived at runtime from the clip file.
   thumbnail: text('thumbnail'),
 });

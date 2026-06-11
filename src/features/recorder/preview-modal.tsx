@@ -9,16 +9,24 @@ type Props = {
   isPlaying: boolean;
   onTogglePlay: () => void;
   onClose: () => void;
+  onTrim: () => void;
   onDelete: () => void;
 };
 
 /**
  * Floating preview card over the recorder — the camera UI, record button, and segment bar
  * all stay visible around it. Plays the draft through one shared player; tap toggles play,
- * ✕ on the card closes. `contentFit="contain"` on black lets the native player honor each
- * clip's rotation matrix, so portrait clips render upright (§1.0a).
+ * ✕ closes, ✂ opens the RNVT editor for the active clip, 🗑 deletes. `contentFit="contain"`
+ * on black lets the native player honor each clip's rotation matrix (portrait upright).
  */
-export function PreviewModal({ player, isPlaying, onTogglePlay, onClose, onDelete }: Props) {
+export function PreviewModal({
+  player,
+  isPlaying,
+  onTogglePlay,
+  onClose,
+  onTrim,
+  onDelete,
+}: Props) {
   return (
     <View style={styles.card}>
       <Pressable style={styles.surface} onPress={onTogglePlay} accessibilityLabel="Toggle playback">
@@ -44,6 +52,15 @@ export function PreviewModal({ player, isPlaying, onTogglePlay, onClose, onDelet
         accessibilityLabel="Close preview"
         style={[styles.badge, styles.close]}>
         <SymbolView name="xmark" size={14} weight="semibold" tintColor="#fff" />
+      </Pressable>
+
+      <Pressable
+        onPress={onTrim}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Edit clip"
+        style={[styles.badge, styles.trim]}>
+        <SymbolView name="scissors" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
 
       <Pressable
@@ -102,5 +119,9 @@ const styles = StyleSheet.create({
   },
   delete: {
     right: Spacing.two,
+  },
+  // Left of the delete badge (28 wide + an 8pt gap).
+  trim: {
+    right: Spacing.two + 28 + Spacing.two,
   },
 });
