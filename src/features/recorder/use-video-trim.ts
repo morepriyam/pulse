@@ -69,7 +69,9 @@ export function useVideoTrim(draftId: string | null) {
       handleIconColor: '#FFFFFF',
       headerText: 'Edit clip',
       headerTextColor: '#FFFFFF',
-      // enableEditTools + enableCancelDialog default true (crop/rotate/flip/mute/speed exposed).
+      enableCancelDialog: false, // Cancel/Save dismiss immediately — no "are you sure?" prompts
+      enableSaveDialog: false,
+      // enableEditTools defaults true (crop/rotate/flip/mute/speed exposed).
     });
   };
 
