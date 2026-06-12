@@ -16,3 +16,14 @@ export const STEP = THUMB_WIDTH + TRACK_GAP;
 /** Extra lane below the thumbs the cursor knob hangs into (keeps it off taps/✕/drag). */
 export const SCRUB_LANE = 16;
 export const KNOB = 14;
+/** Left inset of the track content so the playhead knob at globalMs=0 (centered on the line at
+ *  the first thumb's left edge) isn't clipped by the viewport's overflow:hidden. The cursor adds
+ *  the same inset to its x so the line stays aligned with the thumbnails. */
+export const SCRUB_INSET = KNOB / 2;
+/** Vertical breathing room added inside the scroll content (top + bottom) so the active thumb
+ *  can scale up by ACTIVE_SCALE without being clipped by the ScrollView's bounds. The playhead
+ *  line shifts down by this much to stay on the thumb's top edge. */
+export const POP_LANE = 6;
+/** How much the thumb the playhead is currently over pops up. 64pt thumb × 0.035 ≈ 2pt, half
+ *  each side — fits within POP_LANE. */
+export const ACTIVE_SCALE = 1.035;

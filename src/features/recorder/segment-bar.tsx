@@ -4,14 +4,15 @@
 /* eslint-disable react-hooks/immutability */
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useRef } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolateColor,
   useAnimatedRef,
   useAnimatedStyle,
   useScrollViewOffset,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
@@ -19,10 +20,15 @@ import Sortable from 'react-native-sortables';
 import { Accent, Spacing } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
 import { useThumbnail } from '@/hooks/use-thumbnail';
+import { formatDurationPadded } from '@/utils/format';
+import { effMs } from '@/utils/segment-window';
 import { PlayheadCursor, type Cursor } from './playhead-cursor';
 import {
+  ACTIVE_SCALE,
+  POP_LANE,
   RECORD_BAR_GAP,
   RECORD_BUTTON_SIZE,
+  SCRUB_INSET,
   SCRUB_LANE,
   THUMB_HEIGHT,
   THUMB_WIDTH,
@@ -103,7 +109,7 @@ function Bar({
         </Animated.View>
       </View>
 
-      <View style={styles.viewport}>
+      <View style={[styles.viewport, cursor && styles.viewportScrub]}>
         <Animated.ScrollView
           ref={scrollRef}
           horizontal
@@ -194,8 +200,20 @@ function SegmentThumb({
   // Cover the EFFECTIVE clip — the edited file once trimmed, else the pristine original.
   const thumbnail = useThumbnail(segment.editedFilename ?? segment.originalFilename);
 
+  // Effective (post-trim) clip length, the same number the playhead and export use. A failed
+  // native read stores 0ms (the clip is skipped on playback) — show nothing rather than 00:00.
+  const durationMs = effMs(segment);
+
+  // The clip under the playhead pops up as a whole (border included). Springs on activation so
+  // it reads as a lift rather than a jump; grows into POP_LANE so it isn't clipped.
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.value = withSpring(active ? ACTIVE_SCALE : 1, { damping: 18, stiffness: 400, mass: 0.5 });
+  }, [active, scale]);
+  const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <View style={[styles.thumb, active && styles.thumbActive]}>
+    <Animated.View style={[styles.thumb, active && styles.thumbActive, popStyle]}>
       {/* tap = preview · hold = open editor (onLongPress) · drag the ≣ handle = reorder (drop
           on the trash to delete). Sortable.Touchable cooperates with the grid so a tap can't
           fire after a drag. */}
@@ -211,13 +229,24 @@ function SegmentThumb({
         )}
       </Sortable.Touchable>
 
+      {/* Clip length, bottom-center. pointerEvents none so it never steals taps from the thumb. */}
+      {durationMs > 0 && (
+        <View style={styles.durationWrap} pointerEvents="none">
+          <View style={styles.duration}>
+            <Text style={styles.durationText} numberOfLines={1}>
+              {formatDurationPadded(durationMs)}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Drag handle — the only reorder/drag activator (drag onto the trash to delete).
           A full-width grab strip along the top: large enough to hold reliably on a 48pt-wide
           thumb, styled like a sheet grabber so it reads as "drag me". */}
       <Sortable.Handle style={[styles.handle]}>
         <View style={styles.handleGrabber} />
       </Sortable.Handle>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -254,22 +283,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewport: { flex: 1, overflow: 'hidden', paddingBottom: SCRUB_LANE },
-  content: { alignItems: 'center', paddingRight: Spacing.two },
+  viewport: { flex: 1, overflow: 'hidden' },
+  // Lane below the thumbs the playhead knob hangs into — only needed while previewing (when a
+  // cursor is present). In record mode it would just add dead space below the bar and push the
+  // thumbs above the export button's centerline, so it's applied conditionally.
+  viewportScrub: { paddingBottom: SCRUB_LANE },
+  content: {
+    alignItems: 'center',
+    paddingLeft: SCRUB_INSET,
+    paddingRight: Spacing.two,
+    // Symmetric top/bottom room inside the scroll frame so the active thumb's pop isn't clipped
+    // by the ScrollView. Symmetric → thumbs stay vertically centered, keeping export-button align.
+    paddingVertical: POP_LANE,
+  },
   thumb: {
     width: THUMB_WIDTH,
     height: THUMB_HEIGHT,
-    borderRadius: Spacing.two,
     backgroundColor: 'rgba(255,255,255,0.12)',
+    // Border space is reserved (transparent) at all times so going active only changes the
+    // color — adding the border on activation would otherwise shift the inner box (and the
+    // absolutely-positioned grab handle) inward by 2px.
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   thumbTouch: {
     flex: 1,
-    borderRadius: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
   },
   thumbActive: {
-    borderWidth: 2,
     borderColor: Accent,
   },
   thumbImage: {
@@ -278,7 +320,26 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: Spacing.two,
+  },
+  // Full-width wrapper so the badge centers horizontally regardless of its text width.
+  durationWrap: {
+    position: 'absolute',
+    bottom: 3,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  duration: {
+    paddingHorizontal: 3,
+    paddingVertical: 1,
+    borderRadius: 3,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  durationText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   handle: {
     position: 'absolute',
