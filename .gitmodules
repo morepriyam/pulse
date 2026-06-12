@@ -1,4 +1,4 @@
 [submodule "modules/react-native-video-trim"]
 	path = modules/react-native-video-trim
 	url = https://github.com/morepriyam/react-native-video-trim.git
-	branch = fix/autorotate-portrait-double-rotation
+	branch = master
