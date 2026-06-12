@@ -5,21 +5,24 @@ import { SymbolView } from 'expo-symbols';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
-import { saveToPhoto, share } from 'react-native-video-trim';
+import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CloseButton } from '@/features/recorder/close-button';
 import { Accent, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { segmentsForDraft } from '@/db/drafts';
 import { useExport } from '@/features/export/use-export';
-import { useTheme } from '@/hooks/use-theme';
+import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 
+// merge()/effective paths may come back as a bare fs path; expo APIs want a file:// URI.
+const toFileUri = (path: string) => (path.startsWith('/') ? `file://${path}` : path);
+
 export default function ExportScreen() {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
 
@@ -28,32 +31,20 @@ export default function ExportScreen() {
   const clips = segments.filter((s) => effMs(s) > 0);
   const { state, retry } = useExport(clips);
 
-  // Which post-merge action is running, so we can disable the row and show a spinner on it.
-  const [busy, setBusy] = useState<null | 'photo' | 'share'>(null);
-
-  const runSave = async () => {
-    if (state.status !== 'done' || busy) return;
-    setBusy('photo');
-    try {
-      const { success } = await saveToPhoto(state.outputPath);
-      if (success) Alert.alert('Saved', 'The video was saved to your photo library.');
-      else Alert.alert('Not saved', 'The video could not be saved to your photo library.');
-    } catch (e) {
-      Alert.alert('Save failed', e instanceof Error ? e.message : 'Could not save the video.');
-    } finally {
-      setBusy(null);
-    }
-  };
+  // Whether the share sheet is being presented, so we can disable the button and show a spinner.
+  const [busy, setBusy] = useState(false);
+  const photos = useSaveToPhotos();
+  const theme = useTheme();
 
   const runShare = async () => {
     if (state.status !== 'done' || busy) return;
-    setBusy('share');
+    setBusy(true);
     try {
-      await share(state.outputPath);
+      await Sharing.shareAsync(toFileUri(state.outputPath), { mimeType: 'video/mp4' });
     } catch (e) {
       Alert.alert('Share failed', e instanceof Error ? e.message : 'Could not share the video.');
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -88,37 +79,38 @@ export default function ExportScreen() {
 
             <View style={styles.actions}>
               <Pressable
-                onPress={runSave}
-                disabled={busy != null}
+                onPress={runShare}
+                disabled={busy}
                 accessibilityRole="button"
-                accessibilityLabel="Save to Photos"
-                style={[styles.button, styles.primary, busy != null && styles.disabled]}>
-                {busy === 'photo' ? (
+                accessibilityLabel="Share"
+                style={[styles.button, styles.primary, busy && styles.disabled]}>
+                {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <SymbolView name="square.and.arrow.down" size={18} tintColor="#fff" />
-                    <ThemedText style={styles.primaryLabel}>Save to Photos</ThemedText>
+                    <SymbolView name="square.and.arrow.up" size={18} tintColor="#fff" />
+                    <ThemedText style={styles.primaryLabel}>Share</ThemedText>
                   </>
                 )}
               </Pressable>
 
               <Pressable
-                onPress={runShare}
-                disabled={busy != null}
+                onPress={() => void photos.save(toFileUri(state.outputPath))}
+                disabled={photos.status !== 'idle'}
                 accessibilityRole="button"
-                accessibilityLabel="Share"
-                style={[
-                  styles.button,
-                  { backgroundColor: theme.backgroundElement },
-                  busy != null && styles.disabled,
-                ]}>
-                {busy === 'share' ? (
+                accessibilityLabel="Save to Photos"
+                style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                {photos.status === 'saving' ? (
                   <ActivityIndicator color={theme.text} />
+                ) : photos.status === 'saved' ? (
+                  <>
+                    <SymbolView name="checkmark" size={18} tintColor={theme.text} />
+                    <ThemedText>Saved</ThemedText>
+                  </>
                 ) : (
                   <>
-                    <SymbolView name="square.and.arrow.up" size={18} tintColor={theme.text} />
-                    <ThemedText>Share</ThemedText>
+                    <SymbolView name="square.and.arrow.down" size={18} tintColor={theme.text} />
+                    <ThemedText>Save to Photos</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -155,21 +147,29 @@ export default function ExportScreen() {
 
 /**
  * Plays the merged output. Mounts only once the merge is done, so `uri` is known at first
- * render and the player never needs a source swap. Tap to play/pause; loops.
+ * render and the player never needs a source swap. Plays once (no loop); tap to pause or
+ * replay after it ends.
  */
 function MergedPreview({ uri }: { uri: string }) {
-  // merge()/effective paths may come back as a bare fs path; expo-video wants a file:// URI.
-  const source = uri.startsWith('/') ? `file://${uri}` : uri;
-  const player = useVideoPlayer(source, (p) => {
-    p.loop = true;
+  const player = useVideoPlayer(toFileUri(uri), (p) => {
     p.play();
   });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
 
+  const togglePlay = () => {
+    if (isPlaying) {
+      player.pause();
+    } else if (player.duration > 0 && player.currentTime >= player.duration - 0.05) {
+      player.replay();
+    } else {
+      player.play();
+    }
+  };
+
   return (
     <Pressable
       style={styles.previewCard}
-      onPress={() => (isPlaying ? player.pause() : player.play())}
+      onPress={togglePlay}
       accessibilityRole="button"
       accessibilityLabel="Toggle playback">
       <VideoView

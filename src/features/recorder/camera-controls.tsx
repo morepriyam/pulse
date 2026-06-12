@@ -12,29 +12,40 @@ const STABILIZATION_LABELS: Record<StabilizationMode, string> = {
   auto: 'Auto',
 };
 
+// One SF Symbol per mode so the rail reads at a glance: slashed = off, gyroscope =
+// standard sensor stabilization, film = cinematic, sparkles = auto-picked.
+const STABILIZATION_ICONS: Record<StabilizationMode, SymbolViewProps['name']> = {
+  off: 'circle.slash',
+  standard: 'gyroscope',
+  cinematic: 'film',
+  auto: 'sparkles',
+};
+
 type Props = {
-  top: number;
   facing: CameraType;
   torch: boolean;
   stabilization: StabilizationMode;
+  muted: boolean;
   disabled?: boolean;
   onFlip: () => void;
   onToggleTorch: () => void;
   onCycleStabilization: () => void;
+  onToggleMute: () => void;
 };
 
 export function CameraControls({
-  top,
   facing,
   torch,
   stabilization,
+  muted,
   disabled = false,
   onFlip,
   onToggleTorch,
   onCycleStabilization,
+  onToggleMute,
 }: Props) {
   return (
-    <View style={[styles.rail, { top }]}>
+    <View style={styles.rail} pointerEvents="box-none">
       <ControlButton
         icon="arrow.triangle.2.circlepath.camera"
         label="Flip camera"
@@ -49,12 +60,19 @@ export function CameraControls({
         onPress={onToggleTorch}
       />
       <ControlButton
-        icon="gyroscope"
+        icon={STABILIZATION_ICONS[stabilization]}
         label={`Stabilization: ${STABILIZATION_LABELS[stabilization]}`}
         caption={STABILIZATION_LABELS[stabilization]}
         tint={stabilization === 'off' ? '#fff' : Accent}
         disabled={disabled}
         onPress={onCycleStabilization}
+      />
+      <ControlButton
+        icon={muted ? 'mic.slash.fill' : 'mic.fill'}
+        label={muted ? 'Unmute recording audio' : 'Mute recording audio'}
+        tint={muted ? Accent : '#fff'}
+        disabled={disabled}
+        onPress={onToggleMute}
       />
     </View>
   );
@@ -92,11 +110,17 @@ function ControlButton({
 }
 
 const styles = StyleSheet.create({
+  // Spans the full height with the buttons centered, then nudged up a bit — dead center
+  // reads too low against the bottom-heavy recorder UI (segment bar + record button).
   rail: {
     position: 'absolute',
+    top: 0,
+    bottom: 0,
     right: Spacing.three,
+    justifyContent: 'center',
     gap: Spacing.three,
     alignItems: 'center',
+    paddingBottom: 120,
   },
   wrap: { alignItems: 'center', gap: 2 },
   button: {
