@@ -9,10 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.pulse-new",
-      "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Pulse needs photo library access to save your edited videos."
-      }
+      "bundleIdentifier": "com.anonymous.pulse-new"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,8 +21,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.pulsenew"
     },
@@ -56,7 +52,22 @@
       ],
       "./plugins/with-disable-script-sandboxing",
       "./plugins/with-video-trim",
-      "expo-image"
+      "expo-image",
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Pulse to access your photos to import videos into your drafts.",
+          "savePhotosPermission": "Allow Pulse to save exported videos to your photo library.",
+          "granularPermissions": ["photo", "video"]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Pulse to access your photos to import videos into your drafts."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

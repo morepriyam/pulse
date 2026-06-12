@@ -77,7 +77,7 @@ export function PreviewModal({
 
 const styles = StyleSheet.create({
   card: {
-    width: '60%',
+    width: '72%',
     aspectRatio: 9 / 16,
     borderRadius: Spacing.three,
     overflow: 'hidden',

@@ -20,7 +20,7 @@ import { Accent } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
 import { clamp } from '@/utils/math';
 import { effMs, indexAtGlobalMs, segmentOffsets } from '@/utils/segment-window';
-import { KNOB, STEP, THUMB_HEIGHT, THUMB_WIDTH } from './track-metrics';
+import { KNOB, POP_LANE, SCRUB_INSET, STEP, THUMB_HEIGHT, THUMB_WIDTH } from './track-metrics';
 
 /** Max rate at which a knob drag issues player seeks (the knob itself moves every frame). */
 const SCRUB_INTERVAL_MS = 80;
@@ -101,7 +101,9 @@ export function PlayheadCursor({
   );
 
   const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: cursorX.value - scrollOffset.value - KNOB / 2 }],
+    // + SCRUB_INSET matches the track's left inset so the line stays on the thumb edges; − KNOB/2
+    // centers the knob on the line.
+    transform: [{ translateX: cursorX.value - scrollOffset.value - KNOB / 2 + SCRUB_INSET }],
   }));
 
   return (
@@ -144,6 +146,9 @@ const styles = StyleSheet.create({
     height: THUMB_HEIGHT,
     borderRadius: 1,
     backgroundColor: '#fff',
+    // The thumbs sit POP_LANE below the scroll-frame top (the pop lane); match it so the line
+    // starts on the thumb's top edge.
+    marginTop: POP_LANE,
   },
   cursorKnob: {
     width: KNOB,
