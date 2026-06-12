@@ -1,6 +1,9 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { CameraType, CameraView } from 'expo-camera';
+import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
+import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
+import { Alert, Linking } from 'react-native';
 
 import {
   addSegment,
@@ -10,7 +13,7 @@ import {
   reorderSegments,
   segmentsForDraft,
 } from '@/db/drafts';
-import { absolutize, persistRecording } from '@/utils/file-store';
+import { absolutize, copyIntoSegments, persistRecording } from '@/utils/file-store';
 import { getDurationMs } from '@/utils/video';
 
 export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
@@ -28,8 +31,19 @@ export function useRecorder(initialDraftId?: string) {
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
   const [stabilization, setStabilization] = useState<StabilizationMode>('off');
+  const [muted, setMuted] = useState(false);
+  // undefined = the camera's default wide lens; physical lens names come from the device.
+  const [lens, setLens] = useState<string | undefined>(undefined);
+  const [availableLenses, setAvailableLenses] = useState<string[]>([]);
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
+
+  // Library access for the + import — granular (photo+video) like the camera/mic gate,
+  // but requested just-in-time on tap (§2.3). Granting up front also lets the picker's
+  // passthrough fast path stream originals instead of prompting mid-import.
+  const [libraryPermission, requestLibraryPermission] = usePermissions({
+    granularPermissions: ['photo', 'video'],
+  });
 
   // Start/stop decisions run from memoized gesture callbacks where `isRecording` state can
   // lag a render behind — they go through refs that flip synchronously instead.
@@ -70,6 +84,23 @@ export function useRecorder(initialDraftId?: string) {
     [],
   );
 
+  // Physical lenses differ per facing (front is usually just the one), so re-query on flip.
+  useEffect(() => {
+    if (!cameraReady) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const lenses = (await cameraRef.current?.getAvailableLensesAsync()) ?? [];
+        if (!cancelled) setAvailableLenses(lenses);
+      } catch {
+        if (!cancelled) setAvailableLenses([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraReady, facing]);
+
   async function startRecording() {
     if (!cameraRef.current || isRecordingRef.current || !cameraReady) return;
     // A deferred stop aimed at the previous recording must not hit this one.
@@ -109,6 +140,50 @@ export function useRecorder(initialDraftId?: string) {
     }
   }
 
+  // Pick an existing device video (system picker — no permission prompt) and add it as a
+  // segment, following the same persist path as a recording. Imports keep their original
+  // format (Passthrough); format-mismatched clips are the merge engine's selective path.
+  async function importClip() {
+    if (isRecordingRef.current) return;
+    if (!libraryPermission?.granted) {
+      if (libraryPermission && !libraryPermission.canAskAgain) {
+        Alert.alert(
+          'Photos access needed',
+          'Allow Pulse to access your photo library in Settings to import videos.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+      const next = await requestLibraryPermission();
+      if (!next.granted) return;
+    }
+    try {
+      const result = await launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        videoExportPreset: VideoExportPreset.Passthrough,
+      });
+      const picked = result.assets?.[0];
+      if (result.canceled || !picked) return;
+
+      let id = draftId;
+      if (!id) {
+        id = await createDraft();
+        sessionDraftId.current = id;
+        setDraftId(id);
+      }
+
+      const segmentId = `${id}-${Date.now()}`;
+      const originalFilename = await copyIntoSegments(picked.uri, id, segmentId);
+      const durationMs = await getDurationMs(absolutize(originalFilename));
+      await addSegment(id, { id: segmentId, originalFilename, durationMs });
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
+    }
+  }
+
   function stopRecording() {
     if (!isRecordingRef.current || stopTimerRef.current) return;
     const elapsed = Date.now() - recordCallAtRef.current;
@@ -138,6 +213,7 @@ export function useRecorder(initialDraftId?: string) {
   }
 
   function flipCamera() {
+    setLens(undefined); // lens names are per-facing; fall back to the default wide
     setFacing((prev) => {
       const next = prev === 'back' ? 'front' : 'back';
       if (next === 'front') setTorch(false);
@@ -161,12 +237,18 @@ export function useRecorder(initialDraftId?: string) {
     facing,
     torch,
     stabilization,
+    muted,
+    lens,
+    availableLenses,
     onCameraReady: () => setCameraReady(true),
     toggleRecording,
+    importClip: () => void importClip(),
     startHoldRecording,
     endHoldRecording,
     flipCamera,
     toggleTorch: () => setTorch((prev) => !prev),
+    toggleMute: () => setMuted((prev) => !prev),
+    selectLens: setLens,
     cycleStabilization,
     deleteSegment: (id: string) => void deleteSegment(id),
     reorderSegments: (ids: string[]) => void reorderSegments(ids),
