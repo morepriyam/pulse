@@ -6,6 +6,16 @@ export function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+/** Milliseconds → zero-padded "mm:ss" (e.g. 7000 → "00:07"). */
+export function formatDurationPadded(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const minutes = Math.floor(total / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = (total % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
 /** Epoch ms → "Today, 2:30 PM" / "Yesterday" / "Mar 4". */
 export function formatRelativeDate(ms: number): string {
   const date = new Date(ms);
