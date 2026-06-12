@@ -33,6 +33,8 @@ import {
 // smaller than it. Size is independent of RECORD_BUTTON_SIZE; the wrapper offset below keeps
 // it centered on the record button regardless.
 const TRASH_SIZE = 56;
+// Nudge the trash below the record button's exact center so it clears the preview modal.
+const TRASH_DROP_OFFSET = 18;
 
 type Props = {
   segments: Segment[];
@@ -209,9 +211,11 @@ function SegmentThumb({
         )}
       </Sortable.Touchable>
 
-      {/* Drag handle (≣) — the only reorder/drag activator (drag onto the trash to delete). */}
+      {/* Drag handle — the only reorder/drag activator (drag onto the trash to delete).
+          A full-width grab strip along the top: large enough to hold reliably on a 48pt-wide
+          thumb, styled like a sheet grabber so it reads as "drag me". */}
       <Sortable.Handle style={[styles.handle]}>
-        <SymbolView name="line.3.horizontal" size={11} weight="bold" tintColor="#fff" />
+        <View style={styles.handleGrabber} />
       </Sortable.Handle>
     </View>
   );
@@ -237,7 +241,7 @@ const styles = StyleSheet.create({
     // TRASH_SIZE/2 so the (smaller) circle's center lands there too. Horizontally: span the
     // bar (left/right 0) and center the circle with alignItems — robust against the bar's
     // padding (a plain left:'50%' lands ~one padding off because % is measured from the edge).
-    top: -(RECORD_BAR_GAP + RECORD_BUTTON_SIZE / 2 + TRASH_SIZE / 2),
+    top: -(RECORD_BAR_GAP + RECORD_BUTTON_SIZE / 2 + TRASH_SIZE / 2) + TRASH_DROP_OFFSET,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -278,14 +282,23 @@ const styles = StyleSheet.create({
   },
   handle: {
     position: 'absolute',
-    top: 3,
-    left: 3,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  handleGrabber: {
+    width: 22,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    // Soft shadow keeps the bare grabber legible over bright thumbnails.
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   next: {
     width: 48,
