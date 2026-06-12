@@ -9,10 +9,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { CameraControls } from '@/features/recorder/camera-controls';
 import { CloseButton } from '@/features/recorder/close-button';
+import { ImportButton } from '@/features/recorder/import-button';
+import { LensSelector } from '@/features/recorder/lens-selector';
 import { PermissionGate } from '@/features/recorder/permission-gate';
 import { PreviewModal } from '@/features/recorder/preview-modal';
 import { RecordButton } from '@/features/recorder/record-button';
 import { SegmentBar } from '@/features/recorder/segment-bar';
+import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
 import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
@@ -32,12 +35,18 @@ export default function RecorderScreen() {
     facing,
     torch,
     stabilization,
+    muted,
+    lens,
+    availableLenses,
     onCameraReady,
     toggleRecording,
+    importClip,
     startHoldRecording,
     endHoldRecording,
     flipCamera,
     toggleTorch,
+    toggleMute,
+    selectLens,
     cycleStabilization,
     deleteSegment,
     reorderSegments,
@@ -76,11 +85,11 @@ export default function RecorderScreen() {
     enabled: cameraReady && !previewing && !dragging,
   });
 
-  // Front/back max zoom factors differ, so the 0–1 zoom value isn't portable across a flip.
-  // (Flipping mid-recording already stops the recording natively.)
+  // Front/back (and per-lens) max zoom factors differ, so the 0–1 zoom value isn't portable
+  // across a flip or lens switch. (Flipping mid-recording already stops the recording natively.)
   useEffect(() => {
     resetZoom();
-  }, [facing, resetZoom]);
+  }, [facing, lens, resetZoom]);
 
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
@@ -104,6 +113,9 @@ export default function RecorderScreen() {
         facing={facing}
         enableTorch={torch && !previewing}
         videoStabilizationMode={stabilization}
+        mute={muted}
+        selectedLens={lens}
+        autofocus="on"
         zoom={zoom}
         onCameraReady={onCameraReady}
       />
@@ -121,14 +133,15 @@ export default function RecorderScreen() {
         </View>
 
         <CameraControls
-          top={insets.top + Spacing.six}
           facing={facing}
           torch={torch}
           stabilization={stabilization}
+          muted={muted}
           disabled={previewing}
           onFlip={flipCamera}
           onToggleTorch={toggleTorch}
           onCycleStabilization={cycleStabilization}
+          onToggleMute={toggleMute}
         />
 
         {previewing && preview.active != null && (
@@ -160,13 +173,30 @@ export default function RecorderScreen() {
               screen then. During a drag it's faded out (opacity 0, layout kept) so the floating
               trash above the bar has clear space and nothing shifts. */}
           {!previewing && (
-            <RecordButton
-              gesture={buttonGesture}
-              holdActive={holdActive}
-              isRecording={isRecording}
-              cameraReady={cameraReady}
-              dragging={dragging}
-            />
+            <View style={{ opacity: dragging ? 0 : 1 }}>
+              <LensSelector
+                lenses={availableLenses}
+                selected={lens}
+                onSelect={selectLens}
+                disabled={isRecording || dragging}
+              />
+            </View>
+          )}
+
+          {!previewing && (
+            <View style={styles.buttonRow}>
+              <RecordButton
+                gesture={buttonGesture}
+                holdActive={holdActive}
+                isRecording={isRecording}
+                cameraReady={cameraReady}
+                dragging={dragging}
+              />
+              {/* Faded out with the record button during a drag so the trash has clear space. */}
+              <View style={[styles.importWrap, { opacity: dragging ? 0 : 1 }]}>
+                <ImportButton onPress={importClip} disabled={isRecording || dragging} />
+              </View>
+            </View>
           )}
 
           <SegmentBar
@@ -214,4 +244,17 @@ const styles = StyleSheet.create({
   overlay: { justifyContent: 'space-between' },
   previewArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bottom: { alignItems: 'center', gap: Spacing.three },
+  // Full-width row; the record button is centered by the row itself, so its position can't
+  // be disturbed by the + control.
+  buttonRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  // The + sits at the midpoint of the gap between the record button's right edge and the
+  // screen edge: 75% marks the center of the right half, +19 shifts past the button's
+  // half-width (38/2), -22 centers the 44pt circle on that point.
+  importWrap: {
+    position: 'absolute',
+    left: '75%',
+    marginLeft: RECORD_BUTTON_SIZE / 4 - 22,
+    top: '50%',
+    marginTop: -22,
+  },
 });
