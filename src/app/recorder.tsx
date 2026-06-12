@@ -85,6 +85,7 @@ export default function RecorderScreen() {
         style={StyleSheet.absoluteFill}
         active={!previewing && focused}
         mode="video"
+        videoQuality="1080p"
         facing={facing}
         enableTorch={torch && !previewing}
         videoStabilizationMode={stabilization}

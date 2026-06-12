@@ -12,9 +12,10 @@ const Native = VideoTrim as Spec;
 
 /**
  * Drives react-native-video-trim's full-screen editor (trim + crop/rotate/flip/mute/speed).
- * Tap a clip → `openTrim` opens the editor on the PRISTINE original; on save, RNVT's
- * re-encoded output is moved into the draft as the segment's `.edited.mp4` and recorded via
- * `setEdited` (destructive model — originals stay untouched, re-editing re-opens the original).
+ * Tap a clip → `openTrim` opens the editor on the PRISTINE original; on save, RNVT's output
+ * (passthrough copy for pure cuts, re-encode for transform edits) is moved into the draft as
+ * the segment's `.edited.mp4` and recorded via `setEdited` (destructive model — originals
+ * stay untouched, re-editing re-opens the original).
  */
 export function useVideoTrim(draftId: string | null) {
   // The editor is fire-and-forget (showEditor) and its events carry no correlation id, so we
@@ -61,7 +62,7 @@ export function useVideoTrim(draftId: string | null) {
     if (!draftIdRef.current) return;
     pendingSegmentId.current = segment.id;
     showEditor(absolutize(segment.originalFilename), {
-      enablePreciseTrimming: true, // frame-accurate (re-encodes; transforms re-encode anyway)
+      enablePreciseTrimming: true, // frame-accurate; pure cuts are passthrough (no re-encode), transforms re-encode
       saveToPhoto: false, // we keep the file ourselves → no photo permission needed
       outputExt: 'mp4',
       theme: 'dark',
