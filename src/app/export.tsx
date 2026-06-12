@@ -5,7 +5,7 @@ import { SymbolView } from 'expo-symbols';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
-import * as Sharing from 'expo-sharing';
+import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -40,7 +40,7 @@ export default function ExportScreen() {
     if (state.status !== 'done' || busy) return;
     setBusy(true);
     try {
-      await Sharing.shareAsync(toFileUri(state.outputPath), { mimeType: 'video/mp4' });
+      await shareAsync(toFileUri(state.outputPath), { mimeType: 'video/mp4' });
     } catch (e) {
       Alert.alert('Share failed', e instanceof Error ? e.message : 'Could not share the video.');
     } finally {

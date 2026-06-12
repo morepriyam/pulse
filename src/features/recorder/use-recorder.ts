@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { CameraType, CameraView } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
+import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
+import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking } from 'react-native';
 
@@ -41,7 +41,7 @@ export function useRecorder(initialDraftId?: string) {
   // Library access for the + import — granular (photo+video) like the camera/mic gate,
   // but requested just-in-time on tap (§2.3). Granting up front also lets the picker's
   // passthrough fast path stream originals instead of prompting mid-import.
-  const [libraryPermission, requestLibraryPermission] = MediaLibrary.usePermissions({
+  const [libraryPermission, requestLibraryPermission] = usePermissions({
     granularPermissions: ['photo', 'video'],
   });
 
@@ -161,9 +161,9 @@ export function useRecorder(initialDraftId?: string) {
       if (!next.granted) return;
     }
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await launchImageLibraryAsync({
         mediaTypes: ['videos'],
-        videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
+        videoExportPreset: VideoExportPreset.Passthrough,
       });
       const picked = result.assets?.[0];
       if (result.canceled || !picked) return;
