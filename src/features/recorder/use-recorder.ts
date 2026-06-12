@@ -57,7 +57,12 @@ export function useRecorder(initialDraftId?: string) {
     if (!cameraRef.current || isRecording || !cameraReady) return;
     setIsRecording(true);
     try {
-      const video = await cameraRef.current.recordAsync();
+      // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p. Every
+      // segment a device records is format-identical to the rest of the draft, so export
+      // always hits the merge engine's zero-re-encode passthrough path — and clips recorded
+      // on different devices stay mergeable with each other too. Keep in sync with the
+      // selective-merge majority expectations in the RNVT fork.
+      const video = await cameraRef.current.recordAsync({ codec: 'hvc1' });
       if (!video?.uri) return;
 
       let id = draftId;

@@ -11,7 +11,8 @@ export type ExportState =
   | { status: 'error'; message: string };
 
 /**
- * Headless concat of a draft's clips into a single mp4 via react-native-video-trim's `merge()`.
+ * Headless concat of a draft's clips into a single mp4 via react-native-video-trim's `merge()`
+ * (passthrough join for uniform clips, selective outlier-conform for mixed, re-encode fallback).
  * Joins each clip's EFFECTIVE file (edited ?? original) in timeline order. A single-clip draft
  * skips the merge and exports that file directly (nothing to concatenate). The job re-runs only
  * when the clip set actually changes (keyed on a file signature, not array identity) or on `retry`.
