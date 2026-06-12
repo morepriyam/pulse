@@ -1,23 +1,23 @@
 import { CameraView } from 'expo-camera';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, StyleSheet, View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedView } from '@/components/themed-view';
-import { Accent, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { CameraControls } from '@/features/recorder/camera-controls';
 import { CloseButton } from '@/features/recorder/close-button';
 import { PermissionGate } from '@/features/recorder/permission-gate';
 import { PreviewModal } from '@/features/recorder/preview-modal';
+import { RecordButton } from '@/features/recorder/record-button';
 import { SegmentBar } from '@/features/recorder/segment-bar';
-import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
+import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
 import { useVideoTrim } from '@/features/recorder/use-video-trim';
-
-const RECORD_SIZE = RECORD_BUTTON_SIZE;
 
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
@@ -34,6 +34,8 @@ export default function RecorderScreen() {
     stabilization,
     onCameraReady,
     toggleRecording,
+    startHoldRecording,
+    endHoldRecording,
     flipCamera,
     toggleTorch,
     cycleStabilization,
@@ -67,6 +69,19 @@ export default function RecorderScreen() {
     }, []),
   );
 
+  const { zoom, holdActive, buttonGesture, pinchGesture, resetZoom } = useRecorderGestures({
+    onToggle: toggleRecording,
+    onHoldStart: startHoldRecording,
+    onHoldEnd: endHoldRecording,
+    enabled: cameraReady && !previewing && !dragging,
+  });
+
+  // Front/back max zoom factors differ, so the 0–1 zoom value isn't portable across a flip.
+  // (Flipping mid-recording already stops the recording natively.)
+  useEffect(() => {
+    resetZoom();
+  }, [facing, resetZoom]);
+
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
       { text: 'Cancel', style: 'cancel' },
@@ -89,8 +104,16 @@ export default function RecorderScreen() {
         facing={facing}
         enableTorch={torch && !previewing}
         videoStabilizationMode={stabilization}
+        zoom={zoom}
         onCameraReady={onCameraReady}
       />
+
+      {/* Pinch-to-zoom surface. CameraView can't take children, so this sits between it and
+          the overlay; the overlay is box-none, so touches that miss a control land here.
+          Single-finger touches are inert (Pinch needs two pointers). */}
+      <GestureDetector gesture={pinchGesture}>
+        <View style={StyleSheet.absoluteFill} />
+      </GestureDetector>
 
       <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="box-none">
         <View style={{ paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three }}>
@@ -137,14 +160,13 @@ export default function RecorderScreen() {
               screen then. During a drag it's faded out (opacity 0, layout kept) so the floating
               trash above the bar has clear space and nothing shifts. */}
           {!previewing && (
-            <Pressable
-              onPress={toggleRecording}
-              disabled={!cameraReady || dragging}
-              accessibilityRole="button"
-              accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-              style={[styles.recordOuter, { opacity: dragging ? 0 : cameraReady ? 1 : 0.4 }]}>
-              <View style={isRecording ? styles.recordInnerActive : styles.recordInner} />
-            </Pressable>
+            <RecordButton
+              gesture={buttonGesture}
+              holdActive={holdActive}
+              isRecording={isRecording}
+              cameraReady={cameraReady}
+              dragging={dragging}
+            />
           )}
 
           <SegmentBar
@@ -192,15 +214,4 @@ const styles = StyleSheet.create({
   overlay: { justifyContent: 'space-between' },
   previewArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bottom: { alignItems: 'center', gap: Spacing.three },
-  recordOuter: {
-    width: RECORD_SIZE,
-    height: RECORD_SIZE,
-    borderRadius: RECORD_SIZE / 2,
-    borderWidth: 4,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: Accent },
-  recordInnerActive: { width: 30, height: 30, borderRadius: 8, backgroundColor: Accent },
 });

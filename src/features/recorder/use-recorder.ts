@@ -16,6 +16,10 @@ import { getDurationMs } from '@/utils/video';
 export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
 export type StabilizationMode = (typeof STABILIZATION_MODES)[number];
 
+/** Stopping the native recorder before it has actually started hangs `recordAsync` —
+ * earlier stop requests are deferred to this boundary. */
+const MIN_RECORD_MS = 350;
+
 export function useRecorder(initialDraftId?: string) {
   const cameraRef = useRef<CameraView>(null);
   const [draftId, setDraftId] = useState<string | null>(initialDraftId ?? null);
@@ -26,6 +30,15 @@ export function useRecorder(initialDraftId?: string) {
   const [stabilization, setStabilization] = useState<StabilizationMode>('off');
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
+
+  // Start/stop decisions run from memoized gesture callbacks where `isRecording` state can
+  // lag a render behind — they go through refs that flip synchronously instead.
+  const isRecordingRef = useRef(false);
+  const recordCallAtRef = useRef(0);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set only when a hold STARTED the recording — releasing a hold begun on top of a
+  // tap-started recording must not stop it (that hold is just drag-zooming).
+  const holdInitiatedRef = useRef(false);
 
   // Drop an empty draft on leave so it doesn't litter Home: either one we created this
   // session and never kept a clip in, or a resumed draft whose every clip was deleted.
@@ -44,6 +57,10 @@ export function useRecorder(initialDraftId?: string) {
   }, [segments]);
   useEffect(
     () => () => {
+      // Backstop for a recording still live at unmount — the gesture's onFinalize is the
+      // primary stop path, and `active={false}` resolving recordAsync is the second.
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      if (isRecordingRef.current) cameraRef.current?.stopRecording();
       const id = draftIdRef.current;
       const safeToDelete = sessionDraftId.current != null || everHadSegments.current;
       if (id && segmentCount.current === 0 && safeToDelete) {
@@ -54,7 +71,14 @@ export function useRecorder(initialDraftId?: string) {
   );
 
   async function startRecording() {
-    if (!cameraRef.current || isRecording || !cameraReady) return;
+    if (!cameraRef.current || isRecordingRef.current || !cameraReady) return;
+    // A deferred stop aimed at the previous recording must not hit this one.
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    isRecordingRef.current = true;
+    recordCallAtRef.current = Date.now();
     setIsRecording(true);
     try {
       // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p. Every
@@ -79,13 +103,38 @@ export function useRecorder(initialDraftId?: string) {
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
+      isRecordingRef.current = false;
+      holdInitiatedRef.current = false;
       setIsRecording(false);
     }
   }
 
+  function stopRecording() {
+    if (!isRecordingRef.current || stopTimerRef.current) return;
+    const elapsed = Date.now() - recordCallAtRef.current;
+    if (elapsed < MIN_RECORD_MS) {
+      stopTimerRef.current = setTimeout(() => {
+        stopTimerRef.current = null;
+        if (isRecordingRef.current) cameraRef.current?.stopRecording();
+      }, MIN_RECORD_MS - elapsed);
+      return;
+    }
+    cameraRef.current?.stopRecording();
+  }
+
   function toggleRecording() {
-    if (isRecording) cameraRef.current?.stopRecording();
+    if (isRecordingRef.current) stopRecording();
     else void startRecording();
+  }
+
+  function startHoldRecording() {
+    if (isRecordingRef.current) return;
+    holdInitiatedRef.current = true;
+    void startRecording();
+  }
+
+  function endHoldRecording() {
+    if (holdInitiatedRef.current) stopRecording();
   }
 
   function flipCamera() {
@@ -114,6 +163,8 @@ export function useRecorder(initialDraftId?: string) {
     stabilization,
     onCameraReady: () => setCameraReady(true),
     toggleRecording,
+    startHoldRecording,
+    endHoldRecording,
     flipCamera,
     toggleTorch: () => setTorch((prev) => !prev),
     cycleStabilization,
