@@ -27,6 +27,9 @@ export function useRecorder(initialDraftId?: string) {
   const cameraRef = useRef<CameraView>(null);
   const [draftId, setDraftId] = useState<string | null>(initialDraftId ?? null);
   const [isRecording, setIsRecording] = useState(false);
+  // Wall-clock start of the active recording, for the live running timer in the UI. Mirrors
+  // recordCallAtRef (which stays a ref for the MIN_RECORD_MS stop-guard); null when idle.
+  const [recordStartedAt, setRecordStartedAt] = useState<number | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [facing, setFacing] = useState<CameraType>('back');
   const [torch, setTorch] = useState(false);
@@ -110,6 +113,7 @@ export function useRecorder(initialDraftId?: string) {
     }
     isRecordingRef.current = true;
     recordCallAtRef.current = Date.now();
+    setRecordStartedAt(Date.now());
     setIsRecording(true);
     try {
       // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p. Every
@@ -137,6 +141,7 @@ export function useRecorder(initialDraftId?: string) {
       isRecordingRef.current = false;
       holdInitiatedRef.current = false;
       setIsRecording(false);
+      setRecordStartedAt(null);
     }
   }
 
@@ -233,6 +238,7 @@ export function useRecorder(initialDraftId?: string) {
     draftId,
     segments,
     isRecording,
+    recordStartedAt,
     cameraReady,
     facing,
     torch,

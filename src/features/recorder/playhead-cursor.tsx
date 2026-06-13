@@ -153,10 +153,10 @@ export function PlayheadCursor({
       const vw = viewportW.value;
       if (vw <= 0) return;
       const dt = (frame.timeSincePreviousFrame ?? 16) / 1000;
-      const knob = Math.min(
-        Math.max(baseKnobScreen.value + fingerTransX.value, KNOB_PAD),
-        vw - KNOB_PAD,
-      );
+      const raw = baseKnobScreen.value + fingerTransX.value;
+      // Edge-zone auto-scroll trigger uses the wider KNOB_PAD band (clamping the finger to the
+      // zone's outer edge also caps the scroll velocity at MAX).
+      const knob = Math.min(Math.max(raw, KNOB_PAD), vw - KNOB_PAD);
       let v = 0;
       if (knob < KNOB_PAD + EDGE_ZONE) v = -MAX_SCROLL_SPEED * (1 - (knob - KNOB_PAD) / EDGE_ZONE);
       else if (knob > vw - KNOB_PAD - EDGE_ZONE)
@@ -164,8 +164,13 @@ export function PlayheadCursor({
       const maxScroll = Math.max(0, contentW.value - vw);
       const nextOffset = Math.min(Math.max(scrollOffset.value + v * dt, 0), maxScroll);
       if (nextOffset !== scrollOffset.value) scrollTo(scrollRef, nextOffset, 0, false);
+      // Seek position uses a tighter KNOB/2 clamp — just enough to keep the knob fully on-screen
+      // (SCRUB_INSET = KNOB/2). With the wider KNOB_PAD the playhead stopped (KNOB_PAD - SCRUB_INSET)
+      // px short of each end, so it never reached globalMs 0 / totalMs and the preview started a
+      // little into the first clip. KNOB/2 lets contentX reach 0 and maxContentX exactly.
+      const knobSeek = Math.min(Math.max(raw, KNOB / 2), vw - KNOB / 2);
       // content-x (the playhead/seek position) = knob screen-x − inset + offset.
-      const contentX = Math.min(Math.max(knob - SCRUB_INSET + nextOffset, 0), maxContentX.value);
+      const contentX = Math.min(Math.max(knobSeek - SCRUB_INSET + nextOffset, 0), maxContentX.value);
       cursorX.value = contentX; // drives the knob render (cursorX − scrollOffset)
       sinceSeek.value += dt;
       if (sinceSeek.value >= SCRUB_INTERVAL_MS / 1000) {
