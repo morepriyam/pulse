@@ -15,6 +15,7 @@ import { Accent, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { segmentsForDraft } from '@/db/drafts';
 import { useExport } from '@/features/export/use-export';
+import { MergeProgressRing } from '@/features/export/merge-progress-ring';
 import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { formatClipCount, formatDuration } from '@/utils/format';
@@ -59,7 +60,7 @@ export default function ExportScreen() {
       <View style={styles.center}>
         {state.status === 'merging' && (
           <>
-            <ActivityIndicator size="large" color={Accent} />
+            <MergeProgressRing progress={state.progress} />
             <ThemedText type="subtitle" style={styles.title}>
               Merging…
             </ThemedText>
