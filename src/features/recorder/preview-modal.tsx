@@ -93,7 +93,6 @@ const styles = StyleSheet.create({
   card: {
     width: '72%',
     aspectRatio: 9 / 16,
-    borderRadius: Spacing.three,
     overflow: 'hidden',
     backgroundColor: '#000',
     borderWidth: StyleSheet.hairlineWidth,
