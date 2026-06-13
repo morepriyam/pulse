@@ -77,6 +77,23 @@ function Bar({
   // mounts on a bar the user scrolled before opening the preview.
   const scrollOffset = useScrollViewOffset(scrollRef);
 
+  // Live viewport + scroll-content widths, fed to the playhead's edge-band follow math.
+  const viewportW = useSharedValue(0);
+  const contentW = useSharedValue(0);
+  // True during a reorder drag — tells the playhead to pause its follow so the two scrollers
+  // (this and Sortable's autoScroll) don't fight when reordering while previewing.
+  const dragScroll = useSharedValue(false);
+
+  // Scroll the newest clip into view when one is added (record mode only — while previewing the
+  // playhead owns scrolling). A length increase is unique to add; reorder/delete never grow it.
+  // The actual scroll happens in onContentSizeChange so the new thumb has laid out first.
+  const prevCount = useRef(segments.length);
+  const stickToEnd = useRef(false);
+  useEffect(() => {
+    if (segments.length > prevCount.current && !cursor) stickToEnd.current = true;
+    prevCount.current = segments.length;
+  }, [segments.length, cursor]);
+
   // Drag-to-trash. The trash floats above the bar, shown only while dragging; dropping a clip
   // on it deletes that clip — otherwise the drag just reorders. Hit-testing is done from the
   // drag's touch position (onDragMove) against the trash's measured window rect.
@@ -109,12 +126,24 @@ function Bar({
         </Animated.View>
       </View>
 
-      <View style={[styles.viewport, cursor && styles.viewportScrub]}>
+      <View
+        style={[styles.viewport, cursor && styles.viewportScrub]}
+        onLayout={(e) => {
+          viewportW.value = e.nativeEvent.layout.width;
+        }}>
         <Animated.ScrollView
           ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.content}>
+          contentContainerStyle={styles.content}
+          onContentSizeChange={(w) => {
+            contentW.value = w;
+            // Honor a pending scroll-to-newest now that the added thumb has been measured.
+            if (stickToEnd.current) {
+              stickToEnd.current = false;
+              scrollRef.current?.scrollToEnd({ animated: true });
+            }
+          }}>
           <Sortable.Grid
             rows={1}
             rowHeight={THUMB_HEIGHT}
@@ -131,6 +160,7 @@ function Bar({
               overTrash.current = false;
               over.value = 0;
               vis.value = withTiming(1, { duration: 150 });
+              dragScroll.value = true; // pause playhead-follow so it can't fight the grid autoscroll
               measureTrash();
               onDragActiveChange?.(true);
             }}
@@ -155,6 +185,7 @@ function Bar({
               else onReorder(data.map((s) => s.id));
               overTrash.current = false;
               draggedKey.current = null;
+              dragScroll.value = false;
               onDragActiveChange?.(false);
             }}
             renderItem={({ item }) => (
@@ -169,7 +200,15 @@ function Bar({
         </Animated.ScrollView>
 
         {cursor && (
-          <PlayheadCursor cursor={cursor} segments={segments} scrollOffset={scrollOffset} />
+          <PlayheadCursor
+            cursor={cursor}
+            segments={segments}
+            scrollRef={scrollRef}
+            scrollOffset={scrollOffset}
+            viewportW={viewportW}
+            contentW={contentW}
+            suspendAutoScroll={dragScroll}
+          />
         )}
       </View>
 
