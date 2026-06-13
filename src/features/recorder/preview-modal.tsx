@@ -1,12 +1,16 @@
 import { SymbolView } from 'expo-symbols';
 import { VideoView, type VideoPlayer } from 'expo-video';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { formatDurationPadded } from '@/utils/format';
 
 type Props = {
   player: VideoPlayer;
   isPlaying: boolean;
+  // Draft-global playhead position and total, for the time readout pill.
+  positionMs: number;
+  totalMs: number;
   onTogglePlay: () => void;
   onClose: () => void;
   onTrim: () => void;
@@ -22,6 +26,8 @@ type Props = {
 export function PreviewModal({
   player,
   isPlaying,
+  positionMs,
+  totalMs,
   onTogglePlay,
   onClose,
   onTrim,
@@ -71,6 +77,14 @@ export function PreviewModal({
         style={[styles.badge, styles.delete]}>
         <SymbolView name="trash" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
+
+      <View style={styles.timeRow} pointerEvents="none">
+        <View style={styles.timePill}>
+          <Text style={styles.timeText}>
+            {formatDurationPadded(positionMs)} / {formatDurationPadded(totalMs)}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -123,5 +137,25 @@ const styles = StyleSheet.create({
   // Left of the delete badge (28 wide + an 8pt gap).
   trim: {
     right: Spacing.two + 28 + Spacing.two,
+  },
+  timeRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Spacing.two,
+    alignItems: 'center',
+  },
+  timePill: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  timeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
   },
 });
