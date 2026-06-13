@@ -4,6 +4,7 @@ import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking } from 'react-native';
+import { isValidFile } from 'react-native-video-trim';
 
 import {
   addSegment,
@@ -13,8 +14,8 @@ import {
   reorderSegments,
   segmentsForDraft,
 } from '@/db/drafts';
-import { absolutize, copyIntoSegments, persistRecording } from '@/utils/file-store';
-import { getDurationMs } from '@/utils/video';
+import { absolutize, copyIntoSegments, persistRecording, thumbRelPath } from '@/utils/file-store';
+import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 
 export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
 export type StabilizationMode = (typeof STABILIZATION_MODES)[number];
@@ -134,7 +135,9 @@ export function useRecorder(initialDraftId?: string) {
       const segmentId = `${id}-${Date.now()}`;
       const originalFilename = await persistRecording(video.uri, id, segmentId);
       const durationMs = await getDurationMs(absolutize(originalFilename));
-      await addSegment(id, { id: segmentId, originalFilename, durationMs });
+      const thumbRel = thumbRelPath(id, segmentId);
+      const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
+      await addSegment(id, { id: segmentId, originalFilename, durationMs, thumbnail: ok ? thumbRel : null });
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
@@ -173,6 +176,15 @@ export function useRecorder(initialDraftId?: string) {
       const picked = result.assets?.[0];
       if (result.canceled || !picked) return;
 
+      // Reject corrupt / zero-length picks before they enter the draft (one native probe,
+      // reused below for the duration). A thrown probe is non-fatal — fall through and let
+      // copy + getDurationMs decide.
+      const info = await isValidFile(picked.uri).catch(() => null);
+      if (info && !info.isValid) {
+        Alert.alert('Import failed', 'That file isn’t a supported video.');
+        return;
+      }
+
       let id = draftId;
       if (!id) {
         id = await createDraft();
@@ -182,8 +194,11 @@ export function useRecorder(initialDraftId?: string) {
 
       const segmentId = `${id}-${Date.now()}`;
       const originalFilename = await copyIntoSegments(picked.uri, id, segmentId);
-      const durationMs = await getDurationMs(absolutize(originalFilename));
-      await addSegment(id, { id: segmentId, originalFilename, durationMs });
+      const durationMs =
+        info && info.duration > 0 ? info.duration : await getDurationMs(absolutize(originalFilename));
+      const thumbRel = thumbRelPath(id, segmentId);
+      const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
+      await addSegment(id, { id: segmentId, originalFilename, durationMs, thumbnail: ok ? thumbRel : null });
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
     }

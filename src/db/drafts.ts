@@ -1,6 +1,13 @@
 import { asc, count, desc, eq, sql } from 'drizzle-orm';
 
-import { deleteDraftDir, deleteSegmentFile } from '@/utils/file-store';
+import {
+  absolutize,
+  deleteDraftDir,
+  deleteSegmentFile,
+  editedThumbRelPath,
+  thumbRelPath,
+} from '@/utils/file-store';
+import { generateThumbnailFile } from '@/utils/video';
 import { db } from './client';
 import { projects, segments } from './schema';
 
@@ -15,10 +22,13 @@ export const draftListQuery = db
     segmentCount: count(segments.id),
     // Effective duration = sum of each clip's edited duration (if edited) else its original.
     durationMs: sql<number>`coalesce(sum(coalesce(${segments.editedDurationMs}, ${segments.durationMs})), 0)`,
-    // Cover frame is derived at runtime from the first clip's effective (edited ?? original) file.
+    // Cover frame: the first clip's persisted thumbnail (+ its effective file as a legacy fallback).
     firstSegmentFilename: sql<
       string | null
     >`(select coalesce(edited_filename, original_filename) from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
+    firstSegmentThumbnail: sql<
+      string | null
+    >`(select thumbnail from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
   })
   .from(projects)
   .leftJoin(segments, eq(segments.projectId, projects.id))
@@ -43,7 +53,7 @@ export async function createDraft(): Promise<string> {
 
 export async function addSegment(
   draftId: string,
-  segment: { id: string; originalFilename: string; durationMs: number },
+  segment: { id: string; originalFilename: string; durationMs: number; thumbnail?: string | null },
 ): Promise<void> {
   const [{ value: order }] = await db
     .select({ value: count() })
@@ -56,6 +66,7 @@ export async function addSegment(
     order,
     originalFilename: segment.originalFilename,
     durationMs: segment.durationMs,
+    thumbnail: segment.thumbnail ?? null,
   });
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, draftId));
 }
@@ -72,8 +83,10 @@ export async function deleteSegment(segmentId: string): Promise<void> {
     .from(segments)
     .where(eq(segments.originalFilename, seg.originalFilename));
   if (stillReferenced === 0) deleteSegmentFile(seg.originalFilename);
-  // The edited file is per-segment (never shared) — always safe to delete with the row.
+  // The edited file and both thumbnails are per-segment (never shared) — delete with the row.
   if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
+  deleteSegmentFile(thumbRelPath(seg.projectId, segmentId));
+  deleteSegmentFile(editedThumbRelPath(seg.projectId, segmentId));
 
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
@@ -90,9 +103,13 @@ export async function setEdited(
   if (seg.editedFilename && seg.editedFilename !== editedFilename) {
     deleteSegmentFile(seg.editedFilename);
   }
+  // Cover the edited file's first frame at the distinct edited-thumb path (the pristine thumb
+  // stays on disk untouched, ready for a reset).
+  const thumbRel = editedThumbRelPath(seg.projectId, segmentId);
+  const ok = await generateThumbnailFile(absolutize(editedFilename), absolutize(thumbRel));
   await db
     .update(segments)
-    .set({ editedFilename, editedDurationMs })
+    .set({ editedFilename, editedDurationMs, thumbnail: ok ? thumbRel : seg.thumbnail })
     .where(eq(segments.id, segmentId));
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
@@ -102,9 +119,13 @@ export async function resetEdit(segmentId: string): Promise<void> {
   const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
   if (!seg) return;
   if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
+  // Revert the cover to the pristine original's thumbnail; drop the now-orphaned edited thumb.
+  deleteSegmentFile(editedThumbRelPath(seg.projectId, segmentId));
+  const thumbRel = thumbRelPath(seg.projectId, segmentId);
+  const ok = await generateThumbnailFile(absolutize(seg.originalFilename), absolutize(thumbRel));
   await db
     .update(segments)
-    .set({ editedFilename: null, editedDurationMs: null })
+    .set({ editedFilename: null, editedDurationMs: null, thumbnail: ok ? thumbRel : null })
     .where(eq(segments.id, segmentId));
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }

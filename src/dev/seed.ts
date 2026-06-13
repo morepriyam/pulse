@@ -4,8 +4,8 @@ import { Asset } from 'expo-asset';
 import { db } from '@/db/client';
 import { addSegment } from '@/db/drafts';
 import { projects } from '@/db/schema';
-import { absolutize, copyIntoSegments, deleteDraftDir } from '@/utils/file-store';
-import { getDurationMs } from '@/utils/video';
+import { absolutize, copyIntoSegments, deleteDraftDir, thumbRelPath } from '@/utils/file-store';
+import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 
 // Dev-only helpers (§1.0b): seed one curated draft of bundled sample clips so the timeline
 // editor is exercisable on a simulator with no camera. Gate every caller behind `__DEV__`.
@@ -79,7 +79,14 @@ export async function seedDraft(): Promise<string | undefined> {
     const segmentId = `${SEED_DRAFT_ID}-${i}`;
     const originalFilename = await copyIntoSegments(asset.localUri, SEED_DRAFT_ID, segmentId);
     const durationMs = await getDurationMs(absolutize(originalFilename));
-    await addSegment(SEED_DRAFT_ID, { id: segmentId, originalFilename, durationMs });
+    const thumbRel = thumbRelPath(SEED_DRAFT_ID, segmentId);
+    const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
+    await addSegment(SEED_DRAFT_ID, {
+      id: segmentId,
+      originalFilename,
+      durationMs,
+      thumbnail: ok ? thumbRel : null,
+    });
   }
 
   return SEED_DRAFT_ID;
