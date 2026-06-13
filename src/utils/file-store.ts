@@ -15,6 +15,20 @@ export function editedSegmentRelPath(draftId: string, segmentId: string): string
   return `drafts/${draftId}/segments/${segmentId}.edited.mp4`;
 }
 
+/** The pristine clip's persisted jpeg thumbnail (relative path). */
+export function thumbRelPath(draftId: string, segmentId: string): string {
+  return `drafts/${draftId}/segments/${segmentId}.thumb.jpg`;
+}
+
+/**
+ * The edited clip's persisted jpeg thumbnail (relative path). A *distinct* path from the
+ * original's so the rendered URI changes when the cover changes — otherwise expo-image would
+ * serve the stale pre-edit frame from its cache for an identical URI.
+ */
+export function editedThumbRelPath(draftId: string, segmentId: string): string {
+  return `drafts/${draftId}/segments/${segmentId}.edited.thumb.jpg`;
+}
+
 export function absolutize(relPath: string): string {
   return new File(Paths.document, ...relPath.split('/')).uri;
 }

@@ -148,6 +148,7 @@ export default function HomeScreen() {
             <DraftCard
               name={pendingRename?.id === item.id ? pendingRename.name : item.name}
               firstSegmentFilename={item.firstSegmentFilename}
+              firstSegmentThumbnail={item.firstSegmentThumbnail}
               segmentCount={item.segmentCount}
               durationMs={item.durationMs}
               lastModified={item.lastModified}

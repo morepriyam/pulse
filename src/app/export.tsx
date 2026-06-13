@@ -15,6 +15,7 @@ import { Accent, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { segmentsForDraft } from '@/db/drafts';
 import { useExport } from '@/features/export/use-export';
+import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
@@ -34,6 +35,7 @@ export default function ExportScreen() {
   // Whether the share sheet is being presented, so we can disable the button and show a spinner.
   const [busy, setBusy] = useState(false);
   const photos = useSaveToPhotos();
+  const docs = useSaveToDocuments();
   const theme = useTheme();
 
   const runShare = async () => {
@@ -111,6 +113,27 @@ export default function ExportScreen() {
                   <>
                     <SymbolView name="square.and.arrow.down" size={18} tintColor={theme.text} />
                     <ThemedText>Save to Photos</ThemedText>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={() => void docs.save(toFileUri(state.outputPath))}
+                disabled={docs.status !== 'idle'}
+                accessibilityRole="button"
+                accessibilityLabel="Save to Files"
+                style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                {docs.status === 'saving' ? (
+                  <ActivityIndicator color={theme.text} />
+                ) : docs.status === 'saved' ? (
+                  <>
+                    <SymbolView name="checkmark" size={18} tintColor={theme.text} />
+                    <ThemedText>Saved</ThemedText>
+                  </>
+                ) : (
+                  <>
+                    <SymbolView name="folder" size={18} tintColor={theme.text} />
+                    <ThemedText>Save to Files</ThemedText>
                   </>
                 )}
               </Pressable>
