@@ -7,6 +7,7 @@ import type { Anchor } from '@/components/action-menu';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThumbnail } from '@/hooks/use-thumbnail';
 import { formatClipCount, formatDuration, formatRelativeDate } from '@/utils/format';
 
@@ -14,8 +15,10 @@ const NAME_MAX_LENGTH = 40;
 
 type Props = {
   name: string | null;
-  /** Relative path of the draft's first clip; the cover frame is derived from it at runtime. */
+  /** Relative path of the draft's first clip; the cover frame's legacy runtime fallback. */
   firstSegmentFilename?: string | null;
+  /** Relative path of the first clip's persisted jpeg thumbnail (preferred cover frame). */
+  firstSegmentThumbnail?: string | null;
   segmentCount: number;
   durationMs: number;
   lastModified: number;
@@ -32,6 +35,7 @@ type Props = {
 export function DraftCard({
   name,
   firstSegmentFilename,
+  firstSegmentThumbnail,
   segmentCount,
   durationMs,
   lastModified,
@@ -42,7 +46,8 @@ export function DraftCard({
   onSubmitName,
 }: Props) {
   const theme = useTheme();
-  const thumbnail = useThumbnail(firstSegmentFilename);
+  const isDark = useColorScheme() === 'dark';
+  const thumbnail = useThumbnail(firstSegmentThumbnail, firstSegmentFilename);
   const moreRef = useRef<View>(null);
 
   return (
@@ -53,9 +58,18 @@ export function DraftCard({
         styles.card,
         { backgroundColor: theme.backgroundElement, opacity: pressed && !editing ? 0.6 : 1 },
       ]}>
-      <View style={[styles.thumb, { backgroundColor: theme.backgroundSelected }]}>
+      <View
+        style={[
+          styles.thumb,
+          {
+            backgroundColor: theme.backgroundSelected,
+            borderColor: theme.border,
+            // Opposite-tone shadow so it reads in both modes: black in light, white in dark.
+            shadowColor: isDark ? '#fff' : '#000',
+          },
+        ]}>
         {thumbnail ? (
-          <Image source={thumbnail} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
         ) : (
           <SymbolView name="video.fill" size={18} tintColor={theme.textSecondary} />
         )}
@@ -116,10 +130,20 @@ const styles = StyleSheet.create({
   thumb: {
     width: 44,
     height: 60,
-    borderRadius: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    // Lift the cover off the card so it pops a little. A hairline ring carries the separation
+    // in dark mode (where a black shadow is invisible against the dark card); the shadow does
+    // the lifting in light mode.
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
   },
   body: {
     flex: 1,

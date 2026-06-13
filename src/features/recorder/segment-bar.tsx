@@ -236,8 +236,8 @@ function SegmentThumb({
   onSelect: () => void;
   onEdit: () => void;
 }) {
-  // Cover the EFFECTIVE clip — the edited file once trimmed, else the pristine original.
-  const thumbnail = useThumbnail(segment.editedFilename ?? segment.originalFilename);
+  // Persisted jpeg cover; falls back to the EFFECTIVE clip (edited ?? original) for legacy rows.
+  const thumbnail = useThumbnail(segment.thumbnail, segment.editedFilename ?? segment.originalFilename);
 
   // Effective (post-trim) clip length, the same number the playhead and export use. A failed
   // native read stores 0ms (the clip is skipped on playback) — show nothing rather than 00:00.
