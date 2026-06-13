@@ -1,6 +1,7 @@
-import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+
+import { closeToHome } from '@/utils/navigation';
 
 export function CloseButton({
   onPress,
@@ -11,7 +12,7 @@ export function CloseButton({
 }) {
   return (
     <Pressable
-      onPress={onPress ?? (() => router.back())}
+      onPress={onPress ?? closeToHome}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel="Close"
