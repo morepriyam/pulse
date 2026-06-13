@@ -1,7 +1,7 @@
 import { CameraView } from 'expo-camera';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,7 +20,9 @@ import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
 import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
+import { useRecordingTimer } from '@/features/recorder/use-recording-timer';
 import { useVideoTrim } from '@/features/recorder/use-video-trim';
+import { formatDurationPadded } from '@/utils/format';
 
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
@@ -31,6 +33,7 @@ export default function RecorderScreen() {
     draftId,
     segments,
     isRecording,
+    recordStartedAt,
     cameraReady,
     facing,
     torch,
@@ -60,6 +63,10 @@ export default function RecorderScreen() {
   if (previewId != null && segments.length === 0) setPreviewId(null);
   const preview = usePreview(segments, previewId);
   const previewing = previewId != null;
+
+  // Top running timer: always the live draft total — saved clips plus wall-clock while
+  // recording. During preview the playhead position is shown inside the preview card instead.
+  const totalMs = useRecordingTimer(segments, recordStartedAt);
 
   // Trimming = RNVT's full-screen editor, launched from the ✂ button in the preview modal.
   const { openTrim } = useVideoTrim(draftId);
@@ -128,8 +135,15 @@ export default function RecorderScreen() {
       </GestureDetector>
 
       <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="box-none">
-        <View style={{ paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three }}>
+        <View
+          style={[
+            styles.topBar,
+            { paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three },
+          ]}>
           <CloseButton onPress={() => router.back()} />
+          <Text style={styles.timerText}>{formatDurationPadded(totalMs)}</Text>
+          {/* Mirrors the CloseButton's width so the timer stays optically centered. */}
+          <View style={styles.topBarSpacer} />
         </View>
 
         <CameraControls
@@ -149,6 +163,8 @@ export default function RecorderScreen() {
             <PreviewModal
               player={preview.player}
               isPlaying={preview.isPlaying}
+              positionMs={preview.globalMs}
+              totalMs={preview.totalMs}
               onTogglePlay={preview.togglePlay}
               onClose={() => setPreviewId(null)}
               onTrim={() => {
@@ -242,6 +258,22 @@ export default function RecorderScreen() {
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: '#000' },
   overlay: { justifyContent: 'space-between' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timerText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  topBarSpacer: { width: 40 },
   previewArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bottom: { alignItems: 'center', gap: Spacing.three },
   // Full-width row; the record button is centered by the row itself, so its position can't
