@@ -49,6 +49,22 @@ Mirror the **real video surfaces the app meets**, and span enough variety to str
 - **Codec:** mix H.264 and HEVC. **Container:** mix QuickTime (camera) and plain MP4 (shared).
 - **Length:** ~12–24s so there's room to trim.
 
+## Speed-test clips (`speed/`)
+
+[`speed/`](speed/) holds short (~6s) clips for two **large** drafts used to measure merge
+**speed** at a realistic scale (~20 segments / ~2 min). Generate with
+[`scripts/make-speed-fixtures.sh`](../../scripts/make-speed-fixtures.sh); seed via the dev
+buttons **`+ s2`** / **`+ s3`** on Home (one draft each, idempotent; `clear` resets them).
+
+| draft                    | button | composition                                       | merge path                          |
+| ------------------------ | ------ | ------------------------------------------------- | ----------------------------------- |
+| `Dev sample 2 (uniform)` | `+ s2` | 20× `portrait-h264` (one signature)               | lossless passthrough join (fast)    |
+| `Dev sample 3 (mixed)`   | `+ s3` | 14× `portrait-h264` + 6 outliers (hevc/60/4K/land) | selective conform of outliers only  |
+
+Only one clip per distinct format is bundled (`portrait-h264`, `portrait-hevc`, `portrait-60`,
+`portrait-4k`, `landscape-1080`, `landscape-4k`); the seed references them repeatedly and copies a
+fresh file per segment, so the bundle stays small (~7 MB) while each draft has 20 segments.
+
 ## Size / git (Git LFS)
 
 The clips (~25 MB) are stored in **Git LFS** (`assets/dev/*.mp4`) and fetched on a normal clone, so
