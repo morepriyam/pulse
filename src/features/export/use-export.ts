@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { merge } from 'react-native-video-trim';
+import VideoTrim, { merge, type Spec } from 'react-native-video-trim';
 
 import type { Segment } from '@/db/schema';
 import { absolutize } from '@/utils/file-store';
 import { effFile, effMs } from '@/utils/segment-window';
 
+const Native = VideoTrim as Spec;
+
 export type ExportState =
-  | { status: 'merging' }
+  | { status: 'merging'; progress: number }
   | { status: 'done'; outputPath: string; durationMs: number }
   | { status: 'error'; message: string };
 
@@ -18,7 +20,7 @@ export type ExportState =
  * when the clip set actually changes (keyed on a file signature, not array identity) or on `retry`.
  */
 export function useExport(segments: Segment[]) {
-  const [state, setState] = useState<ExportState>({ status: 'merging' });
+  const [state, setState] = useState<ExportState>({ status: 'merging', progress: 0 });
   const [attempt, setAttempt] = useState(0);
   const retry = () => setAttempt((n) => n + 1);
 
@@ -33,10 +35,16 @@ export function useExport(segments: Segment[]) {
     // newer state — only the most recent run is allowed to commit.
     let current = true;
 
+    // Native emits normalized merge progress in [0,1]; reflect it into the loader. Subscribed for
+    // the lifetime of this run and torn down in cleanup (single-clip exports never emit).
+    const sub = Native.onMergeProgress(({ progress }) => {
+      if (current) setState({ status: 'merging', progress });
+    });
+
     void (async () => {
       // Inside the async body (not the effect's synchronous path) so re-running on a clip change
       // flips back to the loader without a cascading-render warning.
-      if (current) setState({ status: 'merging' });
+      if (current) setState({ status: 'merging', progress: 0 });
       try {
         const urls = files.map(absolutize);
         const result =
@@ -59,6 +67,7 @@ export function useExport(segments: Segment[]) {
 
     return () => {
       current = false;
+      sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, attempt]);
