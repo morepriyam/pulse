@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
-import { clearDrafts, seedDraft } from '@/dev/seed';
+import { clearDrafts, seedDraft, seedSpeedMixed, seedSpeedUniform } from '@/dev/seed';
 import { DraftCard } from '@/features/home/draft-card';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -117,6 +117,16 @@ export default function HomeScreen() {
             <Pressable onPress={() => void seedDraft()} hitSlop={8}>
               <ThemedText themeColor="accent" type="small">
                 + seed
+              </ThemedText>
+            </Pressable>
+            <Pressable onPress={() => void seedSpeedUniform()} hitSlop={8}>
+              <ThemedText themeColor="accent" type="small">
+                + s2
+              </ThemedText>
+            </Pressable>
+            <Pressable onPress={() => void seedSpeedMixed()} hitSlop={8}>
+              <ThemedText themeColor="accent" type="small">
+                + s3
               </ThemedText>
             </Pressable>
             <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
