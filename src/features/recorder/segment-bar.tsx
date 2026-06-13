@@ -4,7 +4,7 @@
 /* eslint-disable react-hooks/immutability */
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolateColor,
@@ -84,6 +84,11 @@ function Bar({
   // (this and Sortable's autoScroll) don't fight when reordering while previewing.
   const dragScroll = useSharedValue(false);
 
+  // React-side mirror of the drag state, used to hide the → (Next) button while reordering so
+  // the flex:1 viewport reclaims its slot (button + gap) for more room. Item slot positions are
+  // index-based (i * STEP), independent of viewport width, so widening mid-drag is reorder-safe.
+  const [dragActive, setDragActive] = useState(false);
+
   // Scroll the newest clip into view when one is added (record mode only — while previewing the
   // playhead owns scrolling). A length increase is unique to add; reorder/delete never grow it.
   // The actual scroll happens in onContentSizeChange so the new thumb has laid out first.
@@ -161,6 +166,7 @@ function Bar({
               over.value = 0;
               vis.value = withTiming(1, { duration: 150 });
               dragScroll.value = true; // pause playhead-follow so it can't fight the grid autoscroll
+              setDragActive(true); // hide → so the viewport gets its space
               measureTrash();
               onDragActiveChange?.(true);
             }}
@@ -186,6 +192,7 @@ function Bar({
               overTrash.current = false;
               draggedKey.current = null;
               dragScroll.value = false;
+              setDragActive(false); // restore → now the drag is done
               onDragActiveChange?.(false);
             }}
             renderItem={({ item }) => (
@@ -212,7 +219,9 @@ function Bar({
         )}
       </View>
 
-      {onNext && (
+      {/* Hidden while reordering — its slot (button + gap) is handed to the flex:1 viewport for
+          more room; restored on drag end. */}
+      {onNext && !dragActive && (
         <Pressable
           onPress={onNext}
           accessibilityRole="button"

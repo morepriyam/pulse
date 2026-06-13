@@ -1,6 +1,6 @@
 import { useEvent } from 'expo';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useState } from 'react';
@@ -53,7 +53,7 @@ export default function ExportScreen() {
   return (
     <ThemedView style={styles.fill}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
-        <CloseButton onPress={() => router.back()} />
+        <CloseButton />
       </View>
 
       <View style={styles.center}>
@@ -218,7 +218,6 @@ const styles = StyleSheet.create({
   previewCard: {
     width: '70%',
     aspectRatio: 9 / 16,
-    borderRadius: Spacing.three,
     overflow: 'hidden',
     backgroundColor: '#000',
     borderWidth: StyleSheet.hairlineWidth,
