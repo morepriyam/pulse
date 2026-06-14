@@ -38,6 +38,7 @@ export default function RecorderScreen() {
     isRecording,
     recordStartedAt,
     cameraReady,
+    prefsReady,
     facing,
     torch,
     stabilization,
@@ -126,6 +127,8 @@ export default function RecorderScreen() {
   if (!permissions.granted) {
     return <PermissionGate blocked={permissions.blocked} onRequest={permissions.request} />;
   }
+  // Hold the camera until persisted prefs load, so the first frame uses the saved facing.
+  if (!prefsReady) return <ThemedView style={styles.fill} />;
 
   return (
     <View style={styles.fill}>
