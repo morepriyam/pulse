@@ -143,7 +143,12 @@ export function ModelSwitcherModal({
                     active && { borderColor: theme.accent },
                   ]}>
                   <View style={styles.rowText}>
-                    <ThemedText type="smallBold">{m.label}</ThemedText>
+                    <View style={styles.rowTitle}>
+                      <ThemedText type="smallBold">{m.label}</ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {m.name}
+                      </ThemedText>
+                    </View>
                     <ThemedText type="small" themeColor="textSecondary">
                       {m.note} · {sizeMb(m.approxBytes)}
                     </ThemedText>
@@ -208,6 +213,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   rowText: { flex: 1, gap: 2 },
+  rowTitle: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two, flexWrap: 'wrap' },
   delete: {
     flexDirection: 'row',
     alignItems: 'center',

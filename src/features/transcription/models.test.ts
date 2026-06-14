@@ -13,7 +13,7 @@ describe('model catalog', () => {
   it('builds the Hugging Face GGML url from the filename', () => {
     const m = getModel('base.en')!;
     expect(modelUrl(m)).toBe(
-      'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
+      'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin',
     );
   });
 
@@ -24,6 +24,8 @@ describe('model catalog', () => {
       expect(m.lang).toBe(expected);
     }
     expect(getModel('large-v3-turbo-q5_0')!.lang).toBe('auto');
+    // The small multilingual model is the affordable non-English option — it must detect language.
+    expect(getModel('small-q5_1')!.lang).toBe('auto');
   });
 
   it('only the large model crosses the confirm-before-download threshold', () => {
