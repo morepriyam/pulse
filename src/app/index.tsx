@@ -2,7 +2,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionMenu, type Anchor, type MenuAction } from '@/components/action-menu';
@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
 import { selectedModelQuery } from '@/db/settings';
+import { useDraftTransfer } from '@/features/draft-transfer/use-draft-transfer';
 import { DraftCard } from '@/features/home/draft-card';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import { getModel } from '@/features/transcription/models';
@@ -38,6 +39,12 @@ export default function HomeScreen() {
   // Rows hidden optimistically while their delete is in flight.
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
 
+  // Multi-select for `.pulse` export. `selectionMode` swaps the header for a selection toolbar
+  // and turns each card into a checkbox; `selectedIds` tracks the chosen drafts.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const { busy, state: transferState, shareDrafts, importDrafts } = useDraftTransfer();
+
   // On-device AI: the globally-selected model (persisted) that powers captions today and more
   // on-device features later. Download + library-wide work runs in the background engine
   // (TranscriptionProvider); here we just open the panel and reflect whether a model is active.
@@ -60,6 +67,24 @@ export default function HomeScreen() {
   }
 
   const visibleDrafts = drafts.filter((d) => !deletingIds.has(d.id));
+  const allSelected = visibleDrafts.length > 0 && visibleDrafts.every((d) => selectedIds.has(d.id));
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? new Set() : new Set(visibleDrafts.map((d) => d.id)));
 
   const submitRename = (draftId: string, currentName: string | null, input: string) => {
     setEditingDraftId(null);
@@ -125,24 +150,71 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
-        <ThemedText type="title">Pulse</ThemedText>
-        <Pressable
-          onPress={() => setPickerOpen(true)}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="On-device AI"
-          style={styles.aiButton}>
-          <SymbolView
-            name="sparkles"
-            size={20}
-            tintColor={selectedModel ? theme.accent : theme.textSecondary}
-          />
-          <ThemedText type="smallBold" themeColor={selectedModel ? 'accent' : 'textSecondary'}>
-            AI
+      {selectionMode ? (
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
+          <Pressable onPress={exitSelection} hitSlop={12} accessibilityRole="button">
+            <ThemedText themeColor="accent">Cancel</ThemedText>
+          </Pressable>
+          <ThemedText type="smallBold">
+            {selectedIds.size === 0 ? 'Select drafts' : `${selectedIds.size} selected`}
           </ThemedText>
-        </Pressable>
-      </View>
+          <Pressable
+            onPress={toggleSelectAll}
+            hitSlop={12}
+            accessibilityRole="button"
+            disabled={visibleDrafts.length === 0}>
+            <ThemedText themeColor={visibleDrafts.length === 0 ? 'textSecondary' : 'accent'}>
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </ThemedText>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
+          <ThemedText type="title">Pulse</ThemedText>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={importDrafts}
+              hitSlop={12}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Import drafts">
+              {transferState === 'importing' ? (
+                <ActivityIndicator size="small" color={theme.textSecondary} />
+              ) : (
+                <SymbolView
+                  name="square.and.arrow.down"
+                  size={22}
+                  tintColor={busy ? theme.textSecondary : theme.text}
+                />
+              )}
+            </Pressable>
+            {visibleDrafts.length > 0 && (
+              <Pressable
+                onPress={() => setSelectionMode(true)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Select drafts to share">
+                <SymbolView name="square.and.arrow.up" size={22} tintColor={theme.text} />
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setPickerOpen(true)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="On-device AI"
+              style={styles.aiButton}>
+              <SymbolView
+                name="sparkles"
+                size={20}
+                tintColor={selectedModel ? theme.accent : theme.textSecondary}
+              />
+              <ThemedText type="smallBold" themeColor={selectedModel ? 'accent' : 'textSecondary'}>
+                AI
+              </ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Dev-only seeding controls live on their own line so they never crowd the AI action. */}
       {DevSeedRow && (
@@ -176,7 +248,13 @@ export default function HomeScreen() {
               durationMs={item.durationMs}
               lastModified={item.lastModified}
               editing={editingDraftId === item.id}
-              onPress={() => router.push({ pathname: '/recorder', params: { draftId: item.id } })}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(item.id)}
+              onPress={() =>
+                selectionMode
+                  ? toggleSelected(item.id)
+                  : router.push({ pathname: '/recorder', params: { draftId: item.id } })
+              }
               onLongPress={() => setEditingDraftId(item.id)}
               onMore={(anchor) => setActionsDraft({ id: item.id, name: item.name, anchor })}
               onSubmitName={(input) => submitRename(item.id, item.name, input)}
@@ -192,20 +270,42 @@ export default function HomeScreen() {
         onClose={() => setActionsDraft(null)}
       />
 
-      <Pressable
-        onPress={() => router.push('/recorder')}
-        accessibilityRole="button"
-        accessibilityLabel="New recording"
-        style={({ pressed }) => [
-          styles.fab,
-          {
-            backgroundColor: theme.accent,
-            bottom: insets.bottom + Spacing.four,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}>
-        <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
-      </Pressable>
+      {selectionMode ? (
+        <Pressable
+          onPress={() => shareDrafts([...selectedIds])}
+          disabled={selectedIds.size === 0 || busy}
+          accessibilityRole="button"
+          accessibilityLabel="Share selected drafts"
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              backgroundColor: theme.accent,
+              bottom: insets.bottom + Spacing.four,
+              opacity: selectedIds.size === 0 || busy ? 0.4 : pressed ? 0.85 : 1,
+            },
+          ]}>
+          {transferState === 'exporting' ? (
+            <ActivityIndicator color={theme.onAccent} />
+          ) : (
+            <SymbolView name="square.and.arrow.up" size={26} weight="semibold" tintColor={theme.onAccent} />
+          )}
+        </Pressable>
+      ) : (
+        <Pressable
+          onPress={() => router.push('/recorder')}
+          accessibilityRole="button"
+          accessibilityLabel="New recording"
+          style={({ pressed }) => [
+            styles.fab,
+            {
+              backgroundColor: theme.accent,
+              bottom: insets.bottom + Spacing.four,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}>
+          <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
+        </Pressable>
+      )}
 
       <ModelSwitcherModal visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </ThemedView>
@@ -223,6 +323,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.four },
   aiButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   devRowWrap: {
     alignItems: 'flex-end',
