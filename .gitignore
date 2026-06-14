@@ -44,3 +44,6 @@ example
 
 # stray Lefthook template dropped by the RNVT submodule's yarn install (not used by this app)
 /lefthook.yml
+
+# local scratch / reference clones (e.g. upstream mieweb/pulse)
+/tmp
