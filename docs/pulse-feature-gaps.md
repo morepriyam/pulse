@@ -50,16 +50,16 @@
 
 ---
 
-### A4. Persisted camera preferences
+### A4. Persisted camera preferences — ✅ RESOLVED (2026-06-14)
 
-**What:** Remember the user's camera choices across launches. `pulse-new` resets **facing** (→ back) and **stabilization** (→ off) on every cold start.
+**What:** Remember the user's camera choices across launches.
 
 **How the original did it** — small AsyncStorage-backed hooks:
 - [tmp/pulse/hooks/useCameraFacing.ts](../tmp/pulse/hooks/useCameraFacing.ts) — persists `cameraFacing` `"front"|"back"`.
 - [tmp/pulse/hooks/useVideoStabilization.ts](../tmp/pulse/hooks/useVideoStabilization.ts) — persists `videoStabilizationMode` `"on"|"off"`.
 - (Also `deleteDraftAfterUpload` via [useDeleteDraftPreference.ts](../tmp/pulse/hooks/useDeleteDraftPreference.ts) — upload-coupled, out of scope here.)
 
-**For `pulse-new`:** trivial — persist the recorder's `facing` / stabilization-mode / `selectedLens` state to the `settings` table on change, hydrate on mount. Low effort, real UX win.
+**Resolved in `pulse-new`:** **facing**, **stabilization**, and **mic/mute** now persist app-wide via the `settings` key/value table. `getRecorderPrefs`/`setSetting` in [src/db/settings.ts](../src/db/settings.ts); the recorder hydrates on mount and writes each pref on change in [src/features/recorder/use-recorder.ts](../src/features/recorder/use-recorder.ts), holding the camera render until prefs load ([src/app/recorder.tsx](../src/app/recorder.tsx)) so there's no back→front flash. `torch` stays session-only and `lens` stays per-facing (unpersisted) by design.
 
 ---
 
@@ -92,7 +92,7 @@
 | `.pulse` draft export/import | A — gap | `utils/draftTransfer.ts` + drafts list | ✗ |
 | Audio focus (pause bg audio) | A — gap | `modules/audio-focus/*` + `useAudioSession` | ✗ (only `mute`) |
 | Onboarding tour | A — gap | `app/onboarding.tsx` + `useFirstTimeOpen` | ✗ (planned last) |
-| Persisted camera facing/stabilization | A — gap | `useCameraFacing` / `useVideoStabilization` | ✗ (resets) |
+| Persisted camera facing/stabilization/mute | ✅ done | `useCameraFacing` / `useVideoStabilization` | ✅ `settings` table + `use-recorder` hydrate/persist |
 | Duration presets + max-length cap | B — dropped | `TimeSelectorButton` + `RecordingProgressBar` | ✗ (no cap, by choice) |
 | Undo / redo segments | B — dropped | `Undo/RedoSegmentButton` + `useDraftManager` | ✗ (by choice) |
 
