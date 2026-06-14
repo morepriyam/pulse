@@ -14,6 +14,13 @@ import {
   reorderSegments,
   segmentsForDraft,
 } from '@/db/drafts';
+import {
+  CAMERA_FACING_KEY,
+  CAMERA_MUTED_KEY,
+  CAMERA_STABILIZATION_KEY,
+  getRecorderPrefs,
+  setSetting,
+} from '@/db/settings';
 import { absolutize, copyIntoSegments, persistRecording, thumbRelPath } from '@/utils/file-store';
 import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 
@@ -39,6 +46,9 @@ export function useRecorder(initialDraftId?: string) {
   // undefined = the camera's default wide lens; physical lens names come from the device.
   const [lens, setLens] = useState<string | undefined>(undefined);
   const [availableLenses, setAvailableLenses] = useState<string[]>([]);
+  // False until persisted prefs (facing/stabilization/mute) are loaded — the screen holds the
+  // camera render until then so the first frame uses the saved facing (no back→front flash).
+  const [prefsReady, setPrefsReady] = useState(false);
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
 
@@ -87,6 +97,34 @@ export function useRecorder(initialDraftId?: string) {
     },
     [],
   );
+
+  // Hydrate persisted camera prefs once on mount, then mark ready so the camera can render.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const prefs = await getRecorderPrefs();
+      if (cancelled) return;
+      setFacing(prefs.facing);
+      setStabilization(prefs.stabilization);
+      setMuted(prefs.muted);
+      setPrefsReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist each pref on change. Gated on prefsReady so we never write a default over a stored
+  // value before hydration completes (the one write-back of the just-loaded value is harmless).
+  useEffect(() => {
+    if (prefsReady) void setSetting(CAMERA_FACING_KEY, facing);
+  }, [facing, prefsReady]);
+  useEffect(() => {
+    if (prefsReady) void setSetting(CAMERA_STABILIZATION_KEY, stabilization);
+  }, [stabilization, prefsReady]);
+  useEffect(() => {
+    if (prefsReady) void setSetting(CAMERA_MUTED_KEY, String(muted));
+  }, [muted, prefsReady]);
 
   // Physical lenses differ per facing (front is usually just the one), so re-query on flip.
   useEffect(() => {
@@ -137,7 +175,12 @@ export function useRecorder(initialDraftId?: string) {
       const durationMs = await getDurationMs(absolutize(originalFilename));
       const thumbRel = thumbRelPath(id, segmentId);
       const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
-      await addSegment(id, { id: segmentId, originalFilename, durationMs, thumbnail: ok ? thumbRel : null });
+      await addSegment(id, {
+        id: segmentId,
+        originalFilename,
+        durationMs,
+        thumbnail: ok ? thumbRel : null,
+      });
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
@@ -195,10 +238,17 @@ export function useRecorder(initialDraftId?: string) {
       const segmentId = `${id}-${Date.now()}`;
       const originalFilename = await copyIntoSegments(picked.uri, id, segmentId);
       const durationMs =
-        info && info.duration > 0 ? info.duration : await getDurationMs(absolutize(originalFilename));
+        info && info.duration > 0
+          ? info.duration
+          : await getDurationMs(absolutize(originalFilename));
       const thumbRel = thumbRelPath(id, segmentId);
       const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
-      await addSegment(id, { id: segmentId, originalFilename, durationMs, thumbnail: ok ? thumbRel : null });
+      await addSegment(id, {
+        id: segmentId,
+        originalFilename,
+        durationMs,
+        thumbnail: ok ? thumbRel : null,
+      });
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
     }
@@ -255,6 +305,7 @@ export function useRecorder(initialDraftId?: string) {
     isRecording,
     recordStartedAt,
     cameraReady,
+    prefsReady,
     facing,
     torch,
     stabilization,
