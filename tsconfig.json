@@ -4,7 +4,11 @@
     "strict": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/assets/*": ["./assets/*"]
+      "@/assets/*": ["./assets/*"],
+      // whisper.rn's package.json `exports` map omits a "." root entry, so bundler-mode
+      // resolution can't find the bare import's types. Metro resolves it at runtime via the
+      // `main` fallback; this points TS at the published declarations.
+      "whisper.rn": ["./node_modules/whisper.rn/lib/typescript/index"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],

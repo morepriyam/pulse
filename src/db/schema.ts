@@ -46,5 +46,35 @@ export const segments = sqliteTable('segments', {
   thumbnail: text('thumbnail'),
 });
 
+/**
+ * On-device speech-to-text for a clip's audio (whisper.rn). One row per segment, keyed by the
+ * EFFECTIVE file it was produced from (`sourceFile`); a destructive edit changes the effective
+ * file, which invalidates the stored transcript and triggers a re-run. `lines` is JSON of
+ * `Array<{ text, t0, t1 }>` where t0/t1 are centiseconds relative to the clip's audio start.
+ */
+export const transcripts = sqliteTable('transcripts', {
+  segmentId: text('segment_id')
+    .primaryKey()
+    .references(() => segments.id, { onDelete: 'cascade' }),
+  sourceFile: text('source_file').notNull(),
+  // The Whisper model id that produced (or is producing) this transcript. When the user switches
+  // models, rows whose `model` no longer matches the selection are re-transcribed.
+  model: text('model'),
+  status: text('status', { enum: ['processing', 'done', 'error'] })
+    .notNull()
+    .default('processing'),
+  language: text('language'),
+  text: text('text'),
+  lines: text('lines'),
+  createdAt: integer('created_at').notNull().default(now),
+});
+
+/** App-wide key/value settings (e.g. the selected transcription model). */
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value'),
+});
+
 export type Project = typeof projects.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
+export type Transcript = typeof transcripts.$inferSelect;

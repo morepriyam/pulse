@@ -10,8 +10,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
+import { selectedModelQuery } from '@/db/settings';
 import { clearDrafts, seedDraft, seedSpeedMixed, seedSpeedUniform } from '@/dev/seed';
 import { DraftCard } from '@/features/home/draft-card';
+import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
+import { getModel } from '@/features/transcription/models';
 import { useTheme } from '@/hooks/use-theme';
 
 type DraftRef = { id: string; name: string | null; anchor: Anchor };
@@ -29,6 +32,13 @@ export default function HomeScreen() {
   );
   // Rows hidden optimistically while their delete is in flight.
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
+
+  // Captions model: global selection (persisted). The actual download + library-wide transcription
+  // runs in the background engine (TranscriptionProvider); here we just open the picker and reflect
+  // whether a model is active. Progress is shown inside the picker.
+  const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
+  const selectedModel = getModel(modelRow[0]?.value);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   if (
     pendingRename &&
@@ -112,30 +122,44 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
         <ThemedText type="title">Pulse</ThemedText>
-        {__DEV__ && (
-          <View style={styles.devRow}>
-            <Pressable onPress={() => void seedDraft()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + seed
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void seedSpeedUniform()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + s2
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void seedSpeedMixed()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + s3
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
-              <ThemedText themeColor="textSecondary" type="small">
-                clear
-              </ThemedText>
-            </Pressable>
-          </View>
-        )}
+        <View style={styles.headerRight}>
+          {__DEV__ && (
+            <View style={styles.devRow}>
+              <Pressable onPress={() => void seedDraft()} hitSlop={8}>
+                <ThemedText themeColor="accent" type="small">
+                  + seed
+                </ThemedText>
+              </Pressable>
+              <Pressable onPress={() => void seedSpeedUniform()} hitSlop={8}>
+                <ThemedText themeColor="accent" type="small">
+                  + s2
+                </ThemedText>
+              </Pressable>
+              <Pressable onPress={() => void seedSpeedMixed()} hitSlop={8}>
+                <ThemedText themeColor="accent" type="small">
+                  + s3
+                </ThemedText>
+              </Pressable>
+              <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
+                <ThemedText themeColor="textSecondary" type="small">
+                  clear
+                </ThemedText>
+              </Pressable>
+            </View>
+          )}
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Captions model"
+            style={styles.captionsButton}>
+            <SymbolView
+              name={selectedModel ? 'captions.bubble.fill' : 'captions.bubble'}
+              size={26}
+              tintColor={selectedModel ? theme.accent : theme.textSecondary}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {visibleDrafts.length === 0 ? (
@@ -193,6 +217,8 @@ export default function HomeScreen() {
         ]}>
         <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
       </Pressable>
+
+      <ModelSwitcherModal visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </ThemedView>
   );
 }
@@ -208,11 +234,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
   devRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.three,
-    paddingBottom: Spacing.two,
   },
+  captionsButton: { alignItems: 'center', justifyContent: 'center' },
   list: {
     paddingHorizontal: Spacing.three,
     gap: Spacing.two,
