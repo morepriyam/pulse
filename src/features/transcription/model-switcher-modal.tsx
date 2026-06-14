@@ -38,10 +38,11 @@ function statusLine(status: ReturnType<typeof useTranscriptionStatus>): string |
 }
 
 /**
- * Picker for the on-device captions model. Selecting one persists the choice, which the global
- * background engine picks up — delete-old → download-new → regenerate captions across the whole
- * library. The picker just records intent (and shows live progress); closing without selecting
- * downloads nothing. The active model can be deleted here to turn captions off and reclaim disk.
+ * The on-device AI panel. Today it holds a single section — Captions — but it's structured so
+ * future on-device features can slot in as additional sections. Selecting a model persists the
+ * choice, which the global background engine picks up (delete-old → download-new → regenerate
+ * captions across the library). The panel only records intent and shows live progress; closing
+ * without selecting downloads nothing. The active model can be removed here to free disk.
  */
 export function ModelSwitcherModal({
   visible,
@@ -94,9 +95,10 @@ export function ModelSwitcherModal({
           ]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
-              <ThemedText type="subtitle">Captions model</ThemedText>
+              <ThemedText type="subtitle">On-device AI</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Runs on your device. Only the selected model is kept on disk.
+                Runs entirely on your device — nothing leaves your phone. Powers captions today, with
+                more features coming.
               </ThemedText>
             </View>
             <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close">
@@ -112,6 +114,21 @@ export function ModelSwitcherModal({
               </ThemedText>
             </View>
           )}
+
+          {/* First (and currently only) feature. Future on-device features slot in as new sections. */}
+          <View style={styles.section}>
+            <SymbolView
+              name="captions.bubble.fill"
+              size={18}
+              tintColor={selectedId ? theme.accent : theme.textSecondary}
+            />
+            <View style={styles.sectionText}>
+              <ThemedText type="smallBold">Captions</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Auto-transcribe clips with a speech model. Only the selected model is kept on disk.
+              </ThemedText>
+            </View>
+          </View>
 
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {MODELS.map((m) => {
@@ -150,7 +167,7 @@ export function ModelSwitcherModal({
               style={styles.delete}>
               <SymbolView name="trash" size={16} tintColor={theme.accent} />
               <ThemedText type="small" themeColor="accent" style={styles.deleteText}>
-                Delete model & turn off captions
+                Remove model & free up space
               </ThemedText>
             </Pressable>
           )}
@@ -171,6 +188,8 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
   headerText: { flex: 1, gap: Spacing.one },
+  section: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.two },
+  sectionText: { flex: 1, gap: 2 },
   status: {
     flexDirection: 'row',
     alignItems: 'center',

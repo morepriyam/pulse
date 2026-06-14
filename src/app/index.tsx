@@ -33,9 +33,9 @@ export default function HomeScreen() {
   // Rows hidden optimistically while their delete is in flight.
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
 
-  // Captions model: global selection (persisted). The actual download + library-wide transcription
-  // runs in the background engine (TranscriptionProvider); here we just open the picker and reflect
-  // whether a model is active. Progress is shown inside the picker.
+  // On-device AI: the globally-selected model (persisted) that powers captions today and more
+  // on-device features later. Download + library-wide work runs in the background engine
+  // (TranscriptionProvider); here we just open the panel and reflect whether a model is active.
   const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
   const selectedModel = getModel(modelRow[0]?.value);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -151,10 +151,10 @@ export default function HomeScreen() {
             onPress={() => setPickerOpen(true)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Captions model"
-            style={styles.captionsButton}>
+            accessibilityLabel="On-device AI"
+            style={styles.aiButton}>
             <SymbolView
-              name={selectedModel ? 'captions.bubble.fill' : 'captions.bubble'}
+              name="sparkles"
               size={26}
               tintColor={selectedModel ? theme.accent : theme.textSecondary}
             />
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
   },
-  captionsButton: { alignItems: 'center', justifyContent: 'center' },
+  aiButton: { alignItems: 'center', justifyContent: 'center' },
   list: {
     paddingHorizontal: Spacing.three,
     gap: Spacing.two,
