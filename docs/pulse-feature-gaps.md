@@ -10,9 +10,19 @@
 
 ## A. Genuine gaps (not yet built)
 
-### A1. Draft transfer — `.pulse` export / import  *(user already flagged)*
+### A1. Draft transfer — `.pulse` export / import — ✅ RESOLVED (2026-06-14)
 
 **What:** Move drafts between devices. Export selected drafts (multi-select + "Select All") to a single `.pulse` file via the share sheet (AirDrop / Files / iCloud); import one back.
+
+**Resolved in `pulse-new` — rebuilt, not ported.** The original's base64-in-JSON bundle was the part to improve: it inflates payload ~33% and `JSON.stringify`s a multi-hundred-MB string (OOM risk). Instead a `.pulse` file is now a **ZIP archive** (`fflate`, STORE mode — the clips are already H.264) holding `manifest.json` + the raw `media/*.mp4` files. Thumbnails aren't shipped (deterministic derivatives — regenerated on import); transcripts, DB ids, and the per-device upload destination are omitted.
+- **Format** — [src/features/draft-transfer/manifest.ts](../src/features/draft-transfer/manifest.ts): Drizzle-shaped (`projects` + `segments`), carries `name`/`createdAt`/durations and the original↔edited relationship. **Full edit fidelity**: an edited clip ships both its pristine original *and* its edited cut, so the recipient gets an identical draft and can still Reset.
+- **Export** — [pack.ts](../src/features/draft-transfer/pack.ts): `exportDrafts(ids, now)` reads each effective clip's bytes (new SDK 56 `File.bytes()`), `zipSync`s into one `.pulse` in cache, returns its uri for `expo-sharing`. Single draft → `pulse-draft-<name>-<ts>.pulse`, multi → `pulse-backup-<ts>.pulse`.
+- **Import** — [unpack.ts](../src/features/draft-transfer/unpack.ts): `importPulseFile(uri)` validates the manifest, writes clips back under a **fresh draft id** (never the source's — so import can't clobber a local draft and a bundle re-imports cleanly; correctness fix vs. the original's id-preserving import), regenerates thumbnails, then commits rows in a transaction (`insertImportedDraft`). Each draft is independent — a bad one is rolled back and skipped. `createdAt` preserved; `lastModified = now` so imports surface at the top.
+- **UI** — [src/app/index.tsx](../src/app/index.tsx) + [draft-card.tsx](../src/features/home/draft-card.tsx): a Share button enters multi-select (checkboxes + "Select All", count in the header, Share FAB); an import button (`square.and.arrow.down`) opens `expo-document-picker`. Busy state via [use-draft-transfer.ts](../src/features/draft-transfer/use-draft-transfer.ts).
+- **Deps:** added `fflate` (pure-JS zip, no rebuild) + `expo-document-picker` (native — needs `pod install` + rebuild; done).
+- **Fast-follow (not built):** register a `.pulse` document type + inbound `expo-linking` handler so AirDrop offers "Open in Pulse" directly (today an AirDropped bundle is saved to Files, then imported via the picker — all three transports work).
+
+**How the original did it** — [tmp/pulse/utils/draftTransfer.ts](../tmp/pulse/utils/draftTransfer.ts):
 
 **How the original did it** — [tmp/pulse/utils/draftTransfer.ts](../tmp/pulse/utils/draftTransfer.ts):
 - A `.pulse` file is a JSON bundle: `{ version: "1.0", draft, files: { relativePath → base64 } }`. Every segment `.mp4` and the thumbnail is **base64-encoded inline** (`FileSystem.readAsStringAsync(..., { encoding: Base64 })`), so the bundle is fully self-contained.
@@ -89,7 +99,7 @@
 
 | Feature | Bucket | Original source | `pulse-new` |
 | --- | --- | --- | --- |
-| `.pulse` draft export/import | A — gap | `utils/draftTransfer.ts` + drafts list | ✗ |
+| `.pulse` draft export/import | ✅ done | `utils/draftTransfer.ts` + drafts list | ✅ ZIP bundle (`features/draft-transfer/*`) + multi-select |
 | Audio focus (pause bg audio) | A — gap | `modules/audio-focus/*` + `useAudioSession` | ✗ (only `mute`) |
 | Onboarding tour | A — gap | `app/onboarding.tsx` + `useFirstTimeOpen` | ✗ (planned last) |
 | Persisted camera facing/stabilization/mute | ✅ done | `useCameraFacing` / `useVideoStabilization` | ✅ `settings` table + `use-recorder` hydrate/persist |

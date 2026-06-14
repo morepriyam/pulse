@@ -92,3 +92,30 @@ export function deleteDraftDir(draftId: string): void {
   const dir = new Directory(Paths.document, 'drafts', draftId);
   if (dir.exists) dir.delete();
 }
+
+// Draft transfer (.pulse export/import) ----------------------------------------------------
+
+/** Read a relative clip path's raw bytes, or null if the file is missing on disk. */
+export async function readRelBytes(relPath: string): Promise<Uint8Array | null> {
+  const file = new File(absolutize(relPath));
+  if (!file.exists) return null;
+  return file.bytes();
+}
+
+/** Write an imported clip's bytes as the draft's pristine original; returns its relative path. */
+export function writeOriginalBytes(
+  draftId: string,
+  segmentId: string,
+  bytes: Uint8Array,
+): string {
+  segmentDest(draftId, segmentId).write(bytes);
+  return segmentRelPath(draftId, segmentId);
+}
+
+/** Write an imported clip's edited (re-encoded) bytes alongside its original; returns its rel path. */
+export function writeEditedBytes(draftId: string, segmentId: string, bytes: Uint8Array): string {
+  const dir = new Directory(Paths.document, 'drafts', draftId, 'segments');
+  dir.create({ intermediates: true, idempotent: true });
+  new File(dir, `${segmentId}.edited.mp4`).write(bytes);
+  return editedSegmentRelPath(draftId, segmentId);
+}
