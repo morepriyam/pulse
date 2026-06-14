@@ -7,6 +7,11 @@ const BASE_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/';
 export type WhisperModel = {
   id: string;
   label: string;
+  /**
+   * The underlying Whisper checkpoint name (e.g. `tiny.en`, `large-v3-turbo`), shown muted in the
+   * picker so it's transparent which actual model — and quantization — the friendly label maps to.
+   */
+  name: string;
   filename: string;
   /** Approximate on-disk size, for the size label and a download-completeness floor. */
   approxBytes: number;
@@ -24,33 +29,46 @@ export const MODELS: WhisperModel[] = [
   {
     id: 'tiny.en',
     label: 'Tiny (English)',
-    filename: 'ggml-tiny.en.bin',
-    approxBytes: 78 * 1024 * 1024,
-    note: 'Fastest · lowest accuracy',
+    name: 'tiny.en · q5_1',
+    filename: 'ggml-tiny.en-q5_1.bin',
+    approxBytes: 31 * 1024 * 1024,
+    note: 'Fastest · English only',
     lang: 'en',
   },
   {
     id: 'base.en',
     label: 'Base (English)',
-    filename: 'ggml-base.en.bin',
-    approxBytes: 148 * 1024 * 1024,
-    note: 'Balanced',
+    name: 'base.en · q5_1',
+    filename: 'ggml-base.en-q5_1.bin',
+    approxBytes: 57 * 1024 * 1024,
+    note: 'Balanced · English only',
     lang: 'en',
   },
   {
     id: 'small.en-q5_1',
     label: 'Small (English)',
+    name: 'small.en · q5_1',
     filename: 'ggml-small.en-q5_1.bin',
     approxBytes: 190 * 1024 * 1024,
-    note: 'Better accuracy · a bit slower',
+    note: 'Most accurate · English only',
     lang: 'en',
+  },
+  {
+    id: 'small-q5_1',
+    label: 'Small (Multilingual)',
+    name: 'small · q5_1',
+    filename: 'ggml-small-q5_1.bin',
+    approxBytes: 181 * 1024 * 1024,
+    note: 'Any language · balanced',
+    lang: 'auto',
   },
   {
     id: 'large-v3-turbo-q5_0',
     label: 'Large Turbo',
+    name: 'large-v3-turbo · q5_0',
     filename: 'ggml-large-v3-turbo-q5_0.bin',
     approxBytes: 574 * 1024 * 1024,
-    note: 'Best · multilingual · large download',
+    note: 'Any language · best quality',
     lang: 'auto',
   },
 ];
