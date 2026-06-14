@@ -1,15 +1,17 @@
 {
   "expo": {
-    "name": "pulse-new",
-    "slug": "pulse-new",
+    "name": "Pulse",
+    "slug": "pulse-dev",
+    "owner": "mieweb",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "pulsenew",
+    "scheme": "pulsecam",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.pulse-new"
+      "bundleIdentifier": "com.mieweb.pulse.dev",
+      "appleTeamId": "X5873NL7XM"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +25,7 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.anonymous.pulsenew"
+      "package": "com.mieweb.pulse.dev"
     },
     "web": {
       "output": "static",
