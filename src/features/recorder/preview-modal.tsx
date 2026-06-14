@@ -3,6 +3,7 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import type { SegmentTranscript } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
 
 type Props = {
@@ -11,11 +12,21 @@ type Props = {
   // Draft-global playhead position and total, for the time readout pill.
   positionMs: number;
   totalMs: number;
+  // Playback position WITHIN the active clip (ms), used to sync the caption line.
+  captionMs: number;
+  // The active clip's transcript (undefined until transcription has run for it).
+  transcript?: SegmentTranscript;
   onTogglePlay: () => void;
   onClose: () => void;
   onTrim: () => void;
   onDelete: () => void;
 };
+
+/** The caption line covering the current playback position (whisper t0/t1 are centiseconds). */
+function activeLine(transcript: SegmentTranscript | undefined, captionMs: number) {
+  if (transcript?.status !== 'done') return undefined;
+  return transcript.lines.find((l) => captionMs >= l.t0 * 10 && captionMs <= l.t1 * 10);
+}
 
 /**
  * Floating preview card over the recorder — the camera UI, record button, and segment bar
@@ -28,11 +39,14 @@ export function PreviewModal({
   isPlaying,
   positionMs,
   totalMs,
+  captionMs,
+  transcript,
   onTogglePlay,
   onClose,
   onTrim,
   onDelete,
 }: Props) {
+  const line = activeLine(transcript, captionMs);
   return (
     <View style={styles.card}>
       <Pressable style={styles.surface} onPress={onTogglePlay} accessibilityLabel="Toggle playback">
@@ -77,6 +91,26 @@ export function PreviewModal({
         style={[styles.badge, styles.delete]}>
         <SymbolView name="trash" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
+
+      <View style={styles.captionRow} pointerEvents="none">
+        {transcript?.status === 'processing' && (
+          <View style={styles.captionPill}>
+            <Text style={styles.captionMuted}>Transcribing…</Text>
+          </View>
+        )}
+        {transcript?.status === 'error' && (
+          <View style={styles.captionPill}>
+            <Text style={styles.captionMuted}>Transcription unavailable</Text>
+          </View>
+        )}
+        {line && (
+          <View style={styles.captionPill}>
+            <Text style={styles.captionText} numberOfLines={3}>
+              {line.text.trim()}
+            </Text>
+          </View>
+        )}
+      </View>
 
       <View style={styles.timeRow} pointerEvents="none">
         <View style={styles.timePill}>
@@ -136,6 +170,33 @@ const styles = StyleSheet.create({
   // Left of the delete badge (28 wide + an 8pt gap).
   trim: {
     right: Spacing.two + 28 + Spacing.two,
+  },
+  // Sits just above the time pill; captions are centered and wrap up to 3 lines.
+  captionRow: {
+    position: 'absolute',
+    left: Spacing.two,
+    right: Spacing.two,
+    bottom: Spacing.two + 28,
+    alignItems: 'center',
+  },
+  captionPill: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  captionText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  captionMuted: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '600',
+    fontStyle: 'italic',
   },
   timeRow: {
     position: 'absolute',

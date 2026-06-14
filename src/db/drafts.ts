@@ -43,6 +43,9 @@ export function segmentsForDraft(projectId: string) {
     .orderBy(asc(segments.order));
 }
 
+/** Every segment in the library — drives the global background transcription engine. */
+export const allSegmentsQuery = db.select().from(segments);
+
 // Mutations — each is a single-row write that autosaves the draft (§3).
 
 export async function createDraft(): Promise<string> {

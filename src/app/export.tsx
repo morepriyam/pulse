@@ -3,7 +3,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { useExport } from '@/features/export/use-export';
 import { MergeProgressRing } from '@/features/export/merge-progress-ring';
 import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
+import { setActiveDraft } from '@/features/transcription/active-draft';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 
@@ -29,6 +30,11 @@ export default function ExportScreen() {
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
+  // Tell the engine which draft is on screen so any missing captions for it are generated first.
+  useEffect(() => {
+    setActiveDraft(draftId ?? null);
+    return () => setActiveDraft(null);
+  }, [draftId]);
   // Zero-length clips (failed native reads) can't be concatenated — drop them before merging.
   const clips = segments.filter((s) => effMs(s) > 0);
   const { state, retry } = useExport(clips);

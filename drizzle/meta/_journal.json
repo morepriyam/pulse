@@ -15,6 +15,20 @@
       "when": 1781146305067,
       "tag": "0001_gifted_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781385753195,
+      "tag": "0002_mature_mephistopheles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1781387303622,
+      "tag": "0003_fair_baron_zemo",
+      "breakpoints": true
     }
   ]
 }
