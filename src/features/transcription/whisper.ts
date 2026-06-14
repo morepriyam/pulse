@@ -3,6 +3,7 @@ import { initWhisper, type WhisperContext } from 'whisper.rn';
 
 import { ensureModel, modelFileUri } from './model';
 import type { WhisperModel } from './models';
+import { hasSpeech } from './vad';
 
 /**
  * One transcribed line. `t0`/`t1` are whisper.cpp timestamps in **centiseconds** (1/100s)
@@ -15,6 +16,22 @@ export type TranscriptResult = {
   text: string;
   lines: TranscriptLine[];
 };
+
+/** A clip with no detected speech: a settled, empty transcript (no captions, never re-run). */
+const EMPTY_TRANSCRIPT: TranscriptResult = { language: '', text: '', lines: [] };
+
+/**
+ * Whether the clip has no speech worth transcribing. Runs the VAD pre-gate; if the VAD itself is
+ * unavailable (e.g. its model hasn't downloaded yet offline) we fail **open** — assume speech and
+ * let Whisper run — so a VAD hiccup never silently drops real captions.
+ */
+async function isSilent(wavPath: string): Promise<boolean> {
+  try {
+    return !(await hasSpeech(wavPath));
+  } catch {
+    return false;
+  }
+}
 
 // A Whisper context is expensive to create (loads the weights into memory) and is reusable across
 // clips, so we hold a single instance, tagged with the model it was built from. Switching models
@@ -88,9 +105,14 @@ export async function transcribeVideo(
   model: WhisperModel,
   onProgress?: (progress: number) => void,
 ): Promise<TranscriptResult> {
-  const ctx = await loadContext(model);
   const { outputPath: wavPath } = await extractAudio(videoUri, { outputExt: 'wav' });
   try {
+    // Pre-gate on voice activity: silent/noise-only clips make Whisper hallucinate (the
+    // multilingual model emits Chinese on noise, or canned subtitle credits on silence). Skip
+    // Whisper entirely and store an empty transcript so the clip settles instead of re-running.
+    if (await isSilent(wavPath)) return EMPTY_TRANSCRIPT;
+
+    const ctx = await loadContext(model);
     // `tokenTimestamps` is what lets `maxLen` split a long utterance into caption-sized lines.
     // `language` honors the model: 'en' for the English-only models, 'auto' for the multilingual one.
     const { promise } = ctx.transcribe(wavPath, {
