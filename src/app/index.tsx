@@ -127,22 +127,26 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
         <ThemedText type="title">Pulse</ThemedText>
-        <View style={styles.headerRight}>
-          {DevSeedRow && <DevSeedRow />}
-          <Pressable
-            onPress={() => setPickerOpen(true)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="On-device AI"
-            style={styles.aiButton}>
-            <SymbolView
-              name="sparkles"
-              size={26}
-              tintColor={selectedModel ? theme.accent : theme.textSecondary}
-            />
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="On-device AI"
+          style={styles.aiButton}>
+          <SymbolView
+            name="sparkles"
+            size={24}
+            tintColor={selectedModel ? theme.accent : theme.textSecondary}
+          />
+        </Pressable>
       </View>
+
+      {/* Dev-only seeding controls live on their own line so they never crowd the AI action. */}
+      {DevSeedRow && (
+        <View style={styles.devRowWrap}>
+          <DevSeedRow />
+        </View>
+      )}
 
       {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
@@ -211,17 +215,17 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
   aiButton: { alignItems: 'center', justifyContent: 'center' },
+  devRowWrap: {
+    alignItems: 'flex-end',
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.two,
+  },
   list: {
     paddingHorizontal: Spacing.three,
     gap: Spacing.two,
