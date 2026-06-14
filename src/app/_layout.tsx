@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MigrationGate } from '@/db/migrate';
+import { TranscriptionProvider } from '@/features/transcription/transcription-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function RootLayout() {
@@ -14,10 +15,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
           <MigrationGate>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
-              <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
-            </Stack>
+            <TranscriptionProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
+                <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
+              </Stack>
+            </TranscriptionProvider>
           </MigrationGate>
           <StatusBar style="auto" />
         </ThemeProvider>
