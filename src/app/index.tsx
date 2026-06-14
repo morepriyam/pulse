@@ -135,9 +135,12 @@ export default function HomeScreen() {
           style={styles.aiButton}>
           <SymbolView
             name="sparkles"
-            size={24}
+            size={20}
             tintColor={selectedModel ? theme.accent : theme.textSecondary}
           />
+          <ThemedText type="smallBold" themeColor={selectedModel ? 'accent' : 'textSecondary'}>
+            AI
+          </ThemedText>
         </Pressable>
       </View>
 
@@ -220,7 +223,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
-  aiButton: { alignItems: 'center', justifyContent: 'center' },
+  aiButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   devRowWrap: {
     alignItems: 'flex-end',
     paddingHorizontal: Spacing.four,
