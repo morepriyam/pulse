@@ -1,0 +1,122 @@
+import { Directory, File, Paths } from 'expo-file-system';
+import { initWhisperVad, type WhisperVadContext } from 'whisper.rn';
+
+/**
+ * Voice-activity-detection pre-gate for transcription.
+ *
+ * Whisper hallucinates on clips with no real speech: the multilingual model especially emits
+ * Chinese on noise (auto language-detection falls back to its training prior) or canned subtitle
+ * credits on silence ("Thank you for watching", "Gracias por ver"). whisper.rn 0.6.0 doesn't
+ * expose the whisper.cpp no-speech / logprob / entropy thresholds that would suppress this, so we
+ * run a Silero VAD pass first and skip Whisper entirely on clips with no detected speech.
+ *
+ * The VAD model is a tiny (~1.5 MB) Silero GGML build from the same whisper.cpp repo as the speech
+ * models. It lives under `vad/` — NOT `models/` — so the single-speech-model-on-disk cleanup
+ * (`deleteModelsExcept`) never wipes it on a model switch.
+ */
+const VAD_URL =
+  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-silero-v5.1.2.bin';
+const VAD_FILENAME = 'ggml-silero-v5.1.2.bin';
+// Completeness floor for a partial/interrupted download (the real file is ~1.5 MB).
+const VAD_MIN_BYTES = 1024 * 1024;
+
+function vadDir(): Directory {
+  return new Directory(Paths.document, 'vad');
+}
+
+function vadFile(): File {
+  return new File(Paths.document, 'vad', VAD_FILENAME);
+}
+
+function isVadModelReady(): boolean {
+  const file = vadFile();
+  return file.exists && (file.size ?? 0) >= VAD_MIN_BYTES;
+}
+
+/** Ensure the Silero VAD model is on disk, downloading it on first use. Returns its file URI. */
+async function ensureVadModel(): Promise<string> {
+  const file = vadFile();
+  if (isVadModelReady()) return file.uri;
+
+  if (file.exists) file.delete(); // clear a partial/corrupt prior attempt
+  vadDir().create({ intermediates: true, idempotent: true });
+
+  const task = File.createDownloadTask(VAD_URL, file);
+  await task.downloadAsync();
+  if (!isVadModelReady()) {
+    if (file.exists) file.delete();
+    throw new Error('VAD model download failed or is incomplete');
+  }
+  return file.uri;
+}
+
+// The VAD context is independent of which speech model is selected, so we hold a single instance
+// across model switches (it's cheap and tiny) and only release it when on-device AI is turned off.
+let ctx: WhisperVadContext | null = null;
+let loadPromise: Promise<WhisperVadContext> | null = null;
+// Sticky flag set when VAD init fails even on the CPU fallback — the device genuinely can't run the
+// VAD, so we stop re-attempting it on every clip (callers fail open and let Whisper run). A model
+// download failure (offline) is NOT cached here: it's transient and retried on the next clip.
+// Cleared by releaseVad so a later toggle can try again.
+let unavailable = false;
+
+/**
+ * Build a VAD context, preferring the Metal GPU and falling back to CPU. GPU init throws on
+ * simulators / older devices without a usable GPU (mirrors the speech-context init in whisper.ts),
+ * so we retry on CPU rather than letting the gate fail open — keeping hallucination suppression
+ * active wherever the VAD can run at all.
+ */
+async function initVadContext(filePath: string): Promise<WhisperVadContext> {
+  try {
+    return await initWhisperVad({ filePath, useGpu: true });
+  } catch {
+    return initWhisperVad({ filePath });
+  }
+}
+
+async function loadVad(): Promise<WhisperVadContext> {
+  if (ctx) return ctx;
+  if (unavailable) throw new Error('VAD unavailable on this device');
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    await ensureVadModel(); // transient (offline) failures throw here and are intentionally not cached
+    let c: WhisperVadContext;
+    try {
+      c = await initVadContext(vadFile().uri);
+    } catch (e) {
+      unavailable = true; // failed even on CPU — don't retry this on every clip
+      throw e;
+    }
+    ctx = c;
+    return c;
+  })();
+  try {
+    return await loadPromise;
+  } finally {
+    loadPromise = null;
+  }
+}
+
+/** Free the VAD context (e.g. when the model is cleared). Re-loads lazily on next use. */
+export async function releaseVad(): Promise<void> {
+  loadPromise = null;
+  unavailable = false; // allow a fresh attempt after a model toggle
+  const c = ctx;
+  ctx = null;
+  await c?.release();
+}
+
+/**
+ * Whether the WAV at `wavPath` contains any detected speech. Throws if the VAD model isn't yet
+ * available (e.g. offline before its first download) — callers should treat that as "unknown" and
+ * fail open (transcribe anyway) rather than dropping captions.
+ *
+ * NOTE: `detectSpeech` segments' `t0`/`t1` are in **seconds** — unlike Whisper's transcript lines,
+ * whose `t0`/`t1` are centiseconds. We only count segments here, but if you ever read these
+ * timestamps, do NOT apply the centisecond (`*10` / `/100`) conversion used for caption lines.
+ */
+export async function hasSpeech(wavPath: string): Promise<boolean> {
+  const c = await loadVad();
+  const segments = await c.detectSpeech(wavPath);
+  return segments.length > 0;
+}

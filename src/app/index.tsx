@@ -10,9 +10,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
-import { clearDrafts, seedDraft, seedSpeedMixed, seedSpeedUniform } from '@/dev/seed';
+import { selectedModelQuery } from '@/db/settings';
 import { DraftCard } from '@/features/home/draft-card';
+import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
+import { getModel } from '@/features/transcription/models';
 import { useTheme } from '@/hooks/use-theme';
+
+// Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
+// (with its perf fixtures) are dead-code-eliminated from the production bundle, not just hidden.
+const DevSeedRow = __DEV__
+  ? (require('@/dev/dev-seed-row') as typeof import('@/dev/dev-seed-row')).DevSeedRow
+  : null;
 
 type DraftRef = { id: string; name: string | null; anchor: Anchor };
 
@@ -29,6 +37,13 @@ export default function HomeScreen() {
   );
   // Rows hidden optimistically while their delete is in flight.
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
+
+  // On-device AI: the globally-selected model (persisted) that powers captions today and more
+  // on-device features later. Download + library-wide work runs in the background engine
+  // (TranscriptionProvider); here we just open the panel and reflect whether a model is active.
+  const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
+  const selectedModel = getModel(modelRow[0]?.value);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   if (
     pendingRename &&
@@ -112,31 +127,29 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + Spacing.three }]}>
         <ThemedText type="title">Pulse</ThemedText>
-        {__DEV__ && (
-          <View style={styles.devRow}>
-            <Pressable onPress={() => void seedDraft()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + seed
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void seedSpeedUniform()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + s2
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void seedSpeedMixed()} hitSlop={8}>
-              <ThemedText themeColor="accent" type="small">
-                + s3
-              </ThemedText>
-            </Pressable>
-            <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
-              <ThemedText themeColor="textSecondary" type="small">
-                clear
-              </ThemedText>
-            </Pressable>
-          </View>
-        )}
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="On-device AI"
+          style={styles.aiButton}>
+          <SymbolView
+            name="sparkles"
+            size={20}
+            tintColor={selectedModel ? theme.accent : theme.textSecondary}
+          />
+          <ThemedText type="smallBold" themeColor={selectedModel ? 'accent' : 'textSecondary'}>
+            AI
+          </ThemedText>
+        </Pressable>
       </View>
+
+      {/* Dev-only seeding controls live on their own line so they never crowd the AI action. */}
+      {DevSeedRow && (
+        <View style={styles.devRowWrap}>
+          <DevSeedRow />
+        </View>
+      )}
 
       {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
@@ -193,6 +206,8 @@ export default function HomeScreen() {
         ]}>
         <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
       </Pressable>
+
+      <ModelSwitcherModal visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </ThemedView>
   );
 }
@@ -203,14 +218,15 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
-  devRow: {
-    flexDirection: 'row',
-    gap: Spacing.three,
+  aiButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  devRowWrap: {
+    alignItems: 'flex-end',
+    paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
   list: {
