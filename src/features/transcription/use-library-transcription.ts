@@ -18,6 +18,7 @@ import { cancelModelDownloadsExcept, deleteModelsExcept, ensureModel, isModelRea
 import { getModel, type WhisperModel } from './models';
 import { needsTranscription } from './needs-transcription';
 import { isRecordingActive, setResumeHandler } from './recording-signal';
+import { releaseVad } from './vad';
 import { releaseWhisper, transcribeVideo } from './whisper';
 
 // How many times a clip that errors out is retried within a session before it's given up on. A
@@ -128,6 +129,7 @@ export function useLibraryTranscription(): TranscriptionStatus {
 
         if (!m) {
           await releaseWhisper();
+          await releaseVad();
           deleteModelsExcept(null);
           continue;
         }
