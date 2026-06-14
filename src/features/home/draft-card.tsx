@@ -24,6 +24,9 @@ type Props = {
   lastModified: number;
   /** Swaps the name for an inline text input; entered via long press or the ⋯ menu. */
   editing?: boolean;
+  /** Multi-select mode: the ⋯ menu is replaced by a checkbox and onPress toggles selection. */
+  selectionMode?: boolean;
+  selected?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
   /** Opens the draft's action menu, anchored to the ⋯ button's on-screen rect. */
@@ -40,6 +43,8 @@ export function DraftCard({
   durationMs,
   lastModified,
   editing = false,
+  selectionMode = false,
+  selected = false,
   onPress,
   onLongPress,
   onMore,
@@ -53,7 +58,7 @@ export function DraftCard({
   return (
     <Pressable
       onPress={editing ? undefined : onPress}
-      onLongPress={onLongPress}
+      onLongPress={selectionMode ? undefined : onLongPress}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: theme.backgroundElement, opacity: pressed && !editing ? 0.6 : 1 },
@@ -99,20 +104,31 @@ export function DraftCard({
         </ThemedText>
       </View>
 
-      {onMore && !editing && (
-        <Pressable
-          ref={moreRef}
-          onPress={() =>
-            moreRef.current?.measureInWindow((x, y, width, height) =>
-              onMore({ x, y, width, height }),
-            )
-          }
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Draft options"
-          style={({ pressed }) => [styles.more, { opacity: pressed ? 0.5 : 1 }]}>
-          <SymbolView name="ellipsis" size={18} tintColor={theme.textSecondary} />
-        </Pressable>
+      {selectionMode ? (
+        <View style={styles.more} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
+          <SymbolView
+            name={selected ? 'checkmark.circle.fill' : 'circle'}
+            size={22}
+            tintColor={selected ? theme.accent : theme.textSecondary}
+          />
+        </View>
+      ) : (
+        onMore &&
+        !editing && (
+          <Pressable
+            ref={moreRef}
+            onPress={() =>
+              moreRef.current?.measureInWindow((x, y, width, height) =>
+                onMore({ x, y, width, height }),
+              )
+            }
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Draft options"
+            style={({ pressed }) => [styles.more, { opacity: pressed ? 0.5 : 1 }]}>
+            <SymbolView name="ellipsis" size={18} tintColor={theme.textSecondary} />
+          </Pressable>
+        )
       )}
     </Pressable>
   );

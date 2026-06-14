@@ -156,3 +156,29 @@ export async function deleteDraft(draftId: string): Promise<void> {
   await db.delete(projects).where(eq(projects.id, draftId));
   deleteDraftDir(draftId);
 }
+
+// Draft transfer (.pulse export/import) ----------------------------------------------------
+
+/** Load a draft's project row + ordered segments for packing into a `.pulse` bundle. */
+export async function getDraftForExport(
+  draftId: string,
+): Promise<{ project: typeof projects.$inferSelect; segments: (typeof segments.$inferSelect)[] } | null> {
+  const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
+  if (!project) return null;
+  const rows = await segmentsForDraft(draftId);
+  return { project, segments: rows };
+}
+
+/**
+ * Insert an imported draft and its segments in one transaction. Caller mints fresh ids and
+ * writes the clip files first; this only commits the rows once the media is on disk.
+ */
+export async function insertImportedDraft(
+  project: typeof projects.$inferInsert,
+  segmentRows: (typeof segments.$inferInsert)[],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.insert(projects).values(project);
+    if (segmentRows.length > 0) await tx.insert(segments).values(segmentRows);
+  });
+}
