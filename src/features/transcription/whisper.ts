@@ -115,10 +115,20 @@ export async function transcribeVideo(
     const ctx = await loadContext(model);
     // `tokenTimestamps` is what lets `maxLen` split a long utterance into caption-sized lines.
     // `language` honors the model: 'en' for the English-only models, 'auto' for the multilingual one.
+    //
+    // Speed knobs for the on-device hot path (captions, not subtitling a film):
+    // - `maxThreads`: whisper.rn defaults to 2–4; modern iPhones have 6 cores, so let inference use
+    //   them. whisper.cpp clamps to what's actually available, so over-asking on a 4-core device is
+    //   safe.
+    // - `beamSize: 1` + `bestOf: 1`: greedy, single-candidate decoding. Beam search / multi-candidate
+    //   sampling is the slow default; the quality delta on clear speech is negligible for captions.
     const { promise } = ctx.transcribe(wavPath, {
       language: model.lang,
       maxLen: CAPTION_MAX_LEN,
       tokenTimestamps: true,
+      maxThreads: 6,
+      beamSize: 1,
+      bestOf: 1,
       onProgress,
     });
     const result = await promise;

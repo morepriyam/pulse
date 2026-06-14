@@ -93,16 +93,8 @@ export function PreviewModal({
       </Pressable>
 
       <View style={styles.captionRow} pointerEvents="none">
-        {transcript?.status === 'processing' && (
-          <View style={styles.captionPill}>
-            <Text style={styles.captionMuted}>Transcribing…</Text>
-          </View>
-        )}
-        {transcript?.status === 'error' && (
-          <View style={styles.captionPill}>
-            <Text style={styles.captionMuted}>Transcription unavailable</Text>
-          </View>
-        )}
+        {/* No "Transcribing…" / placeholder state — the pill appears only once a caption line is
+            ready for the current playback position, so captions just pop in when available. */}
         {line && (
           <View style={styles.captionPill}>
             <Text style={styles.captionText} numberOfLines={3}>
@@ -191,12 +183,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  captionMuted: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
-    fontWeight: '600',
-    fontStyle: 'italic',
   },
   timeRow: {
     position: 'absolute',
