@@ -10,15 +10,16 @@ import { initWhisperVad, type WhisperVadContext } from 'whisper.rn';
  * expose the whisper.cpp no-speech / logprob / entropy thresholds that would suppress this, so we
  * run a Silero VAD pass first and skip Whisper entirely on clips with no detected speech.
  *
- * The VAD model is a tiny (~1.5 MB) Silero GGML build from the same whisper.cpp repo as the speech
- * models. It lives under `vad/` — NOT `models/` — so the single-speech-model-on-disk cleanup
+ * The VAD model is a tiny (~865 KB) Silero GGML build hosted in the `ggml-org/whisper-vad` repo
+ * (the speech models live in `ggerganov/whisper.cpp` — silero is no longer mirrored there). It
+ * lives under `vad/` — NOT `models/` — so the single-speech-model-on-disk cleanup
  * (`deleteModelsExcept`) never wipes it on a model switch.
  */
 const VAD_URL =
-  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-silero-v5.1.2.bin';
-const VAD_FILENAME = 'ggml-silero-v5.1.2.bin';
-// Completeness floor for a partial/interrupted download (the real file is ~1.5 MB).
-const VAD_MIN_BYTES = 1024 * 1024;
+  'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin';
+const VAD_FILENAME = 'ggml-silero-v6.2.0.bin';
+// Completeness floor for a partial/interrupted download (the real file is ~865 KB).
+const VAD_MIN_BYTES = 512 * 1024;
 
 function vadDir(): Directory {
   return new Directory(Paths.document, 'vad');
