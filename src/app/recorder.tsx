@@ -16,6 +16,7 @@ import { PreviewModal } from '@/features/recorder/preview-modal';
 import { RecordButton } from '@/features/recorder/record-button';
 import { SegmentBar } from '@/features/recorder/segment-bar';
 import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';
+import { useAudioFocus } from '@/features/recorder/use-audio-focus';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
 import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
@@ -103,6 +104,17 @@ export default function RecorderScreen() {
       return () => setFocused(false);
     }, []),
   );
+
+  // Audio focus: while the recorder is on screen capturing with a live mic, pause other apps'
+  // audio (Spotify / podcasts) rather than mixing it in; restore on leave or mute. Gated on the
+  // mic being live — a muted clip has no audio track, so there's nothing to seize focus for.
+  // Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
+  const audioFocus = useAudioFocus();
+  useEffect(() => {
+    if (focused && !muted && prefsReady) void audioFocus.acquire();
+    else void audioFocus.release();
+  }, [focused, muted, prefsReady, audioFocus]);
+  useEffect(() => () => void audioFocus.release(), [audioFocus]);
 
   const { zoom, holdActive, buttonGesture, pinchGesture, resetZoom } = useRecorderGestures({
     onToggle: toggleRecording,
