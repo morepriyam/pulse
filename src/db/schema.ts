@@ -50,7 +50,9 @@ export const segments = sqliteTable('segments', {
  * On-device speech-to-text for a clip's audio (whisper.rn). One row per segment, keyed by the
  * EFFECTIVE file it was produced from (`sourceFile`); a destructive edit changes the effective
  * file, which invalidates the stored transcript and triggers a re-run. `lines` is JSON of
- * `Array<{ text, t0, t1 }>` where t0/t1 are centiseconds relative to the clip's audio start.
+ * `Array<{ text, t0, t1, words? }>` where t0/t1 are centiseconds relative to the clip's audio
+ * start. `editedLines` holds the user's hand-edited captions (same JSON shape); when present it
+ * is the effective transcript and locks the row against auto re-transcription / model-switch wipes.
  */
 export const transcripts = sqliteTable('transcripts', {
   segmentId: text('segment_id')
@@ -66,6 +68,10 @@ export const transcripts = sqliteTable('transcripts', {
   language: text('language'),
   text: text('text'),
   lines: text('lines'),
+  // User-edited captions (JSON, same shape as `lines`). Null = no manual edit. Tied to the
+  // current `sourceFile`; a destructive re-edit of the clip clears it (timings would be stale).
+  editedLines: text('edited_lines'),
+  editedAt: integer('edited_at'),
   createdAt: integer('created_at').notNull().default(now),
 });
 
