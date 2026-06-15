@@ -1,15 +1,23 @@
 import { deleteFile, extractAudio } from 'react-native-video-trim';
 import { initWhisper, type WhisperContext } from 'whisper.rn';
 
+import { groupWordsIntoLines } from './group-lines';
 import { ensureModel, modelFileUri } from './model';
 import type { WhisperModel } from './models';
 import { hasSpeech } from './vad';
 
 /**
- * One transcribed line. `t0`/`t1` are whisper.cpp timestamps in **centiseconds** (1/100s)
- * relative to the clip's audio start — divide by 100 for seconds when rendering.
+ * One word of a transcript. `t0`/`t1` are whisper.cpp timestamps in **centiseconds** (1/100s)
+ * relative to the clip's audio start. Words drive word-level (karaoke) caption highlighting.
  */
-export type TranscriptLine = { text: string; t0: number; t1: number };
+export type TranscriptWord = { text: string; t0: number; t1: number };
+
+/**
+ * One transcribed line (caption cue). `t0`/`t1` are **centiseconds** relative to the clip's
+ * audio start — divide by 100 for seconds when rendering. `words` (when present) carries the
+ * per-word timing within the line; older stored rows may omit it and render line-level only.
+ */
+export type TranscriptLine = { text: string; t0: number; t1: number; words?: TranscriptWord[] };
 
 export type TranscriptResult = {
   language: string;
@@ -39,10 +47,11 @@ async function isSilent(wavPath: string): Promise<boolean> {
 let current: { id: string; ctx: WhisperContext } | null = null;
 let loadPromise: Promise<WhisperContext> | null = null;
 
-// Cap on a single caption line's length (characters). Whisper emits whole utterances as one
-// segment; splitting to caption-sized chunks (requires token timestamps) gives short, readable
-// lines that sync tightly with playback instead of one long paragraph.
-const CAPTION_MAX_LEN = 42;
+// `maxLen: 1` makes whisper emit one segment per word, each with its own t0/t1 — the only way
+// whisper.rn surfaces word-level timing (its result exposes segments, not tokens). We then fold
+// those words back into caption-sized lines ourselves (see group-lines.ts), which gives both
+// word-level timing (for karaoke highlighting) and readable, standards-sized cues.
+const WORD_PER_SEGMENT = 1;
 
 /**
  * Build a Whisper context, preferring on-device acceleration. `useGpu` runs inference on the
@@ -113,7 +122,8 @@ export async function transcribeVideo(
     if (await isSilent(wavPath)) return EMPTY_TRANSCRIPT;
 
     const ctx = await loadContext(model);
-    // `tokenTimestamps` is what lets `maxLen` split a long utterance into caption-sized lines.
+    // `tokenTimestamps` is what lets `maxLen` split output by token; with `maxLen: 1` we get one
+    // word per segment (with per-word t0/t1), then regroup into caption lines ourselves.
     // `language` honors the model: 'en' for the English-only models, 'auto' for the multilingual one.
     //
     // Speed knobs for the on-device hot path (captions, not subtitling a film):
@@ -124,7 +134,7 @@ export async function transcribeVideo(
     //   sampling is the slow default; the quality delta on clear speech is negligible for captions.
     const { promise } = ctx.transcribe(wavPath, {
       language: model.lang,
-      maxLen: CAPTION_MAX_LEN,
+      maxLen: WORD_PER_SEGMENT,
       tokenTimestamps: true,
       maxThreads: 6,
       beamSize: 1,
@@ -135,7 +145,7 @@ export async function transcribeVideo(
     return {
       language: result.language,
       text: result.result.trim(),
-      lines: result.segments.map((s) => ({ text: s.text, t0: s.t0, t1: s.t1 })),
+      lines: groupWordsIntoLines(result.segments),
     };
   } finally {
     await deleteFile(wavPath).catch(() => {});
