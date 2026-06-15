@@ -122,115 +122,122 @@ function Bar({
   }));
 
   return (
-    <View style={styles.bar}>
-      {/* Trash drop target — above the bar, fades in during a drag. pointerEvents="none" so it
-          never intercepts touches; it's purely a drop zone hit-tested from the drag position. */}
-      <View style={styles.trashWrap} pointerEvents="none">
-        <Animated.View ref={trashRef} onLayout={measureTrash} style={[styles.trash, trashStyle]}>
-          <SymbolView name="trash.fill" size={22} tintColor="#fff" />
-        </Animated.View>
-      </View>
+    // Teleports the dragged thumbnail to a portal outlet rendered OUTSIDE the horizontal
+    // ScrollView, which otherwise clips anything dragged out of its vertical bounds (the clip
+    // went invisible the moment it left the bar on the way to the trash). The outlet is layout-
+    // neutral and the active item positions itself in window coords, so the clip stays visible
+    // as it's dragged up to the trash. Enabled by default.
+    <Sortable.PortalProvider>
+      <View style={styles.bar}>
+        {/* Trash drop target — above the bar, fades in during a drag. pointerEvents="none" so it
+            never intercepts touches; it's purely a drop zone hit-tested from the drag position. */}
+        <View style={styles.trashWrap} pointerEvents="none">
+          <Animated.View ref={trashRef} onLayout={measureTrash} style={[styles.trash, trashStyle]}>
+            <SymbolView name="trash.fill" size={22} tintColor="#fff" />
+          </Animated.View>
+        </View>
 
-      <View
-        style={[styles.viewport, cursor && styles.viewportScrub]}
-        onLayout={(e) => {
-          viewportW.value = e.nativeEvent.layout.width;
-        }}>
-        <Animated.ScrollView
-          ref={scrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.content}
-          onContentSizeChange={(w) => {
-            contentW.value = w;
-            // Honor a pending scroll-to-newest now that the added thumb has been measured.
-            if (stickToEnd.current) {
-              stickToEnd.current = false;
-              scrollRef.current?.scrollToEnd({ animated: true });
-            }
+        <View
+          style={[styles.viewport, cursor && styles.viewportScrub]}
+          onLayout={(e) => {
+            viewportW.value = e.nativeEvent.layout.width;
           }}>
-          <Sortable.Grid
-            rows={1}
-            rowHeight={THUMB_HEIGHT}
-            columnGap={TRACK_GAP}
-            data={segments}
-            keyExtractor={(s) => s.id}
-            scrollableRef={scrollRef}
-            autoScrollDirection="horizontal"
-            // Reorder only from the drag handle (≣) — frees a plain hold on the thumb to
-            // mean "edit" without colliding with the grid's long-press-to-drag.
-            customHandle
-            onDragStart={({ key }) => {
-              draggedKey.current = key;
-              overTrash.current = false;
-              over.value = 0;
-              vis.value = withTiming(1, { duration: 150 });
-              dragScroll.value = true; // pause playhead-follow so it can't fight the grid autoscroll
-              setDragActive(true); // hide → so the viewport gets its space
-              measureTrash();
-              onDragActiveChange?.(true);
-            }}
-            onDragMove={({ touchData }) => {
-              const r = trashRect.current;
-              const inside =
-                !!r &&
-                touchData.absoluteX >= r.x &&
-                touchData.absoluteX <= r.x + r.w &&
-                touchData.absoluteY >= r.y &&
-                touchData.absoluteY <= r.y + r.h;
-              if (inside !== overTrash.current) {
-                overTrash.current = inside;
-                over.value = withTiming(inside ? 1 : 0, { duration: 120 });
+          <Animated.ScrollView
+            ref={scrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.content}
+            onContentSizeChange={(w) => {
+              contentW.value = w;
+              // Honor a pending scroll-to-newest now that the added thumb has been measured.
+              if (stickToEnd.current) {
+                stickToEnd.current = false;
+                scrollRef.current?.scrollToEnd({ animated: true });
               }
-            }}
-            onDragEnd={({ data }) => {
-              vis.value = withTiming(0, { duration: 150 });
-              over.value = withTiming(0, { duration: 120 });
-              // Dropped on the trash → delete that clip; otherwise persist the new order.
-              if (overTrash.current && draggedKey.current) onDelete(draggedKey.current);
-              else onReorder(data.map((s) => s.id));
-              overTrash.current = false;
-              draggedKey.current = null;
-              dragScroll.value = false;
-              setDragActive(false); // restore → now the drag is done
-              onDragActiveChange?.(false);
-            }}
-            renderItem={({ item }) => (
-              <SegmentThumb
-                segment={item}
-                active={cursor?.activeId === item.id}
-                onSelect={() => onSelect(item.id)}
-                onEdit={() => onEdit(item.id)}
-              />
-            )}
-          />
-        </Animated.ScrollView>
+            }}>
+            <Sortable.Grid
+              rows={1}
+              rowHeight={THUMB_HEIGHT}
+              columnGap={TRACK_GAP}
+              data={segments}
+              keyExtractor={(s) => s.id}
+              scrollableRef={scrollRef}
+              autoScrollDirection="horizontal"
+              // Reorder only from the drag handle (≣) — frees a plain hold on the thumb to
+              // mean "edit" without colliding with the grid's long-press-to-drag.
+              customHandle
+              onDragStart={({ key }) => {
+                draggedKey.current = key;
+                overTrash.current = false;
+                over.value = 0;
+                vis.value = withTiming(1, { duration: 150 });
+                dragScroll.value = true; // pause playhead-follow so it can't fight the grid autoscroll
+                setDragActive(true); // hide → so the viewport gets its space
+                measureTrash();
+                onDragActiveChange?.(true);
+              }}
+              onDragMove={({ touchData }) => {
+                const r = trashRect.current;
+                const inside =
+                  !!r &&
+                  touchData.absoluteX >= r.x &&
+                  touchData.absoluteX <= r.x + r.w &&
+                  touchData.absoluteY >= r.y &&
+                  touchData.absoluteY <= r.y + r.h;
+                if (inside !== overTrash.current) {
+                  overTrash.current = inside;
+                  over.value = withTiming(inside ? 1 : 0, { duration: 120 });
+                }
+              }}
+              onDragEnd={({ data }) => {
+                vis.value = withTiming(0, { duration: 150 });
+                over.value = withTiming(0, { duration: 120 });
+                // Dropped on the trash → delete that clip; otherwise persist the new order.
+                if (overTrash.current && draggedKey.current) onDelete(draggedKey.current);
+                else onReorder(data.map((s) => s.id));
+                overTrash.current = false;
+                draggedKey.current = null;
+                dragScroll.value = false;
+                setDragActive(false); // restore → now the drag is done
+                onDragActiveChange?.(false);
+              }}
+              renderItem={({ item }) => (
+                <SegmentThumb
+                  segment={item}
+                  active={cursor?.activeId === item.id}
+                  onSelect={() => onSelect(item.id)}
+                  onEdit={() => onEdit(item.id)}
+                />
+              )}
+            />
+          </Animated.ScrollView>
 
-        {cursor && (
-          <PlayheadCursor
-            cursor={cursor}
-            segments={segments}
-            scrollRef={scrollRef}
-            scrollOffset={scrollOffset}
-            viewportW={viewportW}
-            contentW={contentW}
-            suspendAutoScroll={dragScroll}
-          />
+          {cursor && (
+            <PlayheadCursor
+              cursor={cursor}
+              segments={segments}
+              scrollRef={scrollRef}
+              scrollOffset={scrollOffset}
+              viewportW={viewportW}
+              contentW={contentW}
+              suspendAutoScroll={dragScroll}
+            />
+          )}
+        </View>
+
+        {/* Hidden while reordering — its slot (button + gap) is handed to the flex:1 viewport for
+          more room; restored on drag end. */}
+        {onNext && !dragActive && (
+          <Pressable
+            onPress={onNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next"
+            style={({ pressed }) => [styles.next, { opacity: pressed ? 0.85 : 1 }]}>
+            <SymbolView name="arrow.right" size={22} weight="semibold" tintColor="#fff" />
+          </Pressable>
         )}
       </View>
-
-      {/* Hidden while reordering — its slot (button + gap) is handed to the flex:1 viewport for
-          more room; restored on drag end. */}
-      {onNext && !dragActive && (
-        <Pressable
-          onPress={onNext}
-          accessibilityRole="button"
-          accessibilityLabel="Next"
-          style={({ pressed }) => [styles.next, { opacity: pressed ? 0.85 : 1 }]}>
-          <SymbolView name="arrow.right" size={22} weight="semibold" tintColor="#fff" />
-        </Pressable>
-      )}
-    </View>
+    </Sortable.PortalProvider>
   );
 }
 
@@ -246,7 +253,10 @@ function SegmentThumb({
   onEdit: () => void;
 }) {
   // Persisted jpeg cover; falls back to the EFFECTIVE clip (edited ?? original) for legacy rows.
-  const thumbnail = useThumbnail(segment.thumbnail, segment.editedFilename ?? segment.originalFilename);
+  const thumbnail = useThumbnail(
+    segment.thumbnail,
+    segment.editedFilename ?? segment.originalFilename,
+  );
 
   // Effective (post-trim) clip length, the same number the playhead and export use. A failed
   // native read stores 0ms (the clip is skipped on playback) — show nothing rather than 00:00.
