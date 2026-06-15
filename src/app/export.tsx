@@ -3,7 +3,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,10 @@ import { MergeProgressRing } from '@/features/export/merge-progress-ring';
 import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { setActiveDraft } from '@/features/transcription/active-draft';
+import { CaptionOverlay } from '@/features/transcription/caption-overlay';
+import { mergedLines } from '@/features/transcription/srt';
+import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
+import type { TranscriptLine } from '@/features/transcription/whisper';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 
@@ -38,6 +42,11 @@ export default function ExportScreen() {
   // Zero-length clips (failed native reads) can't be concatenated — drop them before merging.
   const clips = segments.filter((s) => effMs(s) > 0);
   const { state, retry } = useExport(clips);
+
+  // Captions stitched onto one draft-wide timeline (same clip order/offsets as the merge), for the
+  // preview overlay.
+  const transcripts = useDraftTranscripts(draftId ?? null);
+  const captionLines = useMemo(() => mergedLines(clips, transcripts), [clips, transcripts]);
 
   // Whether the share sheet is being presented, so we can disable the button and show a spinner.
   const [busy, setBusy] = useState(false);
@@ -78,7 +87,7 @@ export default function ExportScreen() {
 
         {state.status === 'done' && (
           <>
-            <MergedPreview uri={state.outputPath} />
+            <MergedPreview uri={state.outputPath} lines={captionLines} />
             <ThemedText type="subtitle" style={styles.title}>
               Ready to export
             </ThemedText>
@@ -180,11 +189,14 @@ export default function ExportScreen() {
  * render and the player never needs a source swap. Plays once (no loop); tap to pause or
  * replay after it ends.
  */
-function MergedPreview({ uri }: { uri: string }) {
+function MergedPreview({ uri, lines }: { uri: string; lines: TranscriptLine[] }) {
   const player = useVideoPlayer(toFileUri(uri), (p) => {
+    p.timeUpdateEventInterval = 0.1;
     p.play();
   });
   const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  const timeUpdate = useEvent(player, 'timeUpdate');
+  const positionMs = (timeUpdate?.currentTime ?? player.currentTime) * 1000;
 
   const togglePlay = () => {
     if (isPlaying) {
@@ -208,6 +220,9 @@ function MergedPreview({ uri }: { uri: string }) {
         contentFit="contain"
         nativeControls={false}
       />
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <CaptionOverlay lines={lines} positionMs={positionMs} />
+      </View>
       {!isPlaying && (
         <View style={styles.playOverlay} pointerEvents="none">
           <View style={styles.playBadge}>

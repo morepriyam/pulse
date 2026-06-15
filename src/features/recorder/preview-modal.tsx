@@ -3,6 +3,7 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import type { SegmentTranscript } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
 
@@ -20,13 +21,8 @@ type Props = {
   onClose: () => void;
   onTrim: () => void;
   onDelete: () => void;
+  onEditCaptions: () => void;
 };
-
-/** The caption line covering the current playback position (whisper t0/t1 are centiseconds). */
-function activeLine(transcript: SegmentTranscript | undefined, captionMs: number) {
-  if (transcript?.status !== 'done') return undefined;
-  return transcript.lines.find((l) => captionMs >= l.t0 * 10 && captionMs <= l.t1 * 10);
-}
 
 /**
  * Floating preview card over the recorder — the camera UI, record button, and segment bar
@@ -45,8 +41,9 @@ export function PreviewModal({
   onClose,
   onTrim,
   onDelete,
+  onEditCaptions,
 }: Props) {
-  const line = activeLine(transcript, captionMs);
+  const captionLines = transcript?.status === 'done' ? transcript.lines : [];
   return (
     <View style={styles.card}>
       <Pressable style={styles.surface} onPress={onTogglePlay} accessibilityLabel="Toggle playback">
@@ -92,16 +89,19 @@ export function PreviewModal({
         <SymbolView name="trash" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
 
-      <View style={styles.captionRow} pointerEvents="none">
-        {/* No "Transcribing…" / placeholder state — the pill appears only once a caption line is
-            ready for the current playback position, so captions just pop in when available. */}
-        {line && (
-          <View style={styles.captionPill}>
-            <Text style={styles.captionText} numberOfLines={3}>
-              {line.text.trim()}
-            </Text>
-          </View>
-        )}
+      <Pressable
+        onPress={onEditCaptions}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Edit captions"
+        style={[styles.badge, styles.captions]}>
+        <SymbolView name="captions.bubble" size={16} weight="semibold" tintColor="#fff" />
+      </Pressable>
+
+      {/* Animated word-level captions over the video (Skia). Renders nothing until a line is
+          ready for the current playback position, so captions just pop in when available. */}
+      <View style={styles.captionLayer} pointerEvents="none">
+        <CaptionOverlay lines={captionLines} positionMs={captionMs} />
       </View>
 
       <View style={styles.timeRow} pointerEvents="none">
@@ -163,26 +163,17 @@ const styles = StyleSheet.create({
   trim: {
     right: Spacing.two + 28 + Spacing.two,
   },
-  // Sits just above the time pill; captions are centered and wrap up to 3 lines.
-  captionRow: {
+  // Left of the trim badge (another 28 + 8pt gap).
+  captions: {
+    right: Spacing.two + 2 * (28 + Spacing.two),
+  },
+  // Covers the card above the time pill; the Skia overlay draws captions near its bottom edge.
+  captionLayer: {
     position: 'absolute',
-    left: Spacing.two,
-    right: Spacing.two,
+    left: 0,
+    right: 0,
+    top: 0,
     bottom: Spacing.two + 28,
-    alignItems: 'center',
-  },
-  captionPill: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  captionText: {
-    color: '#fff',
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   timeRow: {
     position: 'absolute',

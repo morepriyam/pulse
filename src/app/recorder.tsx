@@ -213,6 +213,11 @@ export default function RecorderScreen() {
                 openTrim(seg);
               }}
               onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
+              onEditCaptions={() => {
+                if (!preview.activeId || !draftId) return;
+                preview.pause();
+                router.push(`/subtitles?segmentId=${preview.activeId}&draftId=${draftId}`);
+              }}
             />
           </View>
         )}

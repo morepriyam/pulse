@@ -6,7 +6,7 @@ import type { Segment } from '@/db/schema';
 import { selectedModelQuery } from '@/db/settings';
 import {
   allTranscriptsQuery,
-  clearAllTranscripts,
+  clearAutoTranscripts,
   markTranscribing,
   markTranscriptError,
   saveTranscript,
@@ -33,15 +33,20 @@ export type TranscriptionStatus =
   | { kind: 'downloading'; bytesWritten: number; totalBytes: number }
   | { kind: 'transcribing'; done: number; total: number };
 
-type Row = { model: string | null; sourceFile: string; status: 'processing' | 'done' | 'error' };
+type Row = {
+  model: string | null;
+  sourceFile: string;
+  status: 'processing' | 'done' | 'error';
+  edited: boolean;
+};
 
 /**
  * The single, app-wide background transcription engine. Mounted once (see TranscriptionProvider).
  *
  * Driven by the persisted model selection, it keeps every clip in the library captioned:
  * - Selecting a model downloads it (deleting any other), then transcribes the whole library.
- * - Switching models **clears all transcripts** (captions vanish everywhere) and regenerates them
- *   per-segment with the new model — each caption reappears as its clip finishes.
+ * - Switching models **clears auto-generated transcripts** (captions regenerate per-segment with
+ *   the new model) but PRESERVES hand-edited ones — each caption reappears as its clip finishes.
  * - Clearing the model releases the context and deletes the weights.
  * - New clips (recorded/imported anywhere) are picked up automatically.
  *
@@ -61,7 +66,12 @@ export function useLibraryTranscription(): TranscriptionStatus {
   const rowById = useMemo(() => {
     const map = new Map<string, Row>();
     for (const r of transcriptRows) {
-      map.set(r.segmentId, { model: r.model, sourceFile: r.sourceFile, status: r.status });
+      map.set(r.segmentId, {
+        model: r.model,
+        sourceFile: r.sourceFile,
+        status: r.status,
+        edited: r.editedLines != null,
+      });
     }
     return map;
   }, [transcriptRows]);
@@ -96,12 +106,14 @@ export function useLibraryTranscription(): TranscriptionStatus {
     const file = effFile(s);
     const key = `${s.id}:${file}:${m.id}`;
     if (processedRef.current.has(key)) return false; // settled this session
+    const row = rowByIdRef.current.get(s.id);
     return needsTranscription(
       file,
       m.id,
-      rowByIdRef.current.get(s.id),
+      row,
       errorAttemptsRef.current.get(key) ?? 0,
       MAX_TRANSCRIBE_ATTEMPTS,
+      row?.edited ?? false,
     );
   }, []);
 
@@ -124,7 +136,9 @@ export function useLibraryTranscription(): TranscriptionStatus {
         } else if (prevModelIdRef.current !== curId) {
           prevModelIdRef.current = curId;
           processedRef.current.clear();
-          await clearAllTranscripts();
+          // Drop auto captions so they regenerate with the new model, but keep hand-edited rows
+          // (their captions are tied to the audio, not the model).
+          await clearAutoTranscripts();
         }
 
         if (!m) {
