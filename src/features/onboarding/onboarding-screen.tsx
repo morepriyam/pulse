@@ -116,8 +116,18 @@ export function OnboardingScreen() {
             <View style={styles.bullets}>
               {item.bullets.map((bullet, i) => (
                 <View key={i} style={styles.bulletRow}>
-                  <View style={[styles.bulletDot, { backgroundColor: theme.accent }]} />
-                  <ThemedText style={styles.bulletText}>{bullet}</ThemedText>
+                  <View style={styles.bulletLead}>
+                    {bullet.record ? (
+                      <View style={[styles.recordRing, { borderColor: theme.accent }]}>
+                        <View style={[styles.recordDot, { backgroundColor: theme.accent }]} />
+                      </View>
+                    ) : bullet.icon ? (
+                      <SymbolView name={bullet.icon} size={19} tintColor={theme.accent} />
+                    ) : (
+                      <View style={[styles.bulletDot, { backgroundColor: theme.accent }]} />
+                    )}
+                  </View>
+                  <ThemedText style={styles.bulletText}>{bullet.text}</ThemedText>
                 </View>
               ))}
             </View>
@@ -188,11 +198,32 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: Spacing.three,
   },
+  // Fixed lead column, sized to the first text line (lineHeight 24) and centering whatever
+  // glyph it holds — so icon, dot, and record bullets all align to the first line of text.
+  bulletLead: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bulletDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
-    marginTop: 8,
+  },
+  // Mini record button: a red disc inside a red ring, matching the recorder's shutter.
+  recordRing: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordDot: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
   },
   bulletText: {
     flex: 1,

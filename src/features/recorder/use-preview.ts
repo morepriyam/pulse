@@ -67,6 +67,15 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
   // kept fresh during bar scrubs, consumed once by the load effect.
   const pendingSeekRef = useRef<number | null>(null);
 
+  // Opening a preview (anchor goes null → a tapped segment) auto-plays from that clip.
+  // Arm the same intent the auto-advance uses; the load effect's begin()/statusChange
+  // consumes it once the clip is ready. Declared before the load effect so it runs first
+  // on the opening commit. Tapping another thumb mid-preview (selectSegment) still lands
+  // paused — it clears this and doesn't change the anchor.
+  useEffect(() => {
+    if (anchorId != null) wantPlayRef.current = true;
+  }, [anchorId]);
+
   // The active clip is the selection, falling back to the first clip when the selection
   // is gone (e.g. its row was deleted). Playback and the cursor act on this row.
   const activeIndex = (() => {
