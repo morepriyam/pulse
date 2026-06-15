@@ -46,6 +46,12 @@ export function segmentsForDraft(projectId: string) {
 /** Every segment in the library — drives the global background transcription engine. */
 export const allSegmentsQuery = db.select().from(segments);
 
+/** Load one segment row by id (e.g. for the subtitle editor's video preview). */
+export async function getSegment(segmentId: string) {
+  const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
+  return seg ?? null;
+}
+
 // Mutations — each is a single-row write that autosaves the draft (§3).
 
 export async function createDraft(): Promise<string> {
