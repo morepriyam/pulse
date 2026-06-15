@@ -10,6 +10,9 @@ import { settings } from './schema';
 
 const SELECTED_MODEL_KEY = 'transcription.model';
 
+/** Whether the first-run onboarding flow has been completed (or skipped). */
+const ONBOARDING_COMPLETE_KEY = 'onboarding.complete';
+
 /** Persisted recorder preferences (camera-wide, not per-draft). */
 export const CAMERA_FACING_KEY = 'camera.facing';
 export const CAMERA_STABILIZATION_KEY = 'camera.stabilization';
@@ -31,6 +34,21 @@ export async function setSelectedModel(id: string | null): Promise<void> {
     .insert(settings)
     .values({ key: SELECTED_MODEL_KEY, value: id })
     .onConflictDoUpdate({ target: settings.key, set: { value: id } });
+}
+
+/** Whether first-run onboarding has been completed (or explicitly skipped). */
+export async function isOnboardingComplete(): Promise<boolean> {
+  return (await getSetting(ONBOARDING_COMPLETE_KEY)) === 'true';
+}
+
+/** Mark onboarding done so the flow is not shown again. */
+export async function markOnboardingComplete(): Promise<void> {
+  await setSetting(ONBOARDING_COMPLETE_KEY, 'true');
+}
+
+/** Clear the onboarding flag — the flow will show again on next launch (dev/testing). */
+export async function resetOnboarding(): Promise<void> {
+  await db.delete(settings).where(eq(settings.key, ONBOARDING_COMPLETE_KEY));
 }
 
 /** One-shot read of a single settings value (`null` if unset). */
