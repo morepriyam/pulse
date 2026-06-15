@@ -61,13 +61,22 @@
         {
           "photosPermission": "Allow Pulse to access your photos to import videos into your drafts.",
           "savePhotosPermission": "Allow Pulse to save exported videos to your photo library.",
-          "granularPermissions": ["photo", "video"]
+          "granularPermissions": [
+            "photo",
+            "video"
+          ]
         }
       ],
       [
         "expo-image-picker",
         {
           "photosPermission": "Allow Pulse to access your photos to import videos into your drafts."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
         }
       ]
     ],

@@ -34,9 +34,17 @@
 
 ---
 
-### A2. Audio focus — pause background audio while recording
+### A2. Audio focus — pause background audio while recording — ✅ RESOLVED on iOS (2026-06-15); Android pending validation
 
-**What:** When recording starts, pause whatever the user is playing (Spotify / YouTube / podcast) instead of mixing it in; restore on stop. Current `pulse-new` only sets `mute` on `CameraView` (no background-audio ducking).
+**What:** When the recorder is open with a live mic, pause whatever the user is playing (Spotify / YouTube / podcast) instead of mixing it in; restore on leave. Previously `pulse-new` only set `mute` on `CameraView` (no background-audio ducking).
+
+**Resolved in `pulse-new` — pure-JS, no native module.** The original needed a custom Swift/Kotlin module because its older `expo-audio` couldn't request exclusive focus cross-platform. **SDK 56 closes that gap:** `setAudioModeAsync`'s unified `interruptionMode: 'doNotMix'` requests focus directly (the deprecated `interruptionModeAndroid` is gone, so the [#34025](https://github.com/expo/expo/issues/34025) "both keys crash Android" trap can't be hit). iOS checklist 1–5 confirmed on-device — including the resume the original needed `.notifyOthersOnDeactivation` for.
+- **Hook** — [src/features/recorder/use-audio-focus.ts](../src/features/recorder/use-audio-focus.ts): idempotent `acquire()` / `release()` wrapping `setAudioModeAsync({ interruptionMode: 'doNotMix' })` + `setIsAudioActiveAsync(...)`; both swallow errors so an audio-session failure never breaks recording.
+- **Wiring** — [src/app/recorder.tsx](../src/app/recorder.tsx): acquires when `focused && !muted && prefsReady`, releases on blur/mute/unmount. Tied to **screen focus, not per segment**, so the AVAudioSession isn't toggled mid-draft (that toggling caused the original's "mic dies on segment 2" bug — re-validated, no recurrence). Gated on `!muted` because a muted clip has no audio track to protect.
+- **Config** — `expo-audio` added with `microphonePermission: false` in [app.json](../app.json) so it doesn't override the camera plugin's mic prompt; `RECORD_AUDIO` was already declared. Native module → required a rebuild + `pod install` (done).
+- **Android still pending:** the original documented `setIsAudioActiveAsync` as a no-op on Android in an older version; SDK 56 docs claim `interruptionMode` now works there, but it's **untested on a real Android device**. If it fails, the fallback below is one step away.
+
+**How the original did it** — custom native module [tmp/pulse/modules/audio-focus/](../tmp/pulse/modules/audio-focus/), driven by [tmp/pulse/hooks/useAudioSession.ts](../tmp/pulse/hooks/useAudioSession.ts):
 
 **How the original did it** — custom native module [tmp/pulse/modules/audio-focus/](../tmp/pulse/modules/audio-focus/), driven by [tmp/pulse/hooks/useAudioSession.ts](../tmp/pulse/hooks/useAudioSession.ts):
 - TS surface: `requestAudioFocus()` / `abandonAudioFocus()`.
@@ -44,7 +52,7 @@
 - **Android** ([AudioFocusModule.kt](../tmp/pulse/modules/audio-focus/android/src/main/java/expo/modules/audiofocus/AudioFocusModule.kt)): `AudioManager` `AUDIOFOCUS_GAIN_TRANSIENT` (O+ `AudioFocusRequest`, legacy stream API below) so other apps pause.
 - Tied into the recorder's focus/blur lifecycle (orig §4.7) — the same dance that fixed the "mic dies on segment 2" iOS bug.
 
-**For `pulse-new`:** deferred per the original plan, which suggested trying an **`expo-audio` audio-mode** (`shouldDuckAndroid` / `interruptionMode`) before re-porting a native module. Worth checking whether expo-audio alone gets it on SDK 56; fall back to the tiny native module if not. **Re-validate the segment-2 mic bug regardless** — it's the original's most fragile behavior.
+**Fallback (only if Android validation fails):** port this module's two functions (`requestAudioFocus` / `abandonAudioFocus`) and call them from `use-audio-focus.ts` alongside `setAudioModeAsync`, exactly as the original's `useAudioSession.ts` did.
 
 ---
 
@@ -100,7 +108,7 @@
 | Feature | Bucket | Original source | `pulse-new` |
 | --- | --- | --- | --- |
 | `.pulse` draft export/import | ✅ done | `utils/draftTransfer.ts` + drafts list | ✅ ZIP bundle (`features/draft-transfer/*`) + multi-select |
-| Audio focus (pause bg audio) | A — gap | `modules/audio-focus/*` + `useAudioSession` | ✗ (only `mute`) |
+| Audio focus (pause bg audio) | ✅ iOS (Android pending) | `modules/audio-focus/*` + `useAudioSession` | ✅ pure-JS `expo-audio` `doNotMix` (`use-audio-focus`) — no native module |
 | Onboarding tour | A — gap | `app/onboarding.tsx` + `useFirstTimeOpen` | ✗ (planned last) |
 | Persisted camera facing/stabilization/mute | ✅ done | `useCameraFacing` / `useVideoStabilization` | ✅ `settings` table + `use-recorder` hydrate/persist |
 | Duration presets + max-length cap | B — dropped | `TimeSelectorButton` + `RecordingProgressBar` | ✗ (no cap, by choice) |
