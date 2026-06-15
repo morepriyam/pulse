@@ -1,6 +1,15 @@
 import type { SymbolViewProps } from 'expo-symbols';
 import type { ImageSourcePropType } from 'react-native';
 
+/** A feature line. `icon` is the SAME SF Symbol the app uses for that action, so the
+ *  tour teaches the real glyph; omit it for conceptual lines (falls back to a dot). */
+export type Bullet = {
+  icon?: SymbolViewProps['name'];
+  /** Render the red record-button glyph (takes precedence over `icon`) for the shutter line. */
+  record?: boolean;
+  text: string;
+};
+
 /** A single onboarding page: a hero (logo image or SF Symbol) plus a bulleted feature list. */
 export type OnboardingStep = {
   key: string;
@@ -9,13 +18,12 @@ export type OnboardingStep = {
   /** Image hero (e.g. the Pulse logo) — takes precedence over `symbol`. */
   image?: ImageSourcePropType;
   title: string;
-  /** Feature bullets — each says what it does and, where useful, how it works. */
-  bullets: readonly string[];
+  bullets: readonly Bullet[];
 };
 
 /**
- * The first-run tour. Three swipes that, together, name every working feature
- * and the gesture or step that triggers it, so a new user knows the whole app.
+ * The first-run tour. Three swipes that name every working feature next to the actual
+ * in-app icon that triggers it, so a new user learns the glyphs as they learn the app.
  */
 export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   {
@@ -23,10 +31,9 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     image: require('../../../assets/images/pulse-logo-master-2048.png'),
     title: 'Welcome to Pulse',
     bullets: [
-      'Capture short videos as a series of clips, all kept together as one draft.',
-      'Whisper AI writes the captions for you, on-device — nothing is ever uploaded.',
-      'Works fully offline: no account, no sign-in, no cloud.',
-      'Swipe to see what you can do today.',
+      { text: 'Everything runs on your device — your recordings are never uploaded.' },
+      { text: 'No account, no sign-in — get started in seconds.' },
+      { text: 'Swipe through to learn what every button does.' },
     ],
   },
   {
@@ -34,25 +41,25 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     symbol: 'video.fill',
     title: 'Record & arrange',
     bullets: [
-      'Hold the shutter to record a clip; lift to pause, hold again to add the next one.',
-      'Tap a clip in the segment bar to open its preview.',
-      'Press and hold a clip to trim its start and end.',
-      'Drag a clip left or right to reorder your timeline.',
-      'Drag a clip onto the trash to delete it from the segment bar.',
-      'Flip cameras, switch lenses, pinch to zoom, fire the torch, pick a stabilization mode, or mute audio.',
+      { record: true, text: 'Hold the shutter to record a clip; lift to pause, hold again to add the next one.' },
+      { icon: 'play.fill', text: 'Tap a clip in the segment bar to open its preview — it starts playing right away.' },
+      { icon: 'scissors', text: 'Press and hold a clip to open its editor and trim the start and end.' },
+      { icon: 'line.3.horizontal', text: 'Drag a clip by its grab strip to reorder your timeline.' },
+      { icon: 'trash', text: 'Drag a clip onto the trash to delete it from the segment bar.' },
+      { icon: 'arrow.triangle.2.circlepath.camera', text: 'Flip cameras, switch lenses, pinch to zoom, fire the torch, set stabilization, or mute audio.' },
     ],
   },
   {
     key: 'finish',
-    symbol: 'text.bubble.fill',
+    symbol: 'captions.bubble.fill',
     title: 'Caption, polish & share',
     bullets: [
-      'Every clip is captioned automatically — tap “AI” to pick a model (Tiny → Large Turbo) and language.',
-      'Open the caption editor to split, merge, edit, or delete individual cues.',
-      'Nudge any cue ±100 ms while the playhead follows along, or reset it back to auto.',
-      'Export stitches your clips into one video with the captions burned in.',
-      'Share via the system sheet — Messages, AirDrop, anywhere — or save to Photos or Files.',
-      'Rename, delete, and reopen drafts at home, or move them between devices as .pulse files.',
+      { icon: 'sparkles', text: 'Every clip is captioned automatically — tap Model to choose a transcription model, from Tiny to multilingual Large Turbo.' },
+      { icon: 'captions.bubble', text: 'Open the caption editor to split, merge, edit, or delete individual cues.' },
+      { icon: 'arrow.uturn.backward', text: 'Nudge any cue ±100 ms with the playhead, or reset it back to auto.' },
+      { icon: 'arrow.right', text: 'Export merges all your clips into one seamless video.' },
+      { icon: 'square.and.arrow.up', text: 'Share via the system sheet, or save to Photos or Files.' },
+      { icon: 'square.and.arrow.down', text: 'Rename, delete, and reopen drafts at home, or move them between devices as .pulse files.' },
     ],
   },
 ];
