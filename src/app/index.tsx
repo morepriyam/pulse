@@ -13,6 +13,7 @@ import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
 import { selectedModelQuery } from '@/db/settings';
 import { useDraftTransfer } from '@/features/draft-transfer/use-draft-transfer';
 import { DraftCard } from '@/features/home/draft-card';
+import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redirect';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import { getModel } from '@/features/transcription/models';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,6 +27,9 @@ const DevSeedRow = __DEV__
 type DraftRef = { id: string; name: string | null; anchor: Anchor };
 
 export default function HomeScreen() {
+  // First-run gate: pushes the onboarding tour over home when not yet completed.
+  useOnboardingRedirect();
+
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { data: drafts } = useLiveQuery(draftListQuery);
@@ -177,24 +181,35 @@ export default function HomeScreen() {
               hitSlop={12}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel="Import drafts">
+              accessibilityLabel="Import drafts"
+              style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
               {transferState === 'importing' ? (
                 <ActivityIndicator size="small" color={theme.textSecondary} />
               ) : (
                 <SymbolView
                   name="square.and.arrow.down"
-                  size={22}
+                  size={20}
                   tintColor={busy ? theme.textSecondary : theme.text}
                 />
               )}
+              <ThemedText
+                type="smallBold"
+                themeColor={busy ? 'textSecondary' : 'text'}
+                style={styles.headerButtonLabel}>
+                Import
+              </ThemedText>
             </Pressable>
             {visibleDrafts.length > 0 && (
               <Pressable
                 onPress={() => setSelectionMode(true)}
                 hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Select drafts to share">
-                <SymbolView name="square.and.arrow.up" size={22} tintColor={theme.text} />
+                accessibilityLabel="Select drafts to export"
+                style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
+                <SymbolView name="square.and.arrow.up" size={20} tintColor={theme.text} />
+                <ThemedText type="smallBold" style={styles.headerButtonLabel}>
+                  Export
+                </ThemedText>
               </Pressable>
             )}
             <Pressable
@@ -202,14 +217,17 @@ export default function HomeScreen() {
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="On-device AI"
-              style={styles.aiButton}>
+              style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
               <SymbolView
                 name="sparkles"
                 size={20}
                 tintColor={selectedModel ? theme.accent : theme.textSecondary}
               />
-              <ThemedText type="smallBold" themeColor={selectedModel ? 'accent' : 'textSecondary'}>
-                AI
+              <ThemedText
+                type="smallBold"
+                themeColor={selectedModel ? 'accent' : 'textSecondary'}
+                style={styles.headerButtonLabel}>
+                Model
               </ThemedText>
             </Pressable>
           </View>
@@ -323,8 +341,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.two,
   },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.four },
-  aiButton: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  // Shared header action: icon stacked above its label, with a ≥44pt touch target.
+  headerButton: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.half,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+  },
+  headerButtonLabel: { fontSize: 11, lineHeight: 13 },
+  headerButtonPressed: { opacity: 0.5 },
   devRowWrap: {
     alignItems: 'flex-end',
     paddingHorizontal: Spacing.four,
