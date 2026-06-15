@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { isOnboardingComplete } from '@/db/settings';
 
 /** Flip to `true` to force the onboarding flow on every launch while developing. */
-const FORCE_ONBOARDING_IN_DEV = true;
+const FORCE_ONBOARDING_IN_DEV = false;
 
 /**
  * Runs once on home-screen mount: if the user hasn't completed onboarding, push
