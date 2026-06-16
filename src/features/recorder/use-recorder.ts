@@ -3,7 +3,7 @@ import { CameraType, CameraView } from 'expo-camera';
 import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { isValidFile } from 'react-native-video-trim';
 
 import {
@@ -155,12 +155,19 @@ export function useRecorder(initialDraftId?: string) {
     setRecordStartedAt(Date.now());
     setIsRecording(true);
     try {
-      // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p. Every
-      // segment a device records is format-identical to the rest of the draft, so export
+      // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p on iOS.
+      // Every segment a device records is format-identical to the rest of the draft, so export
       // always hits the merge engine's zero-re-encode passthrough path — and clips recorded
       // on different devices stay mergeable with each other too. Keep in sync with the
       // selective-merge majority expectations in the RNVT fork.
-      const video = await cameraRef.current.recordAsync({ codec: 'hvc1' });
+      //
+      // `codec` is iOS-only in expo-camera (per the v56 docs); Android records its device
+      // default (typically H.264). Per-device uniformity still holds (same device ⇒ same
+      // format ⇒ fast path on iOS / clean re-encode on Android); cross-platform drafts are
+      // handled by the merge engine's selective path by design.
+      const video = await cameraRef.current.recordAsync(
+        Platform.OS === 'ios' ? { codec: 'hvc1' } : {},
+      );
       if (!video?.uri) return;
 
       let id = draftId;
