@@ -1,6 +1,6 @@
 import { useEvent } from 'expo';
 import { useLocalSearchParams, router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -206,7 +206,7 @@ function Editor({
           {!isPlaying && (
             <View style={styles.playOverlay} pointerEvents="none">
               <View style={styles.playBadge}>
-                <SymbolView name="play.fill" size={22} tintColor="#fff" />
+                <Icon name="play.fill" size={22} tintColor="#fff" />
               </View>
             </View>
           )}
@@ -257,13 +257,13 @@ function Editor({
         <Pressable
           onPress={() => editor.addCueAt(posCs)}
           style={[styles.footerBtn, { backgroundColor: theme.backgroundElement }]}>
-          <SymbolView name="plus" size={16} tintColor={theme.text} />
+          <Icon name="plus" size={16} tintColor={theme.text} />
           <ThemedText>Add cue</ThemedText>
         </Pressable>
         <Pressable
           onPress={onResetToAuto}
           style={[styles.footerBtn, { backgroundColor: theme.backgroundElement }]}>
-          <SymbolView name="arrow.uturn.backward" size={16} tintColor={theme.text} />
+          <Icon name="arrow.uturn.backward" size={16} tintColor={theme.text} />
           <ThemedText>Reset to auto</ThemedText>
         </Pressable>
       </View>
@@ -342,7 +342,7 @@ function CueRow({
           {clock(cue.t0)}–{clock(cue.t1)}
         </ThemedText>
         <Pressable onPress={onCollapse} hitSlop={8} accessibilityLabel="Done editing cue">
-          <SymbolView name="chevron.up" size={15} weight="semibold" tintColor={theme.textSecondary} />
+          <Icon name="chevron.up" size={15} weight="semibold" tintColor={theme.textSecondary} />
         </Pressable>
       </View>
 
@@ -407,18 +407,18 @@ function TimeControl({
         {label}
       </ThemedText>
       <Pressable onPress={onMinus} hitSlop={8} style={styles.stepBtn} accessibilityLabel={`${label} earlier`}>
-        <SymbolView name="minus" size={12} weight="semibold" tintColor={theme.text} />
+        <Icon name="minus" size={12} weight="semibold" tintColor={theme.text} />
       </Pressable>
       <ThemedText style={styles.timeValue}>{value}</ThemedText>
       <Pressable onPress={onPlus} hitSlop={8} style={styles.stepBtn} accessibilityLabel={`${label} later`}>
-        <SymbolView name="plus" size={12} weight="semibold" tintColor={theme.text} />
+        <Icon name="plus" size={12} weight="semibold" tintColor={theme.text} />
       </Pressable>
       <Pressable
         onPress={onPlayhead}
         hitSlop={8}
         style={styles.stepBtn}
         accessibilityLabel={`Set ${label} to playhead`}>
-        <SymbolView name="arrow.down.to.line" size={13} tintColor={Accent} />
+        <Icon name="arrow.down.to.line" size={13} tintColor={Accent} />
       </Pressable>
     </View>
   );
@@ -439,7 +439,7 @@ function ActionBtn({
 }) {
   return (
     <Pressable onPress={onPress} hitSlop={6} accessibilityLabel={label} style={styles.actionBtn}>
-      <SymbolView name={name as never} size={15} tintColor={tint ?? theme.text} />
+      <Icon name={name as never} size={15} tintColor={tint ?? theme.text} />
       <ThemedText style={[styles.actionLabel, { color: tint ?? theme.text }]}>{label}</ThemedText>
     </Pressable>
   );

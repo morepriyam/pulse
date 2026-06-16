@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import {
   ActivityIndicator,
   Alert,
@@ -102,7 +102,7 @@ export function ModelSwitcherModal({
               </ThemedText>
             </View>
             <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close">
-              <SymbolView name="xmark.circle.fill" size={28} tintColor={theme.textSecondary} />
+              <Icon name="xmark.circle.fill" size={28} tintColor={theme.textSecondary} />
             </Pressable>
           </View>
 
@@ -117,7 +117,7 @@ export function ModelSwitcherModal({
 
           {/* First (and currently only) feature. Future on-device features slot in as new sections. */}
           <View style={styles.section}>
-            <SymbolView
+            <Icon
               name="captions.bubble.fill"
               size={18}
               tintColor={selectedId ? theme.accent : theme.textSecondary}
@@ -154,7 +154,7 @@ export function ModelSwitcherModal({
                     </ThemedText>
                   </View>
                   {active && (
-                    <SymbolView name="checkmark.circle.fill" size={24} tintColor={theme.accent} />
+                    <Icon name="checkmark.circle.fill" size={24} tintColor={theme.accent} />
                   )}
                 </Pressable>
               );
@@ -170,7 +170,7 @@ export function ModelSwitcherModal({
               hitSlop={8}
               accessibilityRole="button"
               style={styles.delete}>
-              <SymbolView name="trash" size={16} tintColor={theme.accent} />
+              <Icon name="trash" size={16} tintColor={theme.accent} />
               <ThemedText type="small" themeColor="accent" style={styles.deleteText}>
                 Remove model & free up space
               </ThemedText>

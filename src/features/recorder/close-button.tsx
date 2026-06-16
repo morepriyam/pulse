@@ -1,4 +1,4 @@
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { closeToHome } from '@/utils/navigation';
@@ -17,7 +17,7 @@ export function CloseButton({
       accessibilityRole="button"
       accessibilityLabel="Close"
       style={[styles.button, style]}>
-      <SymbolView name="xmark" size={22} weight="semibold" tintColor="#fff" />
+      <Icon name="xmark" size={22} weight="semibold" tintColor="#fff" />
     </Pressable>
   );
 }

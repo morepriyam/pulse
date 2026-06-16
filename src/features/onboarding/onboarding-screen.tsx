@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useCallback, useRef, useState } from 'react';
 import {
   type FlatList,
@@ -109,7 +109,7 @@ export function OnboardingScreen() {
               <Image source={item.image} style={styles.logo} contentFit="contain" />
             ) : (
               <View style={[styles.iconCard, { backgroundColor: theme.backgroundElement }]}>
-                <SymbolView name={item.symbol ?? 'sparkles'} size={56} tintColor={theme.accent} />
+                <Icon name={item.symbol ?? 'sparkles'} size={56} tintColor={theme.accent} />
               </View>
             )}
             <ThemedText style={styles.title}>{item.title}</ThemedText>
@@ -122,7 +122,7 @@ export function OnboardingScreen() {
                         <View style={[styles.recordDot, { backgroundColor: theme.accent }]} />
                       </View>
                     ) : bullet.icon ? (
-                      <SymbolView name={bullet.icon} size={19} tintColor={theme.accent} />
+                      <Icon name={bullet.icon} size={19} tintColor={theme.accent} />
                     ) : (
                       <View style={[styles.bulletDot, { backgroundColor: theme.accent }]} />
                     )}
