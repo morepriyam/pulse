@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useRef } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
@@ -76,7 +76,7 @@ export function DraftCard({
         {thumbnail ? (
           <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
         ) : (
-          <SymbolView name="video.fill" size={18} tintColor={theme.textSecondary} />
+          <Icon name="video.fill" size={18} tintColor={theme.textSecondary} />
         )}
       </View>
 
@@ -106,7 +106,7 @@ export function DraftCard({
 
       {selectionMode ? (
         <View style={styles.more} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
-          <SymbolView
+          <Icon
             name={selected ? 'checkmark.circle.fill' : 'circle'}
             size={22}
             tintColor={selected ? theme.accent : theme.textSecondary}
@@ -126,7 +126,7 @@ export function DraftCard({
             accessibilityRole="button"
             accessibilityLabel="Draft options"
             style={({ pressed }) => [styles.more, { opacity: pressed ? 0.5 : 1 }]}>
-            <SymbolView name="ellipsis" size={18} tintColor={theme.textSecondary} />
+            <Icon name="ellipsis" size={18} tintColor={theme.textSecondary} />
           </Pressable>
         )
       )}

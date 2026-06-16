@@ -1,4 +1,4 @@
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { VideoView, type VideoPlayer } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -56,7 +56,7 @@ export function PreviewModal({
         {!isPlaying && (
           <View style={styles.playOverlay} pointerEvents="none">
             <View style={styles.playBadge}>
-              <SymbolView name="play.fill" size={24} tintColor="#fff" />
+              <Icon name="play.fill" size={24} tintColor="#fff" />
             </View>
           </View>
         )}
@@ -68,7 +68,7 @@ export function PreviewModal({
         accessibilityRole="button"
         accessibilityLabel="Close preview"
         style={[styles.badge, styles.close]}>
-        <SymbolView name="xmark" size={14} weight="semibold" tintColor="#fff" />
+        <Icon name="xmark" size={14} weight="semibold" tintColor="#fff" />
       </Pressable>
 
       <Pressable
@@ -77,7 +77,7 @@ export function PreviewModal({
         accessibilityRole="button"
         accessibilityLabel="Edit clip"
         style={[styles.badge, styles.trim]}>
-        <SymbolView name="scissors" size={16} weight="semibold" tintColor="#fff" />
+        <Icon name="scissors" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
 
       <Pressable
@@ -86,7 +86,7 @@ export function PreviewModal({
         accessibilityRole="button"
         accessibilityLabel="Delete clip"
         style={[styles.badge, styles.delete]}>
-        <SymbolView name="trash" size={16} weight="semibold" tintColor="#fff" />
+        <Icon name="trash" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
 
       <Pressable
@@ -95,7 +95,7 @@ export function PreviewModal({
         accessibilityRole="button"
         accessibilityLabel="Edit captions"
         style={[styles.badge, styles.captions]}>
-        <SymbolView name="captions.bubble" size={16} weight="semibold" tintColor="#fff" />
+        <Icon name="captions.bubble" size={16} weight="semibold" tintColor="#fff" />
       </Pressable>
 
       {/* Animated word-level captions over the video (Skia). Renders nothing until a line is
