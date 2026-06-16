@@ -2,6 +2,7 @@
 // same situation the React-Compiler rules flag in playhead-cursor.tsx.
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 
@@ -10,9 +11,13 @@ const HOLD_MS = 250;
 /** Granularity of React zoom commits — zoom tracks gestures per-frame in a shared value,
  * but CameraView only re-renders when the quantized value changes (≤200 steps full-range). */
 const ZOOM_QUANTUM = 0.005;
-/** expo-camera's 0–1 zoom spans the device's ENTIRE digital range (~100x+ on recent
- * iPhones, mapped exponentially) — the upper half is unusable digital mush, so cap there. */
-const MAX_ZOOM = 0.5;
+/** Max of expo-camera's 0–1 zoom prop we allow.
+ * iOS maps 0–1 exponentially across the device's ENTIRE digital range (~100x+ on recent
+ * iPhones) — the upper half is unusable digital mush, so cap at 0.5. Android maps 0–1
+ * roughly linearly across the device's supported zoom ratio, so the full range is usable.
+ * The drag/pinch feel (DRAG_FULL_RANGE_PX, PINCH_RANGE below) was tuned to iOS's curve and
+ * still wants an on-device tuning pass on Android. */
+const MAX_ZOOM = Platform.select({ ios: 0.5, default: 1 });
 /** Vertical drag distance (px) spanning the full 0→1 zoom prop range (so roughly one
  * screen height of drag to hit MAX_ZOOM). */
 const DRAG_FULL_RANGE_PX = 800;

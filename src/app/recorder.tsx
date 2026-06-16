@@ -1,7 +1,7 @@
 import { CameraView } from 'expo-camera';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -142,23 +142,34 @@ export default function RecorderScreen() {
   // Hold the camera until persisted prefs load, so the first frame uses the saved facing.
   if (!prefsReady) return <ThemedView style={styles.fill} />;
 
+  // The camera should be live only when recording is possible: not while a clip preview is
+  // open and not while the Export screen covers the recorder. iOS honors `active={false}` to
+  // pause the session in place; Android's `active` prop is a no-op (it's iOS-only in
+  // expo-camera), so there we unmount the CameraView entirely to actually drop the session
+  // (torch/indicator off, no battery drain). Recording is never in flight when inactive, so
+  // unmounting is safe; `useRecorder`'s unmount effect is the stop backstop regardless.
+  const cameraActive = !previewing && focused;
+  const renderCamera = Platform.OS === 'ios' || cameraActive;
+
   return (
     <View style={styles.fill}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        active={!previewing && focused}
-        mode="video"
-        videoQuality="1080p"
-        facing={facing}
-        enableTorch={torch && !previewing}
-        videoStabilizationMode={stabilization}
-        mute={muted}
-        selectedLens={lens}
-        autofocus="on"
-        zoom={zoom}
-        onCameraReady={onCameraReady}
-      />
+      {renderCamera && (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          active={cameraActive}
+          mode="video"
+          videoQuality="1080p"
+          facing={facing}
+          enableTorch={torch && !previewing}
+          videoStabilizationMode={stabilization}
+          mute={muted}
+          selectedLens={lens}
+          autofocus="on"
+          zoom={zoom}
+          onCameraReady={onCameraReady}
+        />
+      )}
 
       {/* Pinch-to-zoom surface. CameraView can't take children, so this sits between it and
           the overlay; the overlay is box-none, so touches that miss a control land here.
