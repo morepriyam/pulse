@@ -1,4 +1,4 @@
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +21,7 @@ export function PermissionGate({
       <CloseButton
         style={{ position: 'absolute', top: insets.top + Spacing.two, left: Spacing.four }}
       />
-      <SymbolView name="camera.fill" size={48} tintColor={Accent} />
+      <Icon name="camera.fill" size={48} tintColor={Accent} />
       <ThemedText style={styles.title}>Camera access needed</ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.body}>
         Pulse records video with your camera and microphone.

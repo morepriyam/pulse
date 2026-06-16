@@ -3,7 +3,7 @@
 // immutability/refs rules flag. Disabled for this file, as in use-preview/playhead-cursor.
 /* eslint-disable react-hooks/immutability */
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -133,7 +133,7 @@ function Bar({
             never intercepts touches; it's purely a drop zone hit-tested from the drag position. */}
         <View style={styles.trashWrap} pointerEvents="none">
           <Animated.View ref={trashRef} onLayout={measureTrash} style={[styles.trash, trashStyle]}>
-            <SymbolView name="trash.fill" size={22} tintColor="#fff" />
+            <Icon name="trash.fill" size={22} tintColor="#fff" />
           </Animated.View>
         </View>
 
@@ -233,7 +233,7 @@ function Bar({
             accessibilityRole="button"
             accessibilityLabel="Next"
             style={({ pressed }) => [styles.next, { opacity: pressed ? 0.85 : 1 }]}>
-            <SymbolView name="arrow.right" size={22} weight="semibold" tintColor="#fff" />
+            <Icon name="arrow.right" size={22} weight="semibold" tintColor="#fff" />
           </Pressable>
         )}
       </View>
@@ -283,7 +283,7 @@ function SegmentThumb({
         {thumbnail ? (
           <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
         ) : (
-          <SymbolView name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
+          <Icon name="video.fill" size={18} tintColor="rgba(255,255,255,0.8)" />
         )}
       </Sortable.Touchable>
 
