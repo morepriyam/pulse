@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -186,7 +186,7 @@ export default function HomeScreen() {
               {transferState === 'importing' ? (
                 <ActivityIndicator size="small" color={theme.textSecondary} />
               ) : (
-                <SymbolView
+                <Icon
                   name="square.and.arrow.down"
                   size={20}
                   tintColor={busy ? theme.textSecondary : theme.text}
@@ -206,7 +206,7 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Select drafts to export"
                 style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
-                <SymbolView name="square.and.arrow.up" size={20} tintColor={theme.text} />
+                <Icon name="square.and.arrow.up" size={20} tintColor={theme.text} />
                 <ThemedText type="smallBold" style={styles.headerButtonLabel}>
                   Export
                 </ThemedText>
@@ -218,8 +218,8 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="On-device AI"
               style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
-              <SymbolView
-                name="sparkles"
+              <Icon
+                name="wand.and.stars"
                 size={20}
                 tintColor={selectedModel ? theme.accent : theme.textSecondary}
               />
@@ -243,7 +243,7 @@ export default function HomeScreen() {
 
       {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
-          <SymbolView name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
+          <Icon name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
           <ThemedText style={styles.emptyTitle}>No drafts yet</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyHint}>
             Tap + to record your first video.
@@ -305,7 +305,7 @@ export default function HomeScreen() {
           {transferState === 'exporting' ? (
             <ActivityIndicator color={theme.onAccent} />
           ) : (
-            <SymbolView name="square.and.arrow.up" size={26} weight="semibold" tintColor={theme.onAccent} />
+            <Icon name="square.and.arrow.up" size={26} weight="semibold" tintColor={theme.onAccent} />
           )}
         </Pressable>
       ) : (
@@ -321,7 +321,7 @@ export default function HomeScreen() {
               opacity: pressed ? 0.85 : 1,
             },
           ]}>
-          <SymbolView name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
+          <Icon name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
         </Pressable>
       )}
 

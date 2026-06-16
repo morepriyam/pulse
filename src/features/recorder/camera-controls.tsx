@@ -1,5 +1,6 @@
 import { CameraType } from 'expo-camera';
-import { SymbolView, SymbolViewProps } from 'expo-symbols';
+import type { SymbolViewProps } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Accent, Spacing } from '@/constants/theme';
@@ -102,7 +103,7 @@ function ControlButton({
       accessibilityLabel={label}
       style={({ pressed }) => [styles.wrap, { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 }]}>
       <View style={styles.button}>
-        <SymbolView name={icon} size={24} weight="medium" tintColor={tint} />
+        <Icon name={icon} size={24} weight="medium" tintColor={tint} />
       </View>
       {caption && <Text style={[styles.caption, { color: tint }]}>{caption}</Text>}
     </Pressable>

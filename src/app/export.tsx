@@ -1,7 +1,7 @@
 import { useEvent } from 'expo';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useLocalSearchParams } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
@@ -106,7 +106,7 @@ export default function ExportScreen() {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <SymbolView name="square.and.arrow.up" size={18} tintColor="#fff" />
+                    <Icon name="square.and.arrow.up" size={18} tintColor="#fff" />
                     <ThemedText style={styles.primaryLabel}>Share</ThemedText>
                   </>
                 )}
@@ -122,12 +122,12 @@ export default function ExportScreen() {
                   <ActivityIndicator color={theme.text} />
                 ) : photos.status === 'saved' ? (
                   <>
-                    <SymbolView name="checkmark" size={18} tintColor={theme.text} />
+                    <Icon name="checkmark" size={18} tintColor={theme.text} />
                     <ThemedText>Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <SymbolView name="square.and.arrow.down" size={18} tintColor={theme.text} />
+                    <Icon name="square.and.arrow.down" size={18} tintColor={theme.text} />
                     <ThemedText>Save to Photos</ThemedText>
                   </>
                 )}
@@ -143,12 +143,12 @@ export default function ExportScreen() {
                   <ActivityIndicator color={theme.text} />
                 ) : docs.status === 'saved' ? (
                   <>
-                    <SymbolView name="checkmark" size={18} tintColor={theme.text} />
+                    <Icon name="checkmark" size={18} tintColor={theme.text} />
                     <ThemedText>Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <SymbolView name="folder" size={18} tintColor={theme.text} />
+                    <Icon name="folder" size={18} tintColor={theme.text} />
                     <ThemedText>Save to Files</ThemedText>
                   </>
                 )}
@@ -159,7 +159,7 @@ export default function ExportScreen() {
 
         {state.status === 'error' && (
           <>
-            <SymbolView name="exclamationmark.triangle.fill" size={64} tintColor={Accent} />
+            <Icon name="exclamationmark.triangle.fill" size={64} tintColor={Accent} />
             <ThemedText type="subtitle" style={styles.title}>
               Export failed
             </ThemedText>
@@ -173,7 +173,7 @@ export default function ExportScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Try again"
                 style={[styles.button, styles.primary]}>
-                <SymbolView name="arrow.clockwise" size={18} tintColor="#fff" />
+                <Icon name="arrow.clockwise" size={18} tintColor="#fff" />
                 <ThemedText style={styles.primaryLabel}>Try again</ThemedText>
               </Pressable>
             </View>
@@ -226,7 +226,7 @@ function MergedPreview({ uri, lines }: { uri: string; lines: TranscriptLine[] })
       {!isPlaying && (
         <View style={styles.playOverlay} pointerEvents="none">
           <View style={styles.playBadge}>
-            <SymbolView name="play.fill" size={24} tintColor="#fff" />
+            <Icon name="play.fill" size={24} tintColor="#fff" />
           </View>
         </View>
       )}

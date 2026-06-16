@@ -1,4 +1,4 @@
-import { SymbolView } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet } from 'react-native';
 
 /**
@@ -15,7 +15,7 @@ export function ImportButton({ onPress, disabled }: { onPress: () => void; disab
       accessibilityRole="button"
       accessibilityLabel="Import video"
       style={({ pressed }) => [styles.button, { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 }]}>
-      <SymbolView name="plus" size={24} weight="medium" tintColor="#000" />
+      <Icon name="plus" size={24} weight="medium" tintColor="#000" />
     </Pressable>
   );
 }

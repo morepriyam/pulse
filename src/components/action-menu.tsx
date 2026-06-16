@@ -1,4 +1,5 @@
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import type { SymbolViewProps } from 'expo-symbols';
+import { Icon } from '@/components/icon';
 import { Modal, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -75,7 +76,7 @@ export function ActionMenu({ visible, anchor, actions, onClose }: Props) {
                     pressed && { backgroundColor: theme.backgroundSelected },
                   ]}>
                   <ThemedText style={[styles.rowLabel, { color: tint }]}>{action.label}</ThemedText>
-                  <SymbolView name={action.icon} size={18} tintColor={tint} />
+                  <Icon name={action.icon} size={18} tintColor={tint} />
                 </Pressable>
               );
             })}
