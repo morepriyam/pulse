@@ -1,16 +1,26 @@
-import { CameraView } from 'expo-camera';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Camera,
+  type Constraint,
+  type PhysicalDeviceType,
+  useCameraDevice,
+} from 'react-native-vision-camera';
 
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { CameraControls } from '@/features/recorder/camera-controls';
 import { CloseButton } from '@/features/recorder/close-button';
 import { ImportButton } from '@/features/recorder/import-button';
-import { LensSelector } from '@/features/recorder/lens-selector';
+import {
+  DEFAULT_LENS_LABEL,
+  type LensPreset,
+  LensSelector,
+} from '@/features/recorder/lens-selector';
 import { PermissionGate } from '@/features/recorder/permission-gate';
 import { PreviewModal } from '@/features/recorder/preview-modal';
 import { RecordButton } from '@/features/recorder/record-button';
@@ -19,6 +29,7 @@ import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';
 import { useAudioFocus } from '@/features/recorder/use-audio-focus';
 import { usePreview } from '@/features/recorder/use-preview';
 import { useRecorder } from '@/features/recorder/use-recorder';
+import { RETICLE_SIZE, useFocusReticle } from '@/features/recorder/use-focus-reticle';
 import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
 import { useRecordingTimer } from '@/features/recorder/use-recording-timer';
@@ -28,12 +39,24 @@ import { setRecordingActive } from '@/features/transcription/recording-signal';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
 
+// Ask for the full multi-camera device on the back so 0.5x / 1x / Tele are all reachable via
+// zoom; the front falls back to its single wide lens automatically.
+const PHYSICAL_DEVICES: PhysicalDeviceType[] = [
+  'ultra-wide-angle',
+  'wide-angle',
+  'telephoto',
+];
+// Upper zoom cap (factor). Devices expose 100x+ of mostly-unusable digital zoom; cap so the
+// drag/pinch range stays useful. Tunable on-device.
+const MAX_ZOOM_FACTOR = 16;
+
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
   const { draftId: draftIdParam } = useLocalSearchParams<{ draftId?: string }>();
   const permissions = useRecorderPermissions();
   const {
     cameraRef,
+    videoOutput,
     draftId,
     segments,
     isRecording,
@@ -44,8 +67,6 @@ export default function RecorderScreen() {
     torch,
     stabilization,
     muted,
-    lens,
-    availableLenses,
     onCameraReady,
     toggleRecording,
     importClip,
@@ -54,7 +75,6 @@ export default function RecorderScreen() {
     flipCamera,
     toggleTorch,
     toggleMute,
-    selectLens,
     cycleStabilization,
     deleteSegment,
     reorderSegments,
@@ -116,18 +136,84 @@ export default function RecorderScreen() {
   }, [focused, muted, prefsReady, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
 
-  const { zoom, holdActive, buttonGesture, pinchGesture, resetZoom } = useRecorderGestures({
-    onToggle: toggleRecording,
-    onHoldStart: startHoldRecording,
-    onHoldEnd: endHoldRecording,
-    enabled: cameraReady && !previewing && !dragging,
+  const device = useCameraDevice(facing, { physicalDevices: PHYSICAL_DEVICES });
+
+  // Lens chips are zoom presets on the (possibly multi-camera) device. Each physical lens
+  // engages at a zoom boundary: the widest lens at `minZoom`, every subsequent lens at the
+  // device's ascending `zoomLensSwitchFactors`. Assigning those boundaries to the present
+  // lenses widest→narrowest is the device-agnostic mapping (e.g. a phone whose widest lens is
+  // the ultra-wide has 0.5x at minZoom and 1x at the first switch factor — NOT at a literal 1).
+  // Only surfaced when the lens exists, so a single-lens front camera shows no chips.
+  const { lensPresets, neutralZoom } = useMemo(() => {
+    if (!device) return { lensPresets: [] as LensPreset[], neutralZoom: 1 };
+    const types = new Set(device.physicalDevices.map((d) => d.type));
+    const order = [
+      { type: 'ultra-wide-angle', label: '0.5x' },
+      { type: 'wide-angle', label: DEFAULT_LENS_LABEL },
+      { type: 'telephoto', label: 'Tele' },
+    ] as const;
+    const present = order.filter((o) => types.has(o.type));
+    const boundaries = [device.minZoom, ...device.zoomLensSwitchFactors];
+    const presets: LensPreset[] = present.map((o, i) => ({
+      label: o.label,
+      zoom: boundaries[i] ?? device.minZoom,
+    }));
+    // The camera opens at (and flips back to) the 1x wide lens when present, else the widest.
+    const neutral = presets.find((p) => p.label === DEFAULT_LENS_LABEL)?.zoom ?? device.minZoom;
+    return { lensPresets: presets, neutralZoom: neutral };
+  }, [device]);
+
+  // Pinned 1080p output + 30fps so every recorded clip is format-uniform (fast-path merge).
+  const constraints = useMemo<Constraint[]>(
+    () => [{ videoStabilizationMode: stabilization }, { fps: 30 }],
+    [stabilization],
+  );
+  const outputs = useMemo(() => [videoOutput], [videoOutput]);
+
+  // Tap-to-focus: meters 3A (AF/AE/AWB) to the tapped point and shows a reticle there. Honors
+  // VisionCamera's focus guidance (supportsFocusMetering guard; steady while filming, snappy
+  // while framing). Focus auto-returns to continuous AF after a few seconds.
+  const { onFocus, reticleStyle } = useFocusReticle({
+    cameraRef,
+    supportsFocus: device?.supportsFocusMetering ?? false,
+    isRecording,
   });
 
-  // Front/back (and per-lens) max zoom factors differ, so the 0–1 zoom value isn't portable
-  // across a flip or lens switch. (Flipping mid-recording already stops the recording natively.)
+  const { zoomSv, holdActive, buttonGesture, screenGesture, resetZoom, setZoomTo } =
+    useRecorderGestures({
+      onToggle: toggleRecording,
+      onHoldStart: startHoldRecording,
+      onHoldEnd: endHoldRecording,
+      onFocus,
+      enabled: cameraReady && !previewing && !dragging,
+      neutralZoom,
+      minZoom: device?.minZoom ?? 1,
+      maxZoom: device ? Math.min(device.maxZoom, MAX_ZOOM_FACTOR) : 1,
+    });
+
+  // Zoom factors aren't portable across a flip, so reset to neutral 1x. (A lens chip sets its
+  // own factor; flipping mid-recording already stops the recording natively.)
   useEffect(() => {
     resetZoom();
-  }, [facing, lens, resetZoom]);
+  }, [facing, resetZoom]);
+
+  // The highlighted lens chip tracks the LIVE zoom (pinch / drag / chip-tap all move zoomSv),
+  // so it reflects whichever physical lens the current factor sits on — the highest preset whose
+  // boundary the zoom has reached. runOnJS only fires when the active lens actually changes.
+  const [activeLens, setActiveLens] = useState(DEFAULT_LENS_LABEL);
+  useAnimatedReaction(
+    () => {
+      let label = lensPresets[0]?.label;
+      for (const p of lensPresets) {
+        if (zoomSv.value >= p.zoom) label = p.label;
+      }
+      return label;
+    },
+    (label, prev) => {
+      if (label != null && label !== prev) runOnJS(setActiveLens)(label);
+    },
+    [lensPresets],
+  );
 
   const confirmDeleteSegment = (id: string) =>
     Alert.alert('Delete clip?', 'This clip will be removed from the draft.', [
@@ -142,41 +228,43 @@ export default function RecorderScreen() {
   // Hold the camera until persisted prefs load, so the first frame uses the saved facing.
   if (!prefsReady) return <ThemedView style={styles.fill} />;
 
-  // The camera should be live only when recording is possible: not while a clip preview is
-  // open and not while the Export screen covers the recorder. iOS honors `active={false}` to
-  // pause the session in place; Android's `active` prop is a no-op (it's iOS-only in
-  // expo-camera), so there we unmount the CameraView entirely to actually drop the session
-  // (torch/indicator off, no battery drain). Recording is never in flight when inactive, so
-  // unmounting is safe; `useRecorder`'s unmount effect is the stop backstop regardless.
+  // The camera should be live only when recording is possible: not while a clip preview is open
+  // and not while the Export screen covers the recorder. VisionCamera's `isActive` pauses the
+  // session in place on BOTH platforms (no Android unmount dance needed), dropping torch and
+  // battery drain. Recording is never in flight when inactive; useRecorder's unmount effect is
+  // the stop backstop regardless.
   const cameraActive = !previewing && focused;
-  const renderCamera = Platform.OS === 'ios' || cameraActive;
 
   return (
     <View style={styles.fill}>
-      {renderCamera && (
-        <CameraView
+      {device && (
+        <Camera
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
-          active={cameraActive}
-          mode="video"
-          videoQuality="1080p"
-          facing={facing}
-          enableTorch={torch && !previewing}
-          videoStabilizationMode={stabilization}
-          mute={muted}
-          selectedLens={lens}
-          autofocus="on"
-          zoom={zoom}
-          onCameraReady={onCameraReady}
+          device={device}
+          isActive={cameraActive}
+          outputs={outputs}
+          zoom={zoomSv}
+          torchMode={torch && !previewing ? 'on' : 'off'}
+          constraints={constraints}
+          // Smooth (rather than snapping) continuous-AF transitions — VisionCamera's recommended
+          // setting for video, so refocus pulls look cinematic instead of "hunting". Gated on
+          // device support so it never throws; tap-to-focus stays snappy via `responsiveness`.
+          enableSmoothAutoFocus={device?.supportsSmoothAutoFocus ?? false}
+          onStarted={onCameraReady}
+          onError={(e) => console.error('[Camera]', e)}
         />
       )}
 
-      {/* Pinch-to-zoom surface. CameraView can't take children, so this sits between it and
-          the overlay; the overlay is box-none, so touches that miss a control land here.
-          Single-finger touches are inert (Pinch needs two pointers). */}
-      <GestureDetector gesture={pinchGesture}>
+      {/* Tap-to-focus + pinch-to-zoom surface. Camera can't take children, so this sits between
+          it and the overlay; the overlay is box-none, so touches that miss a control land here.
+          Single-finger tap focuses to that point; two-finger pinch zooms. */}
+      <GestureDetector gesture={screenGesture}>
         <View style={StyleSheet.absoluteFill} />
       </GestureDetector>
+
+      {/* Focus reticle — driven imperatively by onFocus; pointer-transparent. */}
+      <Animated.View pointerEvents="none" style={[styles.reticle, reticleStyle]} />
 
       <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="box-none">
         <View
@@ -242,9 +330,9 @@ export default function RecorderScreen() {
           {!previewing && (
             <View style={{ opacity: dragging ? 0 : 1 }}>
               <LensSelector
-                lenses={availableLenses}
-                selected={lens}
-                onSelect={selectLens}
+                presets={lensPresets}
+                selected={activeLens}
+                onSelect={(preset) => setZoomTo(preset.zoom)}
                 disabled={isRecording || dragging}
               />
             </View>
@@ -308,6 +396,17 @@ export default function RecorderScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: '#000' },
+  // Absolutely positioned at the origin; onFocus translates it to the tapped point.
+  reticle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: RETICLE_SIZE,
+    height: RETICLE_SIZE,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
   overlay: { justifyContent: 'space-between' },
   topBar: {
     flexDirection: 'row',
