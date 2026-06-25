@@ -1,10 +1,15 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { CameraType, CameraView } from 'expo-camera';
 import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Platform } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { isValidFile } from 'react-native-video-trim';
+import {
+  type CameraRef,
+  CommonResolutions,
+  type Recorder,
+  useVideoOutput,
+} from 'react-native-vision-camera';
 
 import {
   addSegment,
@@ -27,28 +32,41 @@ import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
 export type StabilizationMode = (typeof STABILIZATION_MODES)[number];
 
-/** Stopping the native recorder before it has actually started hangs `recordAsync` —
+/** Which camera the recorder is pointed at. Mirrors VisionCamera's `CameraPosition`,
+ * declared locally so the rest of the app doesn't import the camera SDK for a string union. */
+export type CameraFacing = 'front' | 'back';
+
+/** Stopping the native recorder before it has actually started hangs the capture —
  * earlier stop requests are deferred to this boundary. */
 const MIN_RECORD_MS = 350;
 
 export function useRecorder(initialDraftId?: string) {
-  const cameraRef = useRef<CameraView>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const [draftId, setDraftId] = useState<string | null>(initialDraftId ?? null);
   const [isRecording, setIsRecording] = useState(false);
   // Wall-clock start of the active recording, for the live running timer in the UI. Mirrors
   // recordCallAtRef (which stays a ref for the MIN_RECORD_MS stop-guard); null when idle.
   const [recordStartedAt, setRecordStartedAt] = useState<number | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
-  const [facing, setFacing] = useState<CameraType>('back');
+  const [facing, setFacing] = useState<CameraFacing>('back');
   const [torch, setTorch] = useState(false);
   const [stabilization, setStabilization] = useState<StabilizationMode>('off');
   const [muted, setMuted] = useState(false);
-  // undefined = the camera's default wide lens; physical lens names come from the device.
-  const [lens, setLens] = useState<string | undefined>(undefined);
-  const [availableLenses, setAvailableLenses] = useState<string[]>([]);
   // False until persisted prefs (facing/stabilization/mute) are loaded — the screen holds the
   // camera render until then so the first frame uses the saved facing (no back→front flash).
   const [prefsReady, setPrefsReady] = useState(false);
+
+  // VisionCamera records to a file via a per-recording `Recorder` created from this output.
+  // The output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Disabling
+  // audio when muted recreates the output (drops the mic from the session) — a clip with no
+  // audio track is what `mute` meant under expo-camera. Pinned to 1080p; the HEVC codec is
+  // pinned per-recording via setOutputSettings (iOS) so every clip stays format-uniform and
+  // exports on the merge engine's zero-re-encode fast path.
+  const videoOutput = useVideoOutput({
+    targetResolution: CommonResolutions.FHD_16_9,
+    enableAudio: !muted,
+    fileType: 'mov',
+  });
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
 
@@ -64,6 +82,11 @@ export function useRecorder(initialDraftId?: string) {
   const isRecordingRef = useRef(false);
   const recordCallAtRef = useRef(0);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The live VisionCamera recorder (one per recording), and whether a stop was requested
+  // before it finished being created — together they make a stop land even if it races the
+  // async createRecorder/startRecording handshake.
+  const recorderRef = useRef<Recorder | null>(null);
+  const stopRequestedRef = useRef(false);
   // Set only when a hold STARTED the recording — releasing a hold begun on top of a
   // tap-started recording must not stop it (that hold is just drag-zooming).
   const holdInitiatedRef = useRef(false);
@@ -86,9 +109,10 @@ export function useRecorder(initialDraftId?: string) {
   useEffect(
     () => () => {
       // Backstop for a recording still live at unmount — the gesture's onFinalize is the
-      // primary stop path, and `active={false}` resolving recordAsync is the second.
+      // primary stop path. Stopping the recorder finalizes the file (the clip is then dropped
+      // by startRecording's cleanup since we've unmounted), avoiding a dangling capture.
       if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
-      if (isRecordingRef.current) cameraRef.current?.stopRecording();
+      if (isRecordingRef.current) void recorderRef.current?.stopRecording().catch(() => {});
       const id = draftIdRef.current;
       const safeToDelete = sessionDraftId.current != null || everHadSegments.current;
       if (id && segmentCount.current === 0 && safeToDelete) {
@@ -126,23 +150,6 @@ export function useRecorder(initialDraftId?: string) {
     if (prefsReady) void setSetting(CAMERA_MUTED_KEY, String(muted));
   }, [muted, prefsReady]);
 
-  // Physical lenses differ per facing (front is usually just the one), so re-query on flip.
-  useEffect(() => {
-    if (!cameraReady) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const lenses = (await cameraRef.current?.getAvailableLensesAsync()) ?? [];
-        if (!cancelled) setAvailableLenses(lenses);
-      } catch {
-        if (!cancelled) setAvailableLenses([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cameraReady, facing]);
-
   async function startRecording() {
     if (!cameraRef.current || isRecordingRef.current || !cameraReady) return;
     // A deferred stop aimed at the previous recording must not hit this one.
@@ -151,24 +158,39 @@ export function useRecorder(initialDraftId?: string) {
       stopTimerRef.current = null;
     }
     isRecordingRef.current = true;
+    stopRequestedRef.current = false;
     recordCallAtRef.current = Date.now();
     setRecordStartedAt(Date.now());
     setIsRecording(true);
     try {
-      // Pinned capture format (with videoQuality="1080p" on CameraView): HEVC 1080p on iOS.
-      // Every segment a device records is format-identical to the rest of the draft, so export
-      // always hits the merge engine's zero-re-encode passthrough path — and clips recorded
-      // on different devices stay mergeable with each other too. Keep in sync with the
-      // selective-merge majority expectations in the RNVT fork.
-      //
-      // `codec` is iOS-only in expo-camera (per the v56 docs); Android records its device
-      // default (typically H.264). Per-device uniformity still holds (same device ⇒ same
-      // format ⇒ fast path on iOS / clean re-encode on Android); cross-platform drafts are
-      // handled by the merge engine's selective path by design.
-      const video = await cameraRef.current.recordAsync(
-        Platform.OS === 'ios' ? { codec: 'hvc1' } : {},
-      );
-      if (!video?.uri) return;
+      // Codec: VisionCamera defaults to the most efficient codec available (HEVC/h265 on modern
+      // iPhones), which is what keeps every clip format-uniform for the merge engine's fast
+      // path. We deliberately do NOT call setOutputSettings to force the codec here — mutating
+      // the running session's encoder settings right before createRecorder crashed the native
+      // recorder. (Even if a device fell back to H.264, the merge's selective path handles it.)
+
+      // VisionCamera records via a single-use Recorder. startRecording resolves when capture
+      // has *started*; the file path arrives later through onRecordingFinished (fired by our
+      // stopRecording call), so we await that callback. A stop that raced createRecorder is
+      // honored as soon as the recorder exists.
+      const recorder = await videoOutput.createRecorder({});
+      recorderRef.current = recorder;
+      const filePath = await new Promise<string>((resolve, reject) => {
+        recorder
+          .startRecording(
+            (path) => resolve(path),
+            (err) => reject(err),
+          )
+          .then(() => {
+            // Capture has actually started — honor a stop requested while we were preparing
+            // (the gesture's direct stopRecording would have no-op'd against a not-yet-started
+            // recorder). onRecordingFinished then resolves the path above.
+            if (stopRequestedRef.current) void recorder.stopRecording().catch(() => {});
+          })
+          .catch(reject);
+      });
+      // VisionCamera returns a bare filesystem path; file-store's File API wants a file:// URL.
+      const uri = filePath.startsWith('file://') ? filePath : `file://${filePath}`;
 
       let id = draftId;
       if (!id) {
@@ -178,7 +200,7 @@ export function useRecorder(initialDraftId?: string) {
       }
 
       const segmentId = `${id}-${Date.now()}`;
-      const originalFilename = await persistRecording(video.uri, id, segmentId);
+      const originalFilename = await persistRecording(uri, id, segmentId);
       const durationMs = await getDurationMs(absolutize(originalFilename));
       const thumbRel = thumbRelPath(id, segmentId);
       const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
@@ -191,6 +213,8 @@ export function useRecorder(initialDraftId?: string) {
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
+      recorderRef.current = null;
+      stopRequestedRef.current = false;
       isRecordingRef.current = false;
       holdInitiatedRef.current = false;
       setIsRecording(false);
@@ -263,15 +287,20 @@ export function useRecorder(initialDraftId?: string) {
 
   function stopRecording() {
     if (!isRecordingRef.current || stopTimerRef.current) return;
+    // Remembered so a stop that lands before the recorder is even created still fires once it
+    // exists (see startRecording). recorderRef may be null here if createRecorder is in flight.
+    stopRequestedRef.current = true;
     const elapsed = Date.now() - recordCallAtRef.current;
     if (elapsed < MIN_RECORD_MS) {
       stopTimerRef.current = setTimeout(() => {
         stopTimerRef.current = null;
-        if (isRecordingRef.current) cameraRef.current?.stopRecording();
+        if (isRecordingRef.current) void recorderRef.current?.stopRecording().catch(() => {});
       }, MIN_RECORD_MS - elapsed);
       return;
     }
-    cameraRef.current?.stopRecording();
+    // May reject if the recorder hasn't started capturing yet; stopRequestedRef makes the
+    // start path honor the stop, so swallow the throw here.
+    void recorderRef.current?.stopRecording().catch(() => {});
   }
 
   function toggleRecording() {
@@ -290,7 +319,6 @@ export function useRecorder(initialDraftId?: string) {
   }
 
   function flipCamera() {
-    setLens(undefined); // lens names are per-facing; fall back to the default wide
     setFacing((prev) => {
       const next = prev === 'back' ? 'front' : 'back';
       if (next === 'front') setTorch(false);
@@ -307,6 +335,7 @@ export function useRecorder(initialDraftId?: string) {
 
   return {
     cameraRef,
+    videoOutput,
     draftId,
     segments,
     isRecording,
@@ -317,8 +346,6 @@ export function useRecorder(initialDraftId?: string) {
     torch,
     stabilization,
     muted,
-    lens,
-    availableLenses,
     onCameraReady: () => setCameraReady(true),
     toggleRecording,
     importClip: () => void importClip(),
@@ -327,7 +354,6 @@ export function useRecorder(initialDraftId?: string) {
     flipCamera,
     toggleTorch: () => setTorch((prev) => !prev),
     toggleMute: () => setMuted((prev) => !prev),
-    selectLens: setLens,
     cycleStabilization,
     deleteSegment: (id: string) => void deleteSegment(id),
     reorderSegments: (ids: string[]) => void reorderSegments(ids),

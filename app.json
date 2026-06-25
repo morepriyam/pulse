@@ -11,7 +11,11 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.mieweb.pulse.dev",
-      "appleTeamId": "X5873NL7XM"
+      "appleTeamId": "X5873NL7XM",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pulse uses your camera to record videos.",
+        "NSMicrophoneUsageDescription": "Pulse uses your microphone to record audio with your videos."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -45,13 +49,6 @@
       ],
       "expo-sqlite",
       "expo-video",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Pulse uses your camera to record videos.",
-          "microphonePermission": "Pulse uses your microphone to record audio with your videos."
-        }
-      ],
       "./plugins/with-disable-script-sandboxing",
       "./plugins/with-video-trim",
       "expo-image",
