@@ -1,10 +1,9 @@
-import { CameraType } from 'expo-camera';
 import type { SymbolViewProps } from 'expo-symbols';
 import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Accent, Spacing } from '@/constants/theme';
-import { StabilizationMode } from './use-recorder';
+import type { CameraFacing, StabilizationMode } from './use-recorder';
 
 const STABILIZATION_LABELS: Record<StabilizationMode, string> = {
   off: 'Off',
@@ -23,7 +22,7 @@ const STABILIZATION_ICONS: Record<StabilizationMode, SymbolViewProps['name']> = 
 };
 
 type Props = {
-  facing: CameraType;
+  facing: CameraFacing;
   torch: boolean;
   stabilization: StabilizationMode;
   muted: boolean;
