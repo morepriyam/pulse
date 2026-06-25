@@ -1,57 +1,48 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-// Physical lenses we surface as chips, in zoom order. Other names (virtual multi-lens
-// devices) are ignored — selectedLens wants a single physical lens.
-const LENS_ORDER = [
-  'builtInUltraWideCamera',
-  'builtInWideAngleCamera',
-  'builtInTelephotoCamera',
-] as const;
+/** A selectable lens, expressed as a zoom factor on the (possibly multi-camera) device.
+ * VisionCamera switches the underlying physical lens automatically as the zoom factor crosses
+ * the device's `zoomLensSwitchFactors`, so "0.5x / 1x / Tele" are just zoom presets. */
+export type LensPreset = { label: string; zoom: number };
 
-const LENS_LABELS: Record<(typeof LENS_ORDER)[number], string> = {
-  builtInUltraWideCamera: '0.5x',
-  builtInWideAngleCamera: '1x',
-  builtInTelephotoCamera: 'Tele',
-};
-
-const DEFAULT_LENS = 'builtInWideAngleCamera';
+/** The label of the neutral 1x lens — the default selection and the reset target on flip. */
+export const DEFAULT_LENS_LABEL = '1x';
 
 /**
- * Lens chips above the record button (0.5x · 1x · Tele). Renders nothing when the
- * current facing has fewer than two known lenses (e.g. the front camera).
+ * Lens chips above the record button (e.g. 0.5x · 1x · Tele). Renders nothing when the current
+ * device exposes fewer than two presets (e.g. a single-lens front camera).
  */
 export function LensSelector({
-  lenses,
+  presets,
   selected,
   onSelect,
   disabled,
 }: {
-  lenses: string[];
+  presets: LensPreset[];
   selected: string | undefined;
-  onSelect: (lens: string) => void;
+  onSelect: (preset: LensPreset) => void;
   disabled: boolean;
 }) {
-  const known = LENS_ORDER.filter((l) => lenses.includes(l));
-  if (known.length < 2) return null;
+  if (presets.length < 2) return null;
 
-  const active = selected ?? DEFAULT_LENS;
+  const active = selected ?? DEFAULT_LENS_LABEL;
 
   return (
     <View style={styles.row}>
-      {known.map((l) => (
+      {presets.map((p) => (
         <Pressable
-          key={l}
-          onPress={() => onSelect(l)}
+          key={p.label}
+          onPress={() => onSelect(p)}
           disabled={disabled}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={`Lens ${LENS_LABELS[l]}`}
+          accessibilityLabel={`Lens ${p.label}`}
           style={({ pressed }) => [
             styles.chip,
-            l === active && styles.chipActive,
+            p.label === active && styles.chipActive,
             { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 },
           ]}>
-          <Text style={[styles.label, l === active && styles.labelActive]}>{LENS_LABELS[l]}</Text>
+          <Text style={[styles.label, p.label === active && styles.labelActive]}>{p.label}</Text>
         </Pressable>
       ))}
     </View>

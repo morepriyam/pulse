@@ -1,9 +1,8 @@
 import { eq } from 'drizzle-orm';
-import type { CameraType } from 'expo-camera';
 
 // Type-only import — erased at runtime, so this does NOT create a circular dependency
 // with use-recorder.ts (which imports the value helpers below).
-import type { StabilizationMode } from '@/features/recorder/use-recorder';
+import type { CameraFacing, StabilizationMode } from '@/features/recorder/use-recorder';
 
 import { db } from './client';
 import { settings } from './schema';
@@ -69,7 +68,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
 }
 
 export type RecorderPrefs = {
-  facing: CameraType;
+  facing: CameraFacing;
   stabilization: StabilizationMode;
   muted: boolean;
 };
