@@ -38,6 +38,7 @@ import { setActiveDraft } from '@/features/transcription/active-draft';
 import { setRecordingActive } from '@/features/transcription/recording-signal';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
+import { closeToHome } from '@/utils/navigation';
 
 // Ask for the full multi-camera device on the back so 0.5x / 1x / Tele are all reachable via
 // zoom; the front falls back to its single wide lens automatically.
@@ -67,8 +68,11 @@ export default function RecorderScreen() {
     torch,
     stabilization,
     muted,
+    callActive,
+    appActive,
     onCameraReady,
     toggleRecording,
+    finalizeRecording,
     importClip,
     startHoldRecording,
     endHoldRecording,
@@ -128,12 +132,13 @@ export default function RecorderScreen() {
   // Audio focus: while the recorder is on screen capturing with a live mic, pause other apps'
   // audio (Spotify / podcasts) rather than mixing it in; restore on leave or mute. Gated on the
   // mic being live — a muted clip has no audio track, so there's nothing to seize focus for.
-  // Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
+  // Also released while a call is active: we must yield the audio session to telephony, not fight
+  // it for focus. Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
   const audioFocus = useAudioFocus();
   useEffect(() => {
-    if (focused && !muted && prefsReady) void audioFocus.acquire();
+    if (focused && appActive && !muted && !callActive && prefsReady) void audioFocus.acquire();
     else void audioFocus.release();
-  }, [focused, muted, prefsReady, audioFocus]);
+  }, [focused, appActive, muted, callActive, prefsReady, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
 
   const device = useCameraDevice(facing, { physicalDevices: PHYSICAL_DEVICES });
@@ -233,7 +238,17 @@ export default function RecorderScreen() {
   // session in place on BOTH platforms (no Android unmount dance needed), dropping torch and
   // battery drain. Recording is never in flight when inactive; useRecorder's unmount effect is
   // the stop backstop regardless.
-  const cameraActive = !previewing && focused;
+  // Stop the session while backgrounded too (not just on preview / screen blur): iOS would
+  // otherwise auto-resume the capture session on foreground with the mic still attached — straight
+  // into a call that started in the background (the -11800 freeze). Restarting only once
+  // `appActive` is true lets call detection re-poll first, so the mic isn't resumed into a call.
+  // `|| isRecording` keeps the session alive while a clip is being finalized on background, so the
+  // segment saves before we explicitly tear the session down.
+  const cameraActive = !previewing && focused && (appActive || isRecording);
+
+  // Close: finalize any in-flight clip (saving it into the draft) before navigating home, so the
+  // segment isn't lost when the camera unmounts.
+  const handleClose = () => void finalizeRecording().then(closeToHome);
 
   return (
     <View style={styles.fill}>
@@ -272,7 +287,7 @@ export default function RecorderScreen() {
             styles.topBar,
             { paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three },
           ]}>
-          <CloseButton />
+          <CloseButton onPress={handleClose} />
           <Text style={styles.timerText}>{formatDurationPadded(totalMs)}</Text>
           {/* Mirrors the CloseButton's width so the timer stays optically centered. */}
           <View style={styles.topBarSpacer} />
@@ -283,7 +298,11 @@ export default function RecorderScreen() {
           torch={torch}
           stabilization={stabilization}
           muted={muted}
-          disabled={previewing}
+          callActive={callActive}
+          // Lock every camera control while a clip is recording — flip / torch / stabilization /
+          // mute can't change mid-clip (audio state is fixed at record start, and the others would
+          // disrupt or stop capture). Mirrors the lens selector, which is already locked here.
+          disabled={previewing || isRecording}
           onFlip={flipCamera}
           onToggleTorch={toggleTorch}
           onCycleStabilization={cycleStabilization}

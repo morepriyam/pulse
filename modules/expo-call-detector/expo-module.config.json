@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["CallDetectorModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.calldetector.CallDetectorModule"]
+  }
+}
