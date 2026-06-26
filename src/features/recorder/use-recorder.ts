@@ -64,7 +64,7 @@ export function useRecorder(initialDraftId?: string) {
   // we drop the mic for the call's duration (see enableAudio). appActive: false while backgrounded —
   // the camera session is stopped then (see cameraActive in recorder.tsx) so iOS can't auto-resume
   // the mic into a call that began in the background.
-  const { callActive, appActive } = useCallState();
+  const { callActive, appActive, reportMicPriorityError } = useCallState();
 
   // The mic config the session SHOULD have. `cameraReady` gates it so a cold open comes up
   // video-only first (call detection lands before the mic is ever requested); dropped while a call
@@ -427,6 +427,7 @@ export function useRecorder(initialDraftId?: string) {
     muted,
     callActive,
     appActive,
+    reportMicPriorityError,
     onCameraReady: () => setCameraReady(true),
     toggleRecording,
     finalizeRecording,

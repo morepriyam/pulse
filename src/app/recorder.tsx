@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
@@ -70,6 +70,7 @@ export default function RecorderScreen() {
     muted,
     callActive,
     appActive,
+    reportMicPriorityError,
     onCameraReady,
     toggleRecording,
     finalizeRecording,
@@ -140,6 +141,28 @@ export default function RecorderScreen() {
     else void audioFocus.release();
   }, [focused, appActive, muted, callActive, prefsReady, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
+
+  // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
+  // can read stale, the mic attaches, and AVFoundation throws -11800 / '!pri' — which leaves the
+  // capture session FROZEN (it doesn't self-recover). So we react to the error directly: drop the
+  // mic (reportMicPriorityError rebuilds the output video-only) AND bounce the session off→on for a
+  // tick to force a clean restart out of the failed state. `recovering` drives the bounce.
+  const [recovering, setRecovering] = useState(false);
+  const recoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => clearTimeout(recoverTimerRef.current ?? undefined), []);
+  const onCameraError = useCallback(
+    (e: unknown) => {
+      console.error('[Camera]', e);
+      // VisionCamera wraps the native error; the AVFoundation domain/code and '!pri' four-char code
+      // survive in the stringified message, so match on those rather than a brittle wrapper code.
+      const hay = `${String((e as { message?: unknown })?.message ?? '')} ${String(e)}`;
+      if (!hay.includes('-11800') && !hay.includes('!pri') && !hay.includes('561017449')) return;
+      reportMicPriorityError();
+      setRecovering(true);
+      recoverTimerRef.current = setTimeout(() => setRecovering(false), 150);
+    },
+    [reportMicPriorityError],
+  );
 
   const device = useCameraDevice(facing, { physicalDevices: PHYSICAL_DEVICES });
 
@@ -244,7 +267,8 @@ export default function RecorderScreen() {
   // `appActive` is true lets call detection re-poll first, so the mic isn't resumed into a call.
   // `|| isRecording` keeps the session alive while a clip is being finalized on background, so the
   // segment saves before we explicitly tear the session down.
-  const cameraActive = !previewing && focused && (appActive || isRecording);
+  // `!recovering` drops the session for one bounce after a mic-priority error so it rebuilds cleanly.
+  const cameraActive = !previewing && focused && (appActive || isRecording) && !recovering;
 
   // Close: finalize any in-flight clip (saving it into the draft) before navigating home, so the
   // segment isn't lost when the camera unmounts.
@@ -267,7 +291,7 @@ export default function RecorderScreen() {
           // device support so it never throws; tap-to-focus stays snappy via `responsiveness`.
           enableSmoothAutoFocus={device?.supportsSmoothAutoFocus ?? false}
           onStarted={onCameraReady}
-          onError={(e) => console.error('[Camera]', e)}
+          onError={onCameraError}
         />
       )}
 
