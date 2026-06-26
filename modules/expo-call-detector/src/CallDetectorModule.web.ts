@@ -13,4 +13,6 @@ class CallDetectorModule extends NativeModule<CallDetectorModuleEvents> {
   endBackgroundTask(_taskId: number): void {}
 }
 
-export default registerWebModule(CallDetectorModule, 'CallDetectorModule');
+// Registered under 'CallDetector' to match Name("CallDetector") on native and the
+// requireNativeModule('CallDetector') lookup, so the name is consistent across platforms.
+export default registerWebModule(CallDetectorModule, 'CallDetector');

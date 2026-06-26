@@ -346,6 +346,10 @@ export function useRecorder(initialDraftId?: string) {
         durationMs,
         thumbnail: ok ? thumbRel : null,
       });
+      // Same as the recording path: reflect the new segment synchronously so a close/unmount that
+      // races the live query can't see an "empty" draft and delete the just-imported clip.
+      everHadSegments.current = true;
+      segmentCount.current = Math.max(segmentCount.current, 1);
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
     }
