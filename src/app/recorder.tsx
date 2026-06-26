@@ -158,8 +158,13 @@ export default function RecorderScreen() {
       const hay = `${String((e as { message?: unknown })?.message ?? '')} ${String(e)}`;
       if (!hay.includes('-11800') && !hay.includes('!pri') && !hay.includes('561017449')) return;
       reportMicPriorityError();
+      // Clustered errors must not let an earlier timer flip `recovering` off mid-bounce — restart it.
+      clearTimeout(recoverTimerRef.current ?? undefined);
       setRecovering(true);
-      recoverTimerRef.current = setTimeout(() => setRecovering(false), 150);
+      recoverTimerRef.current = setTimeout(() => {
+        recoverTimerRef.current = null;
+        setRecovering(false);
+      }, 150);
     },
     [reportMicPriorityError],
   );
