@@ -114,6 +114,10 @@ export function useRecorder(initialDraftId?: string) {
   // Awaited by finalizeRecording so leaving the screen can save the segment before the camera
   // tears down.
   const recordingPromiseRef = useRef<Promise<void> | null>(null);
+  // Guards the background-finalize listener against re-entry: iOS fires 'inactive' THEN 'background'
+  // on a single backgrounding, and the persist tail keeps isRecordingRef true across both — without
+  // this we'd finalize and open a background task twice for one clip.
+  const backgroundFinalizingRef = useRef(false);
 
   // Drop an empty draft on leave so it doesn't litter Home: either one we created this
   // session and never kept a clip in, or a resumed draft whose every clip was deleted.
@@ -190,7 +194,8 @@ export function useRecorder(initialDraftId?: string) {
   // Control Center, app switcher) stops and saves the current clip; we never auto-resume.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active' || !isRecordingRef.current) return;
+      if (state === 'active' || !isRecordingRef.current || backgroundFinalizingRef.current) return;
+      backgroundFinalizingRef.current = true;
       let taskId = -1;
       void (async () => {
         taskId = CallDetector.beginBackgroundTask();
@@ -198,6 +203,7 @@ export function useRecorder(initialDraftId?: string) {
           await finalizeRecording();
         } finally {
           CallDetector.endBackgroundTask(taskId);
+          backgroundFinalizingRef.current = false;
         }
       })();
     });

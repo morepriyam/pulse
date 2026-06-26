@@ -15,23 +15,45 @@ final class CallObserverDelegate: NSObject, CXCallObserverDelegate {
 
 public class CallDetectorModule: Module {
   private let delegate = CallObserverDelegate()
-  // Created on first use; CXCallObserver holds its delegate weakly, so the module owns both.
-  private lazy var callObserver: CXCallObserver = {
-    let observer = CXCallObserver()
-    observer.setDelegate(self.delegate, queue: nil) // nil => deliver on the main queue
-    return observer
-  }()
+  // Created eagerly in OnCreate (NOT lazily): isCallActive() is a synchronous Function that runs on
+  // the JS thread, while OnStartObserving runs on the module thread — a lazy first-touch from both
+  // is an unsynchronized race that could construct two observers. CXCallObserver holds its delegate
+  // weakly, so the module owns both.
+  private var callObserver: CXCallObserver?
 
   // A call (ringing, dialing, or connected) holds the mic until it has ended. Telephony outranks
   // the app for the microphone, so any non-ended call means we must not capture audio.
   private var isCallActive: Bool {
-    callObserver.calls.contains { !$0.hasEnded }
+    callObserver?.calls.contains { !$0.hasEnded } ?? false
+  }
+
+  // Background tasks we've begun but not yet ended, guarded by a lock. iOS may fire a task's
+  // expiration handler before JS calls endBackgroundTask, so we track which ids are still live and
+  // end each exactly once — calling UIApplication.endBackgroundTask twice on the same id is an
+  // unbalanced end that iOS warns about.
+  private var activeTasks = Set<Int>()
+  private let tasksLock = NSLock()
+
+  private func endTask(_ rawId: Int) {
+    tasksLock.lock()
+    let wasActive = activeTasks.remove(rawId) != nil
+    tasksLock.unlock()
+    guard wasActive else { return }
+    let taskId = UIBackgroundTaskIdentifier(rawValue: rawId)
+    guard taskId != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(taskId)
   }
 
   public func definition() -> ModuleDefinition {
     Name("CallDetector")
 
     Events("onCallStateChange")
+
+    OnCreate {
+      let observer = CXCallObserver()
+      observer.setDelegate(self.delegate, queue: nil) // nil => deliver on the main queue
+      self.callObserver = observer
+    }
 
     // Synchronous snapshot for the very first render, before any event has been delivered.
     Function("isCallActive") { () -> Bool in
@@ -45,16 +67,17 @@ public class CallDetectorModule: Module {
     Function("beginBackgroundTask") { () -> Int in
       var taskId: UIBackgroundTaskIdentifier = .invalid
       taskId = UIApplication.shared.beginBackgroundTask(withName: "PulseFinalizeRecording") {
-        UIApplication.shared.endBackgroundTask(taskId)
-        taskId = .invalid
+        self.endTask(taskId.rawValue)
       }
-      return taskId.rawValue
+      let rawId = taskId.rawValue
+      self.tasksLock.lock()
+      self.activeTasks.insert(rawId)
+      self.tasksLock.unlock()
+      return rawId
     }
 
     Function("endBackgroundTask") { (rawId: Int) in
-      let taskId = UIBackgroundTaskIdentifier(rawValue: rawId)
-      guard taskId != .invalid else { return }
-      UIApplication.shared.endBackgroundTask(taskId)
+      self.endTask(rawId)
     }
 
     OnStartObserving {
@@ -62,10 +85,8 @@ public class CallDetectorModule: Module {
         guard let self else { return }
         self.sendEvent("onCallStateChange", ["isActive": self.isCallActive])
       }
-      // Touch the lazy observer so it's created and its delegate attached, then emit the current
-      // state immediately — CXCallObserver only pushes future *changes*, so a call already in
-      // progress when the listener attaches would otherwise be missed.
-      _ = self.callObserver
+      // Emit the current state immediately — CXCallObserver only pushes future *changes*, so a call
+      // already in progress when the listener attaches would otherwise be missed.
       self.sendEvent("onCallStateChange", ["isActive": self.isCallActive])
     }
 
