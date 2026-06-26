@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
@@ -38,6 +38,7 @@ import { setActiveDraft } from '@/features/transcription/active-draft';
 import { setRecordingActive } from '@/features/transcription/recording-signal';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
+import { closeToHome } from '@/utils/navigation';
 
 // Ask for the full multi-camera device on the back so 0.5x / 1x / Tele are all reachable via
 // zoom; the front falls back to its single wide lens automatically.
@@ -67,8 +68,12 @@ export default function RecorderScreen() {
     torch,
     stabilization,
     muted,
+    callActive,
+    appActive,
+    reportMicPriorityError,
     onCameraReady,
     toggleRecording,
+    finalizeRecording,
     importClip,
     startHoldRecording,
     endHoldRecording,
@@ -128,13 +133,41 @@ export default function RecorderScreen() {
   // Audio focus: while the recorder is on screen capturing with a live mic, pause other apps'
   // audio (Spotify / podcasts) rather than mixing it in; restore on leave or mute. Gated on the
   // mic being live — a muted clip has no audio track, so there's nothing to seize focus for.
-  // Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
+  // Also released while a call is active: we must yield the audio session to telephony, not fight
+  // it for focus. Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
   const audioFocus = useAudioFocus();
   useEffect(() => {
-    if (focused && !muted && prefsReady) void audioFocus.acquire();
+    if (focused && appActive && !muted && !callActive && prefsReady) void audioFocus.acquire();
     else void audioFocus.release();
-  }, [focused, muted, prefsReady, audioFocus]);
+  }, [focused, appActive, muted, callActive, prefsReady, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
+
+  // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
+  // can read stale, the mic attaches, and AVFoundation throws -11800 / '!pri' — which leaves the
+  // capture session FROZEN (it doesn't self-recover). So we react to the error directly: drop the
+  // mic (reportMicPriorityError rebuilds the output video-only) AND bounce the session off→on for a
+  // tick to force a clean restart out of the failed state. `recovering` drives the bounce.
+  const [recovering, setRecovering] = useState(false);
+  const recoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => clearTimeout(recoverTimerRef.current ?? undefined), []);
+  const onCameraError = useCallback(
+    (e: unknown) => {
+      console.error('[Camera]', e);
+      // VisionCamera wraps the native error; the AVFoundation domain/code and '!pri' four-char code
+      // survive in the stringified message, so match on those rather than a brittle wrapper code.
+      const hay = `${String((e as { message?: unknown })?.message ?? '')} ${String(e)}`;
+      if (!hay.includes('-11800') && !hay.includes('!pri') && !hay.includes('561017449')) return;
+      reportMicPriorityError();
+      // Clustered errors must not let an earlier timer flip `recovering` off mid-bounce — restart it.
+      clearTimeout(recoverTimerRef.current ?? undefined);
+      setRecovering(true);
+      recoverTimerRef.current = setTimeout(() => {
+        recoverTimerRef.current = null;
+        setRecovering(false);
+      }, 150);
+    },
+    [reportMicPriorityError],
+  );
 
   const device = useCameraDevice(facing, { physicalDevices: PHYSICAL_DEVICES });
 
@@ -233,7 +266,18 @@ export default function RecorderScreen() {
   // session in place on BOTH platforms (no Android unmount dance needed), dropping torch and
   // battery drain. Recording is never in flight when inactive; useRecorder's unmount effect is
   // the stop backstop regardless.
-  const cameraActive = !previewing && focused;
+  // Stop the session while backgrounded too (not just on preview / screen blur): iOS would
+  // otherwise auto-resume the capture session on foreground with the mic still attached — straight
+  // into a call that started in the background (the -11800 freeze). Restarting only once
+  // `appActive` is true lets call detection re-poll first, so the mic isn't resumed into a call.
+  // `|| isRecording` keeps the session alive while a clip is being finalized on background, so the
+  // segment saves before we explicitly tear the session down.
+  // `!recovering` drops the session for one bounce after a mic-priority error so it rebuilds cleanly.
+  const cameraActive = !previewing && focused && (appActive || isRecording) && !recovering;
+
+  // Close: finalize any in-flight clip (saving it into the draft) before navigating home, so the
+  // segment isn't lost when the camera unmounts.
+  const handleClose = () => void finalizeRecording().then(closeToHome);
 
   return (
     <View style={styles.fill}>
@@ -252,7 +296,7 @@ export default function RecorderScreen() {
           // device support so it never throws; tap-to-focus stays snappy via `responsiveness`.
           enableSmoothAutoFocus={device?.supportsSmoothAutoFocus ?? false}
           onStarted={onCameraReady}
-          onError={(e) => console.error('[Camera]', e)}
+          onError={onCameraError}
         />
       )}
 
@@ -272,7 +316,7 @@ export default function RecorderScreen() {
             styles.topBar,
             { paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three },
           ]}>
-          <CloseButton />
+          <CloseButton onPress={handleClose} />
           <Text style={styles.timerText}>{formatDurationPadded(totalMs)}</Text>
           {/* Mirrors the CloseButton's width so the timer stays optically centered. */}
           <View style={styles.topBarSpacer} />
@@ -283,7 +327,11 @@ export default function RecorderScreen() {
           torch={torch}
           stabilization={stabilization}
           muted={muted}
-          disabled={previewing}
+          callActive={callActive}
+          // Lock every camera control while a clip is recording — flip / torch / stabilization /
+          // mute can't change mid-clip (audio state is fixed at record start, and the others would
+          // disrupt or stop capture). Mirrors the lens selector, which is already locked here.
+          disabled={previewing || isRecording}
           onFlip={flipCamera}
           onToggleTorch={toggleTorch}
           onCycleStabilization={cycleStabilization}

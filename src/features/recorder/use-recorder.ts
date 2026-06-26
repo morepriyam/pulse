@@ -2,7 +2,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, AppState, Linking } from 'react-native';
 import { isValidFile } from 'react-native-video-trim';
 import {
   type CameraRef,
@@ -28,6 +28,9 @@ import {
 } from '@/db/settings';
 import { absolutize, copyIntoSegments, persistRecording, thumbRelPath } from '@/utils/file-store';
 import { generateThumbnailFile, getDurationMs } from '@/utils/video';
+
+import CallDetector from '../../../modules/expo-call-detector/src/CallDetectorModule';
+import { useCallState } from './use-call-state';
 
 export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
 export type StabilizationMode = (typeof STABILIZATION_MODES)[number];
@@ -56,15 +59,32 @@ export function useRecorder(initialDraftId?: string) {
   // camera render until then so the first frame uses the saved facing (no back→front flash).
   const [prefsReady, setPrefsReady] = useState(false);
 
-  // VisionCamera records to a file via a per-recording `Recorder` created from this output.
-  // The output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Disabling
-  // audio when muted recreates the output (drops the mic from the session) — a clip with no
-  // audio track is what `mute` meant under expo-camera. Pinned to 1080p; the HEVC codec is
-  // pinned per-recording via setOutputSettings (iOS) so every clip stays format-uniform and
-  // exports on the merge engine's zero-re-encode fast path.
+  // callActive: a phone / VoIP call holds the mic — telephony outranks us for the microphone, so
+  // capturing with it live throws the AVFoundation -11800 / '!pri' error that froze the session, so
+  // we drop the mic for the call's duration (see enableAudio). appActive: false while backgrounded —
+  // the camera session is stopped then (see cameraActive in recorder.tsx) so iOS can't auto-resume
+  // the mic into a call that began in the background.
+  const { callActive, appActive, reportMicPriorityError } = useCallState();
+
+  // The mic config the session SHOULD have. `cameraReady` gates it so a cold open comes up
+  // video-only first (call detection lands before the mic is ever requested); dropped while a call
+  // holds the mic (`callActive`) or the user muted, so that clip has no audio track.
+  const micWanted = cameraReady && !muted && !callActive;
+  // Freeze the mic config for the duration of a recording: an enableAudio change rebuilds the video
+  // output, which tears down the in-flight recorder before it can finalize — dropping the clip. We
+  // hold the value captured while idle and only let it change once recording stops, so a call
+  // mid-recording finalizes the current clip first, then drops the mic for the next one.
+  const frozenMicRef = useRef(false);
+  if (!isRecording) frozenMicRef.current = micWanted;
+  const micEnabled = isRecording ? frozenMicRef.current : micWanted;
+
+  // VisionCamera records to a file via a per-recording `Recorder` created from this output. The
+  // output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Pinned to 1080p;
+  // the HEVC codec is pinned per-recording via setOutputSettings (iOS) so every clip stays
+  // format-uniform and exports on the merge engine's zero-re-encode fast path.
   const videoOutput = useVideoOutput({
     targetResolution: CommonResolutions.FHD_16_9,
-    enableAudio: !muted,
+    enableAudio: micEnabled,
     fileType: 'mov',
   });
 
@@ -90,6 +110,14 @@ export function useRecorder(initialDraftId?: string) {
   // Set only when a hold STARTED the recording — releasing a hold begun on top of a
   // tap-started recording must not stop it (that hold is just drag-zooming).
   const holdInitiatedRef = useRef(false);
+  // The promise for the in-flight startRecording() run (it resolves once the clip is persisted).
+  // Awaited by finalizeRecording so leaving the screen can save the segment before the camera
+  // tears down.
+  const recordingPromiseRef = useRef<Promise<void> | null>(null);
+  // Guards the background-finalize listener against re-entry: iOS fires 'inactive' THEN 'background'
+  // on a single backgrounding, and the persist tail keeps isRecordingRef true across both — without
+  // this we'd finalize and open a background task twice for one clip.
+  const backgroundFinalizingRef = useRef(false);
 
   // Drop an empty draft on leave so it doesn't litter Home: either one we created this
   // session and never kept a clip in, or a resumed draft whose every clip was deleted.
@@ -149,6 +177,40 @@ export function useRecorder(initialDraftId?: string) {
   useEffect(() => {
     if (prefsReady) void setSetting(CAMERA_MUTED_KEY, String(muted));
   }, [muted, prefsReady]);
+
+  // Stop the in-flight recording whenever the call state CHANGES — starting (the mic must drop) or
+  // ending (the clip was recording silent and the mic is back). No clip then spans an audio-state
+  // change: it's finalized and saved at the boundary, and the user starts the next one manually
+  // (with the mic in its new state). We deliberately do NOT auto-resume.
+  useEffect(() => {
+    if (isRecordingRef.current) stopRecording();
+  }, [callActive]);
+
+  // Leaving the app mid-recording must save the clip. We finalize on the FIRST sign of leaving —
+  // AppState 'inactive', which precedes 'background' — while the capture session is still alive and
+  // JS is still running. Finalizing only at 'background' loses the clip: iOS has by then interrupted
+  // the session, so the recorder can't flush cleanly. A background task covers the persist tail in
+  // case we cross into the background. Trade-off: anything that deactivates the app (backgrounding,
+  // Control Center, app switcher) stops and saves the current clip; we never auto-resume.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' || !isRecordingRef.current || backgroundFinalizingRef.current) return;
+      backgroundFinalizingRef.current = true;
+      let taskId = -1;
+      void (async () => {
+        taskId = CallDetector.beginBackgroundTask();
+        try {
+          await finalizeRecording();
+        } finally {
+          CallDetector.endBackgroundTask(taskId);
+          backgroundFinalizingRef.current = false;
+        }
+      })();
+    });
+    return () => sub.remove();
+    // finalizeRecording reads only refs; the listener is set up once and reads current state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function startRecording() {
     if (!cameraRef.current || isRecordingRef.current || !cameraReady) return;
@@ -210,6 +272,10 @@ export function useRecorder(initialDraftId?: string) {
         durationMs,
         thumbnail: ok ? thumbRel : null,
       });
+      // Reflect the new segment synchronously: a close/unmount that races the live query must not
+      // see an "empty" draft and delete it (the deletion check below reads these refs).
+      everHadSegments.current = true;
+      segmentCount.current = Math.max(segmentCount.current, 1);
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
@@ -280,6 +346,10 @@ export function useRecorder(initialDraftId?: string) {
         durationMs,
         thumbnail: ok ? thumbRel : null,
       });
+      // Same as the recording path: reflect the new segment synchronously so a close/unmount that
+      // races the live query can't see an "empty" draft and delete the just-imported clip.
+      everHadSegments.current = true;
+      segmentCount.current = Math.max(segmentCount.current, 1);
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
     }
@@ -305,13 +375,26 @@ export function useRecorder(initialDraftId?: string) {
 
   function toggleRecording() {
     if (isRecordingRef.current) stopRecording();
-    else void startRecording();
+    else recordingPromiseRef.current = startRecording();
   }
 
   function startHoldRecording() {
     if (isRecordingRef.current) return;
     holdInitiatedRef.current = true;
-    void startRecording();
+    recordingPromiseRef.current = startRecording();
+  }
+
+  // Stop an in-flight recording and wait for its clip to be persisted into the draft. Called before
+  // leaving the screen (the close button) so the segment is saved instead of being lost when the
+  // camera tears down. No-op when idle.
+  async function finalizeRecording() {
+    if (!isRecordingRef.current) return;
+    stopRecording();
+    try {
+      await recordingPromiseRef.current;
+    } catch {
+      // persist failed — nothing more we can do; the caller leaves regardless
+    }
   }
 
   function endHoldRecording() {
@@ -346,8 +429,12 @@ export function useRecorder(initialDraftId?: string) {
     torch,
     stabilization,
     muted,
+    callActive,
+    appActive,
+    reportMicPriorityError,
     onCameraReady: () => setCameraReady(true),
     toggleRecording,
+    finalizeRecording,
     importClip: () => void importClip(),
     startHoldRecording,
     endHoldRecording,

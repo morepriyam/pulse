@@ -26,6 +26,8 @@ type Props = {
   torch: boolean;
   stabilization: StabilizationMode;
   muted: boolean;
+  // A phone call holds the mic — audio is forced off and the toggle is locked while it lasts.
+  callActive?: boolean;
   disabled?: boolean;
   onFlip: () => void;
   onToggleTorch: () => void;
@@ -38,6 +40,7 @@ export function CameraControls({
   torch,
   stabilization,
   muted,
+  callActive = false,
   disabled = false,
   onFlip,
   onToggleTorch,
@@ -68,10 +71,19 @@ export function CameraControls({
         onPress={onCycleStabilization}
       />
       <ControlButton
-        icon={muted ? 'mic.slash.fill' : 'mic.fill'}
-        label={muted ? 'Unmute recording audio' : 'Mute recording audio'}
-        tint={muted ? Accent : '#fff'}
-        disabled={disabled}
+        icon={muted || callActive ? 'mic.slash.fill' : 'mic.fill'}
+        label={
+          callActive
+            ? 'Microphone unavailable during a call'
+            : muted
+              ? 'Unmute recording audio'
+              : 'Mute recording audio'
+        }
+        // Surface WHY the mic is off during a call so it doesn't look like a bug; the toggle is
+        // locked because the OS, not the user, owns the mic while telephony has it.
+        caption={callActive ? 'On call' : undefined}
+        tint={muted || callActive ? Accent : '#fff'}
+        disabled={disabled || callActive}
         onPress={onToggleMute}
       />
     </View>
