@@ -5,9 +5,9 @@ Pod::Spec.new do |s|
   s.description    = 'Local Expo module: reports active-call state so the recorder can drop the mic during calls, plus iOS background-task helpers to finalize a clip when backgrounded.'
   s.author         = 'Pulse'
   s.homepage       = 'https://docs.expo.dev/modules/'
+  # iOS only: CallKit's CXCallObserver and UIApplication background tasks aren't on the tvOS SDK.
   s.platforms      = {
-    :ios => '16.4',
-    :tvos => '16.4'
+    :ios => '16.4'
   }
   s.source         = { git: '' }
   s.static_framework = true
