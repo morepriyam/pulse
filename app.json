@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.mieweb.pulse.dev",
       "appleTeamId": "X5873NL7XM",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Pulse uses your camera to record videos.",
         "NSMicrophoneUsageDescription": "Pulse uses your microphone to record audio with your videos."
       }

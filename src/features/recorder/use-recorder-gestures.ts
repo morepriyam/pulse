@@ -9,10 +9,12 @@ import { runOnJS, useSharedValue, withTiming } from 'react-native-reanimated';
 const HOLD_MS = 250;
 /** Vertical drag distance (px) that doubles (drag up) or halves (drag down) the zoom factor.
  * Drag-zoom is multiplicative so the feel is consistent regardless of the device's zoom range.
- * Tuned by feel — wants an on-device pass. */
-const DRAG_DOUBLING_PX = 250;
+ * Smaller ⇒ more sensitive (less travel to double). Tuned by feel — wants an on-device pass. */
+const DRAG_DOUBLING_PX = 180;
 /** Pinch scale is multiplicative and VisionCamera's `zoom` is an absolute factor, so the pinch
- * scale maps straight onto the factor (scale 2 ⇒ 2× the zoom factor) — physically exact. */
+ * scale maps onto the factor. We raise the raw scale to this exponent (>1) to make the pinch a
+ * touch more sensitive than the physically-exact 1:1 (scale 2 ⇒ 2× the zoom factor at 1.0). */
+const PINCH_SENSITIVITY = 1.3;
 
 export function useRecorderGestures({
   onToggle,
@@ -113,7 +115,7 @@ export function useRecorderGestures({
         pinchBase.value = zoomSv.value;
       })
       .onUpdate((e) => {
-        writeZoom(pinchBase.value * e.scale);
+        writeZoom(pinchBase.value * e.scale ** PINCH_SENSITIVITY);
       });
 
     // Single-finger tap on the preview → focus to that point (tap-to-focus). One finger vs the
