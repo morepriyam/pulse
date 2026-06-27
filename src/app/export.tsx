@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CloseButton } from '@/features/recorder/close-button';
-import { Accent, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { segmentsForDraft } from '@/db/drafts';
 import { useExport } from '@/features/export/use-export';
@@ -100,14 +100,20 @@ export default function ExportScreen() {
                 onPress={runShare}
                 disabled={busy}
                 accessibilityRole="button"
-                accessibilityLabel="Share"
-                style={[styles.button, styles.primary, busy && styles.disabled]}>
+                accessibilityLabel={busy ? 'Sharing' : 'Share'}
+                accessibilityState={{ disabled: busy, busy }}
+                style={({ pressed }) => [
+                  styles.button,
+                  { backgroundColor: theme.accent },
+                  busy && styles.disabled,
+                  pressed && styles.pressed,
+                ]}>
                 {busy ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={theme.onAccent} />
                 ) : (
                   <>
-                    <Icon name="square.and.arrow.up" size={18} tintColor="#fff" />
-                    <ThemedText style={styles.primaryLabel}>Share</ThemedText>
+                    <Icon name="square.and.arrow.up" size={18} tintColor={theme.onAccent} />
+                    <ThemedText style={{ color: theme.onAccent }}>Share</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -116,8 +122,22 @@ export default function ExportScreen() {
                 onPress={() => void photos.save(toFileUri(state.outputPath))}
                 disabled={photos.status !== 'idle'}
                 accessibilityRole="button"
-                accessibilityLabel="Save to Photos"
-                style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                accessibilityLabel={
+                  photos.status === 'saved'
+                    ? 'Saved to Photos'
+                    : photos.status === 'saving'
+                      ? 'Saving to Photos'
+                      : 'Save to Photos'
+                }
+                accessibilityState={{
+                  disabled: photos.status !== 'idle',
+                  busy: photos.status === 'saving',
+                }}
+                style={({ pressed }) => [
+                  styles.button,
+                  { backgroundColor: theme.backgroundElement },
+                  pressed && styles.pressed,
+                ]}>
                 {photos.status === 'saving' ? (
                   <ActivityIndicator color={theme.text} />
                 ) : photos.status === 'saved' ? (
@@ -137,8 +157,22 @@ export default function ExportScreen() {
                 onPress={() => void docs.save(toFileUri(state.outputPath))}
                 disabled={docs.status !== 'idle'}
                 accessibilityRole="button"
-                accessibilityLabel="Save to Files"
-                style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                accessibilityLabel={
+                  docs.status === 'saved'
+                    ? 'Saved to Files'
+                    : docs.status === 'saving'
+                      ? 'Saving to Files'
+                      : 'Save to Files'
+                }
+                accessibilityState={{
+                  disabled: docs.status !== 'idle',
+                  busy: docs.status === 'saving',
+                }}
+                style={({ pressed }) => [
+                  styles.button,
+                  { backgroundColor: theme.backgroundElement },
+                  pressed && styles.pressed,
+                ]}>
                 {docs.status === 'saving' ? (
                   <ActivityIndicator color={theme.text} />
                 ) : docs.status === 'saved' ? (
@@ -159,7 +193,7 @@ export default function ExportScreen() {
 
         {state.status === 'error' && (
           <>
-            <Icon name="exclamationmark.triangle.fill" size={64} tintColor={Accent} />
+            <Icon name="exclamationmark.triangle.fill" size={64} tintColor={theme.accent} />
             <ThemedText type="subtitle" style={styles.title}>
               Export failed
             </ThemedText>
@@ -172,9 +206,13 @@ export default function ExportScreen() {
                 onPress={retry}
                 accessibilityRole="button"
                 accessibilityLabel="Try again"
-                style={[styles.button, styles.primary]}>
-                <Icon name="arrow.clockwise" size={18} tintColor="#fff" />
-                <ThemedText style={styles.primaryLabel}>Try again</ThemedText>
+                style={({ pressed }) => [
+                  styles.button,
+                  { backgroundColor: theme.accent },
+                  pressed && styles.pressed,
+                ]}>
+                <Icon name="arrow.clockwise" size={18} tintColor={theme.onAccent} />
+                <ThemedText style={{ color: theme.onAccent }}>Try again</ThemedText>
               </Pressable>
             </View>
           </>
@@ -282,7 +320,6 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
   },
-  primary: { backgroundColor: Accent },
-  primaryLabel: { color: '#fff' },
+  pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
 });

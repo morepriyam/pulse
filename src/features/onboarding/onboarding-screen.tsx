@@ -112,7 +112,7 @@ export function OnboardingScreen() {
                 <Icon name={item.symbol ?? 'sparkles'} size={56} tintColor={theme.accent} />
               </View>
             )}
-            <ThemedText style={styles.title}>{item.title}</ThemedText>
+            <ThemedText type="title1" style={styles.title}>{item.title}</ThemedText>
             <View style={styles.bullets}>
               {item.bullets.map((bullet, i) => (
                 <View key={i} style={styles.bulletRow}>
@@ -127,7 +127,7 @@ export function OnboardingScreen() {
                       <View style={[styles.bulletDot, { backgroundColor: theme.accent }]} />
                     )}
                   </View>
-                  <ThemedText style={styles.bulletText}>{bullet.text}</ThemedText>
+                  <ThemedText type="body" style={styles.bulletText}>{bullet.text}</ThemedText>
                 </View>
               ))}
             </View>
@@ -183,10 +183,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Size/leading come from the `title1` type; keep it centered and bold for the onboarding hero.
   title: {
     textAlign: 'center',
-    fontSize: 26,
-    lineHeight: 32,
     fontWeight: '700',
   },
   bullets: {
@@ -227,8 +226,6 @@ const styles = StyleSheet.create({
   },
   bulletText: {
     flex: 1,
-    fontSize: 16,
-    lineHeight: 24,
   },
   footer: {
     paddingHorizontal: Spacing.four,
