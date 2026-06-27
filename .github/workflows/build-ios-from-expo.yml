@@ -36,11 +36,38 @@ jobs:
     runs-on: macos-latest
     steps:
       # ── Checkout, Xcode, Node, JS deps ────────────────────────────────────
-      - name: Setup Expo environment
-        uses: mieweb/actions/prepare-expo-env@v2.2.4
+      # NOT using prepare-expo-env here: its checkout omits submodules, so the
+      # react-native-video-trim git submodule (modules/react-native-video-trim)
+      # is empty and Metro fails with "Unable to resolve module
+      # react-native-video-trim". We check out submodules and build the module.
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
         with:
-          package_manager: npm
-          node_version: "20"
+          submodules: recursive
+
+      - name: Select Xcode
+        run: |
+          XC=/Applications/Xcode_26.app
+          [ -d "$XC/Contents/Developer" ] || XC=$(ls -td /Applications/Xcode_26*.app 2>/dev/null | head -1)
+          [ -d "$XC/Contents/Developer" ] || XC=$(ls -td /Applications/Xcode*.app | grep -viE 'beta|rc|gm' | head -1)
+          echo "Selected Xcode: $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      # The submodule commits only src/ (lib/ is gitignored). Metro resolves the
+      # package through its built lib/, so build it the way local dev does.
+      - name: Build the react-native-video-trim submodule
+        run: |
+          npm --prefix modules/react-native-video-trim install
+          npm --prefix modules/react-native-video-trim run prepare
 
       # ── Give every CI build a unique, increasing build number ─────────────
       - name: Stamp build number
