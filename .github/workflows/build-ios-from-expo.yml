@@ -51,6 +51,41 @@ jobs:
       - name: Expo prebuild (ios)
         run: npx expo prebuild --clean --platform ios --non-interactive
 
+      # ── Force the distribution signing identity ───────────────────────────
+      # expo prebuild writes CODE_SIGN_IDENTITY = "Apple Development" into the
+      # generated project. The signing action forces manual signing with a
+      # distribution profile but does NOT override the identity, so a Release
+      # archive looks for a development cert (which we don't have) and fails
+      # with: No signing certificate "iOS Development" found.
+      # Rewrite the identity to match the distribution cert in our .p12.
+      - name: Force distribution signing identity
+        env:
+          P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          P12_PW:     ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          set -e
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          SUBJ=$(openssl pkcs12 -in "$RUNNER_TEMP/dist.p12" -clcerts -nokeys \
+                   -passin pass:"$P12_PW" 2>/dev/null \
+                 | openssl x509 -noout -subject 2>/dev/null || true)
+          rm -f "$RUNNER_TEMP/dist.p12"
+          echo "Distribution cert subject: ${SUBJ:-<unreadable>}"
+          # Pick the generic identity that matches the cert type. A cert created
+          # as "iOS Distribution (App Store & Ad Hoc)" has CN "iPhone Distribution: …";
+          # the newer "Apple Distribution" option has CN "Apple Distribution: …".
+          if echo "$SUBJ" | grep -q "Apple Distribution"; then
+            IDENTITY="Apple Distribution"
+          else
+            IDENTITY="iPhone Distribution"
+          fi
+          echo "Setting CODE_SIGN_IDENTITY = $IDENTITY"
+          PBX=$(ls ios/*.xcodeproj/project.pbxproj | head -1)
+          sed -i.bak "s/CODE_SIGN_IDENTITY = \"[^\"]*\"/CODE_SIGN_IDENTITY = \"$IDENTITY\"/g" "$PBX"
+          sed -i.bak2 "s/\"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]\" = \"[^\"]*\"/\"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"$IDENTITY\"/g" "$PBX"
+          rm -f "$PBX.bak" "$PBX.bak2"
+          echo "Resulting CODE_SIGN_IDENTITY entries:"
+          grep -n "CODE_SIGN_IDENTITY" "$PBX" || echo "::warning::no CODE_SIGN_IDENTITY entries found to patch"
+
       # ── pod install + sign + archive + upload ─────────────────────────────
       - name: Build & upload iOS to TestFlight
         uses: mieweb/actions/sign-archive-upload-ios@v2.2.4
