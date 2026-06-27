@@ -4,19 +4,22 @@
 # Composes mieweb/actions building blocks (pinned to v2.2.4) instead of the
 # turnkey reusable workflow, so we can sign WITHOUT fastlane match:
 #   prepare-expo-env → stamp build number → expo prebuild → pod install
-#   → sign-archive-upload-ios (cert-api) → upload to TestFlight
+#   → sign-archive-upload-ios (secrets) → upload to TestFlight
 #
-# Signing mode: cert-api
-#   You supply a distribution certificate (.p12); the App Store provisioning
-#   profile is downloaded automatically via the App Store Connect API key.
+# Signing mode: secrets
+#   You supply BOTH the distribution certificate (.p12) and the matching App
+#   Store provisioning profile (.mobileprovision) as secrets. The profile must
+#   include the cert in the .p12 — generate them as a pair. No API fetch, no
+#   readonly limitation.
 #
 # Required org/repo secrets:
-#   APPLE_TEAM_ID                Apple Developer Team ID  (= X5873NL7XM)
-#   APPLE_API_KEY_ID             App Store Connect API key ID
-#   APPLE_API_ISSUER_ID          App Store Connect issuer ID
-#   APPLE_API_KEY_P8_BASE64      base64 of the .p8 API key
-#   IOS_DIST_CERT_P12_BASE64     base64 of the Apple Distribution cert (.p12)
-#   IOS_DIST_CERT_PASSWORD       password set when exporting the .p12
+#   APPLE_TEAM_ID                    Apple Developer Team ID  (= X5873NL7XM)
+#   APPLE_API_KEY_ID                 App Store Connect API key ID (TestFlight upload)
+#   APPLE_API_ISSUER_ID              App Store Connect issuer ID
+#   APPLE_API_KEY_P8_BASE64          base64 of the .p8 API key
+#   IOS_DIST_CERT_P12_BASE64         base64 of the distribution cert (.p12)
+#   IOS_DIST_CERT_PASSWORD           password set when exporting the .p12
+#   IOS_PROVISIONING_PROFILE_BASE64  base64 of the App Store .mobileprovision
 # ─────────────────────────────────────────────────────────────────────────────
 name: iOS Expo Build & Upload
 
@@ -52,7 +55,7 @@ jobs:
       - name: Build & upload iOS to TestFlight
         uses: mieweb/actions/sign-archive-upload-ios@v2.2.4
         with:
-          signing_mode:            cert-api
+          signing_mode:            secrets
           app_identifier:          com.mieweb.pulse.dev
           apple_team_id:           ${{ secrets.APPLE_TEAM_ID }}
           apple_api_key_id:        ${{ secrets.APPLE_API_KEY_ID }}
@@ -60,6 +63,7 @@ jobs:
           apple_api_key_p8_base64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
           ios_cert_p12_base64:     ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
           ios_cert_password:       ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          ios_prov_profile_base64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
           ios_build_dir:           ios
           run_pod_install:         "true"
           upload_to_testflight:    ${{ inputs.upload_to_testflight }}
