@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# iOS Expo Build & Upload
+#
+# Composes mieweb/actions building blocks (pinned to v2.2.4) instead of the
+# turnkey reusable workflow, so we can sign WITHOUT fastlane match:
+#   prepare-expo-env → stamp build number → expo prebuild → pod install
+#   → sign-archive-upload-ios (cert-api) → upload to TestFlight
+#
+# Signing mode: cert-api
+#   You supply a distribution certificate (.p12); the App Store provisioning
+#   profile is downloaded automatically via the App Store Connect API key.
+#
+# Required org/repo secrets:
+#   APPLE_TEAM_ID                Apple Developer Team ID  (= X5873NL7XM)
+#   APPLE_API_KEY_ID             App Store Connect API key ID
+#   APPLE_API_ISSUER_ID          App Store Connect issuer ID
+#   APPLE_API_KEY_P8_BASE64      base64 of the .p8 API key
+#   IOS_DIST_CERT_P12_BASE64     base64 of the Apple Distribution cert (.p12)
+#   IOS_DIST_CERT_PASSWORD       password set when exporting the .p12
+# ─────────────────────────────────────────────────────────────────────────────
+name: iOS Expo Build & Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_testflight:
+        description: "Upload the build to TestFlight"
+        type: boolean
+        default: true
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      # ── Checkout, Xcode, Node, JS deps ────────────────────────────────────
+      - name: Setup Expo environment
+        uses: mieweb/actions/prepare-expo-env@v2.2.4
+        with:
+          package_manager: npm
+          node_version: "20"
+
+      # ── Give every CI build a unique, increasing build number ─────────────
+      - name: Stamp build number
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.ios=j.expo.ios||{};j.expo.ios.buildNumber=String(process.env.GITHUB_RUN_NUMBER);fs.writeFileSync('app.json',JSON.stringify(j,null,2));console.log('iOS buildNumber =',j.expo.ios.buildNumber);"
+
+      # ── Regenerate native ios/ from app.json ──────────────────────────────
+      - name: Expo prebuild (ios)
+        run: npx expo prebuild --clean --platform ios --non-interactive
+
+      # ── pod install + sign + archive + upload ─────────────────────────────
+      - name: Build & upload iOS to TestFlight
+        uses: mieweb/actions/sign-archive-upload-ios@v2.2.4
+        with:
+          signing_mode:            cert-api
+          app_identifier:          com.mieweb.pulse.dev
+          apple_team_id:           ${{ secrets.APPLE_TEAM_ID }}
+          apple_api_key_id:        ${{ secrets.APPLE_API_KEY_ID }}
+          apple_api_issuer_id:     ${{ secrets.APPLE_API_ISSUER_ID }}
+          apple_api_key_p8_base64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          ios_cert_p12_base64:     ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          ios_cert_password:       ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          ios_build_dir:           ios
+          run_pod_install:         "true"
+          upload_to_testflight:    ${{ inputs.upload_to_testflight }}
