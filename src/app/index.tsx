@@ -181,8 +181,13 @@ export default function HomeScreen() {
               hitSlop={12}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel="Import drafts"
-              style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
+              accessibilityLabel={transferState === 'importing' ? 'Importing drafts' : 'Import drafts'}
+              accessibilityHint="Imports drafts from a .pulse file"
+              accessibilityState={{ disabled: busy, busy: transferState === 'importing' }}
+              style={({ pressed }) => [
+                styles.headerButton,
+                pressed && { backgroundColor: theme.backgroundElement },
+              ]}>
               {transferState === 'importing' ? (
                 <ActivityIndicator size="small" color={theme.textSecondary} />
               ) : (
@@ -204,8 +209,12 @@ export default function HomeScreen() {
                 onPress={() => setSelectionMode(true)}
                 hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Select drafts to export"
-                style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
+                accessibilityLabel="Export drafts"
+                accessibilityHint="Select drafts to share as a .pulse file"
+                style={({ pressed }) => [
+                  styles.headerButton,
+                  pressed && { backgroundColor: theme.backgroundElement },
+                ]}>
                 <Icon name="square.and.arrow.up" size={20} tintColor={theme.text} />
                 <ThemedText type="smallBold" style={styles.headerButtonLabel}>
                   Export
@@ -216,8 +225,14 @@ export default function HomeScreen() {
               onPress={() => setPickerOpen(true)}
               hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="On-device AI"
-              style={({ pressed }) => [styles.headerButton, pressed && styles.headerButtonPressed]}>
+              accessibilityLabel="On-device AI model"
+              accessibilityHint="Choose the model used for captions"
+              accessibilityState={{ selected: !!selectedModel }}
+              accessibilityValue={{ text: selectedModel ? selectedModel.label : 'Off' }}
+              style={({ pressed }) => [
+                styles.headerButton,
+                pressed && { backgroundColor: theme.backgroundElement },
+              ]}>
               <Icon
                 name="wand.and.stars"
                 size={20}
@@ -244,7 +259,7 @@ export default function HomeScreen() {
       {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
-          <ThemedText style={styles.emptyTitle}>No drafts yet</ThemedText>
+          <ThemedText type="title3" style={styles.emptyTitle}>No drafts yet</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyHint}>
             Tap + to record your first video.
           </ThemedText>
@@ -342,17 +357,18 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  // Shared header action: icon stacked above its label, with a ≥44pt touch target.
+  // Shared header action: icon stacked above its label, with a ≥44×44pt touch target (HIG).
   headerButton: {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.half,
     minHeight: 44,
+    minWidth: 44,
+    borderRadius: 12,
     paddingHorizontal: Spacing.two,
   },
   headerButtonLabel: { fontSize: 11, lineHeight: 13 },
-  headerButtonPressed: { opacity: 0.5 },
   devRowWrap: {
     alignItems: 'flex-end',
     paddingHorizontal: Spacing.four,
@@ -369,10 +385,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.five,
   },
+  // Size/leading come from the `title3` type; keep it semibold for the empty-state heading.
   emptyTitle: {
-    fontSize: 20,
     fontWeight: '600',
-    lineHeight: 26,
   },
   emptyHint: {
     textAlign: 'center',

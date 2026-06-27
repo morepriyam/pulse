@@ -8,7 +8,6 @@ import Animated, {
 import Svg, { Circle } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
-import { Accent } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -53,7 +52,7 @@ export function MergeProgressRing({ progress }: { progress: number }) {
           cx={SIZE / 2}
           cy={SIZE / 2}
           r={RADIUS}
-          stroke={Accent}
+          stroke={theme.accent}
           strokeWidth={STROKE}
           strokeLinecap="round"
           fill="none"
