@@ -307,7 +307,7 @@ function CueRow({
   const chars = cue.text.trim().length;
   const cps = chars / Math.max(0.01, (cue.t1 - cue.t0) / 100);
   const over = cps > CPS_BAD || chars > MAX_CHARS;
-  const cpsColor = cps > CPS_BAD ? Accent : cps > CPS_WARN ? '#E5A100' : theme.textSecondary;
+  const cpsColor = cps > CPS_BAD ? Accent : cps > CPS_WARN ? theme.warning : theme.textSecondary;
 
   // Collapsed: a calm, readable row — start time + text, accent when it's the playing cue.
   if (!selected) {
