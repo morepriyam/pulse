@@ -8,6 +8,7 @@ import { effFile, effMs } from '@/utils/segment-window';
 const Native = VideoTrim as Spec;
 
 export type ExportState =
+  | { status: 'idle' }
   | { status: 'merging'; progress: number }
   | { status: 'done'; outputPath: string; durationMs: number }
   | { status: 'error'; message: string };
@@ -17,12 +18,26 @@ export type ExportState =
  * (passthrough join for uniform clips, selective outlier-conform for mixed, re-encode fallback).
  * Joins each clip's EFFECTIVE file (edited ?? original) in timeline order. A single-clip draft
  * skips the merge and exports that file directly (nothing to concatenate). The job re-runs only
- * when the clip set actually changes (keyed on a file signature, not array identity) or on `retry`.
+ * when the clip set actually changes (keyed on a file signature, not array identity) or on `run`.
+ *
+ * `options.auto` (default `true`) controls whether the merge starts on mount. Pass `false` for a
+ * beat-mode upload destination — `uploadBeats` never touches the merged file, so merging eagerly
+ * would just be wasted CPU/battery blocking the screen for no reason. The hook stays `idle` until
+ * something (Share, Save, Preview) calls `run()` on demand.
  */
-export function useExport(segments: Segment[]) {
-  const [state, setState] = useState<ExportState>({ status: 'merging', progress: 0 });
+export function useExport(segments: Segment[], options?: { auto?: boolean }) {
+  const auto = options?.auto ?? true;
+  // Lazy initializer, snapshotted once at mount — just avoids a one-frame "idle" flash for the
+  // common case where `auto` doesn't change over the component's lifetime. The effect below is
+  // what actually corrects state if `auto` changes later (e.g. a destination resolves after mount).
+  const [state, setState] = useState<ExportState>(() =>
+    auto ? { status: 'merging', progress: 0 } : { status: 'idle' },
+  );
   const [attempt, setAttempt] = useState(0);
-  const retry = () => setAttempt((n) => n + 1);
+  const run = () => setAttempt((n) => n + 1);
+
+  // Not auto-running and nobody has explicitly called `run()` yet — the merge below never runs.
+  const shouldRun = auto || attempt > 0;
 
   // Stable across re-renders that don't change the actual clips, so the live query re-emitting
   // the same data doesn't kick off a second merge.
@@ -30,7 +45,8 @@ export function useExport(segments: Segment[]) {
   const signature = files.join('|');
 
   useEffect(() => {
-    if (segments.length === 0) return;
+    if (segments.length === 0 || !shouldRun) return;
+
     // A late merge resolving after this effect re-ran (or the screen unmounted) must not clobber
     // newer state — only the most recent run is allowed to commit.
     let current = true;
@@ -70,7 +86,10 @@ export function useExport(segments: Segment[]) {
       sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, attempt]);
+  }, [signature, attempt, shouldRun]);
 
-  return { state, retry };
+  // Derived, not stored: overrides a stale `merging`/`done`/`error` value left over from a
+  // previous render where `auto` was true (e.g. the destination changed shape) without needing a
+  // corrective `setState` inside the effect above.
+  return { state: shouldRun ? state : { status: 'idle' as const }, run };
 }

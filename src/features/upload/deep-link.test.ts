@@ -11,7 +11,12 @@ describe('parseUploadDeepLink', () => {
     );
     expect(result).toEqual({
       ok: true,
-      link: { artifactId: ARTIFACT_ID, server: 'https://vault.example.org', token: 'secret' },
+      link: {
+        artifactId: ARTIFACT_ID,
+        server: 'https://vault.example.org',
+        token: 'secret',
+        uploadUnit: null,
+      },
     });
   });
 
@@ -21,7 +26,7 @@ describe('parseUploadDeepLink', () => {
     );
     expect(result).toEqual({
       ok: true,
-      link: { artifactId: ARTIFACT_ID, server: 'https://vault.example.org', token: null },
+      link: { artifactId: ARTIFACT_ID, server: 'https://vault.example.org', token: null, uploadUnit: null },
     });
   });
 
@@ -78,13 +83,42 @@ describe('parseUploadDeepLink', () => {
     );
     expect(result).toEqual({
       ok: true,
-      link: { artifactId: ARTIFACT_ID, server: 'https://vault.example.org/pulsevault', token: null },
+      link: {
+        artifactId: ARTIFACT_ID,
+        server: 'https://vault.example.org/pulsevault',
+        token: null,
+        uploadUnit: null,
+      },
     });
   });
 
   it('rejects an unparseable server value', () => {
     const result = parseUploadDeepLink(
       `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=not-a-url`,
+    );
+    expect(result).toEqual({ ok: false, reason: 'invalid-link' });
+  });
+
+  it('accepts an explicit uploadUnit override, either value', () => {
+    for (const uploadUnit of ['beat', 'merged']) {
+      const result = parseUploadDeepLink(
+        `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=https%3A%2F%2Fvault.example.org&uploadUnit=${uploadUnit}`,
+      );
+      expect(result).toEqual({
+        ok: true,
+        link: {
+          artifactId: ARTIFACT_ID,
+          server: 'https://vault.example.org',
+          token: null,
+          uploadUnit,
+        },
+      });
+    }
+  });
+
+  it('rejects an invalid uploadUnit value', () => {
+    const result = parseUploadDeepLink(
+      `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=https%3A%2F%2Fvault.example.org&uploadUnit=bogus`,
     );
     expect(result).toEqual({ ok: false, reason: 'invalid-link' });
   });
