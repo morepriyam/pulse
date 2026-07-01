@@ -8,6 +8,7 @@ import { AppState } from 'react-native';
  * imports and testable under this project's pure-logic jest config.
  */
 export function waitUntilAppForeground(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
   if (AppState.currentState === 'active') return Promise.resolve();
   return new Promise((resolve, reject) => {
     const onAbort = () => {
