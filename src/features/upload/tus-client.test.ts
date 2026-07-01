@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { cancelTusUpload, type UploadRemainder, uploadViaTus } from './tus-client';
+import { cancelTusUpload, TusUploadError, type UploadRemainder, uploadViaTus } from './tus-client';
 
 const SERVER = 'https://vault.example.test/pulsevault';
 const ARTIFACT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -192,6 +192,52 @@ describe('uploadViaTus', () => {
     const metadata = (createCall?.init?.headers as Record<string, string>)['Upload-Metadata'];
     expect(metadata).toContain(`relatedTo ${btoa('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')}`);
     expect(metadata).toContain(`checksum ${btoa('sha256:deadbeef')}`);
+  });
+
+  it('rejects a Location header that redirects to a different origin than the paired server', async () => {
+    // A malicious or compromised paired server could otherwise redirect every
+    // subsequent HEAD/PATCH/DELETE (each carrying the bearer capability
+    // token) to an attacker-controlled host by returning an absolute
+    // Location on a different origin.
+    const file = fakeFile(5);
+    const { fetchImpl } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: 'https://evil.example/collect' } })],
+    });
+    const { uploadRemainder } = createRemainderStub([]);
+
+    await expect(
+      uploadViaTus({
+        server: SERVER,
+        token: 'tok',
+        artifactId: ARTIFACT_ID,
+        filename: 'clip.mp4',
+        kind: 'video',
+        file: file as never,
+        fetchImpl,
+        uploadRemainder,
+      }),
+    ).rejects.toBeInstanceOf(TusUploadError);
+  });
+
+  it('accepts a Location header that is same-origin but on a different path prefix', async () => {
+    const file = fakeFile(5);
+    const { fetchImpl } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/other-prefix/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '5' } })],
+    });
+    const { uploadRemainder } = createRemainderStub([]);
+
+    const result = await uploadViaTus({
+      server: SERVER,
+      token: 'tok',
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      fetchImpl,
+      uploadRemainder,
+    });
+    expect(result.resourceUrl).toBe('https://vault.example.test/other-prefix/upload/abc');
   });
 });
 
