@@ -12,9 +12,24 @@ export const projects = sqliteTable('projects', {
     .default('camera'),
   // Reserved cover frame; currently thumbnails are derived at runtime from the first clip.
   thumbnail: text('thumbnail'),
-  // Per-draft upload destination (§4).
+  // Per-draft upload destination (§4). `uploadArtifactId` is the session-anchor
+  // artifact id from the pairing deep link — used directly as the TUS artifactId
+  // for the merged-video upload (or, under `uploadUnit: "beat"`, as the
+  // `relatedTo` value every beat/manifest/captions artifact in the session
+  // declares). `uploadUnit` is resolved once from the server's `/capabilities`
+  // at pairing time and cached here so later upload runs don't re-fetch it.
   uploadServer: text('upload_server'),
   uploadToken: text('upload_token'),
+  uploadArtifactId: text('upload_artifact_id'),
+  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] }),
+  // The TUS resource URL (the `Location` from the initial create) for the
+  // merged-video upload, persisted so a relaunch can `HEAD` it to learn the
+  // true offset and resume rather than restarting from byte 0.
+  uploadResourceUrl: text('upload_resource_url'),
+  uploadStatus: text('upload_status', { enum: ['idle', 'uploading', 'uploaded', 'failed'] }),
+  captionsUploadStatus: text('captions_upload_status', {
+    enum: ['idle', 'uploading', 'uploaded', 'failed'],
+  }),
   createdAt: integer('created_at').notNull().default(now),
   lastModified: integer('last_modified').notNull().default(now),
 });
