@@ -1,10 +1,11 @@
 import { useEvent } from 'expo';
+import * as Clipboard from 'expo-clipboard';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, View } from 'react-native';
 import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,8 +24,17 @@ import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { mergedLines } from '@/features/transcription/srt';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import type { TranscriptLine } from '@/features/transcription/whisper';
+import { useUpload } from '@/features/upload/use-upload';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 // merge()/effective paths may come back as a bare fs path; expo APIs want a file:// URI.
 const toFileUri = (path: string) => (path.startsWith('/') ? `file://${path}` : path);
@@ -53,6 +63,25 @@ export default function ExportScreen() {
   const photos = useSaveToPhotos();
   const docs = useSaveToDocuments();
   const theme = useTheme();
+
+  const merged = state.status === 'done' ? { path: state.outputPath, durationMs: state.durationMs } : null;
+  const upload = useUpload(draftId ?? '', clips, merged);
+  const watchUrl =
+    upload.destination?.uploadUnit === 'merged'
+      ? `${upload.destination.server}/artifacts/${upload.destination.artifactId}${
+          upload.destination.token ? `?token=${encodeURIComponent(upload.destination.token)}` : ''
+        }`
+      : null;
+
+  const copyWatchLink = async () => {
+    if (!watchUrl) return;
+    await Clipboard.setStringAsync(watchUrl);
+    Alert.alert('Link copied', 'The watch link is on your clipboard.');
+  };
+  const shareWatchLink = () => {
+    if (!watchUrl) return;
+    void Share.share({ message: watchUrl, url: watchUrl });
+  };
 
   const runShare = async () => {
     if (state.status !== 'done' || busy) return;
@@ -188,6 +217,101 @@ export default function ExportScreen() {
                 )}
               </Pressable>
             </View>
+
+            {(upload.destination || upload.pendingPairing) && (
+              <View style={styles.uploadSection}>
+                <ThemedText type="caption1" themeColor="textSecondary" style={styles.uploadSectionLabel}>
+                  UPLOAD
+                </ThemedText>
+
+                {upload.destination ? (
+                  upload.destinationExpired && upload.state.status === 'idle' ? (
+                    <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                      <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.textSecondary} />
+                      <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => {
+                        if (upload.state.status === 'idle') void upload.start();
+                        else if (upload.state.status === 'error' && upload.state.retryable) void upload.retry();
+                        else if (upload.state.status === 'done') void copyWatchLink();
+                      }}
+                      onLongPress={upload.state.status === 'done' ? shareWatchLink : undefined}
+                      disabled={upload.state.status === 'uploading'}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        upload.state.status === 'uploading'
+                          ? `Uploading, ${Math.round(upload.state.progress * 100)} percent`
+                          : upload.state.status === 'done'
+                            ? 'Uploaded, copy link'
+                            : upload.state.status === 'error'
+                              ? upload.state.retryable
+                                ? 'Upload failed, retry'
+                                : 'Upload rejected by server'
+                              : `Upload to ${hostOf(upload.destination.server)}`
+                      }
+                      style={({ pressed }) => [
+                        styles.button,
+                        { backgroundColor: theme.backgroundElement },
+                        pressed && styles.pressed,
+                      ]}>
+                      {upload.state.status === 'uploading' ? (
+                        <>
+                          <ActivityIndicator color={theme.text} />
+                          <ThemedText>Uploading… {Math.round(upload.state.progress * 100)}%</ThemedText>
+                          <Pressable onPress={() => void upload.cancel()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel upload">
+                            <Icon name="xmark" size={16} tintColor={theme.textSecondary} />
+                          </Pressable>
+                        </>
+                      ) : upload.state.status === 'done' ? (
+                        <>
+                          <Icon name="checkmark" size={18} tintColor={theme.text} />
+                          <ThemedText>Uploaded — Copy link</ThemedText>
+                        </>
+                      ) : upload.state.status === 'error' ? (
+                        <>
+                          <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.accent} />
+                          <ThemedText>
+                            {upload.state.retryable ? 'Upload failed — Retry' : 'Rejected by server'}
+                          </ThemedText>
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.text} />
+                          <ThemedText>Upload to {hostOf(upload.destination.server)}</ThemedText>
+                        </>
+                      )}
+                    </Pressable>
+                  )
+                ) : (
+                  // Gated on `idle` too, not just `pendingPairing` itself, so a tap can't double-fire in
+                  // the brief window between `claim()` flipping local state to "uploading" and the
+                  // destination/pendingPairing live queries catching up to make `destination` non-null.
+                  upload.pendingPairing &&
+                  upload.state.status === 'idle' && (
+                    <Pressable
+                      onPress={() => void upload.claim(upload.pendingPairing!)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Upload to ${hostOf(upload.pendingPairing.server)}`}
+                      style={({ pressed }) => [
+                        styles.button,
+                        { backgroundColor: theme.backgroundElement },
+                        pressed && styles.pressed,
+                      ]}>
+                      <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.text} />
+                      <ThemedText>Upload to {hostOf(upload.pendingPairing.server)}</ThemedText>
+                    </Pressable>
+                  )
+                )}
+
+                {upload.state.status === 'error' && (
+                  <ThemedText themeColor="textSecondary" type="small" style={styles.errorMessage}>
+                    {upload.state.reason}
+                  </ThemedText>
+                )}
+              </View>
+            )}
           </>
         )}
 
@@ -312,6 +436,8 @@ const styles = StyleSheet.create({
   title: { marginTop: Spacing.two },
   errorMessage: { textAlign: 'center' },
   actions: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.five },
+  uploadSection: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.four },
+  uploadSectionLabel: { letterSpacing: 0.5 },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
