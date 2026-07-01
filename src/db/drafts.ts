@@ -43,6 +43,11 @@ export function segmentsForDraft(projectId: string) {
     .orderBy(asc(segments.order));
 }
 
+/** Reactive single-row query for a draft's `projects` row (upload destination/status live here). */
+export function projectQuery(draftId: string) {
+  return db.select().from(projects).where(eq(projects.id, draftId));
+}
+
 /** Every segment in the library — drives the global background transcription engine. */
 export const allSegmentsQuery = db.select().from(segments);
 
@@ -161,6 +166,77 @@ export async function renameDraft(draftId: string, name: string | null): Promise
 export async function deleteDraft(draftId: string): Promise<void> {
   await db.delete(projects).where(eq(projects.id, draftId));
   deleteDraftDir(draftId);
+}
+
+// Upload destination (deep-link pairing) -----------------------------------------------------
+
+/** A draft's currently-set upload destination, or null fields if it has none. */
+export async function getUploadDestination(draftId: string): Promise<{
+  uploadServer: string | null;
+  uploadToken: string | null;
+  uploadArtifactId: string | null;
+  uploadUnit: 'beat' | 'merged' | null;
+} | null> {
+  const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
+  if (!project) return null;
+  return {
+    uploadServer: project.uploadServer,
+    uploadToken: project.uploadToken,
+    uploadArtifactId: project.uploadArtifactId,
+    uploadUnit: project.uploadUnit,
+  };
+}
+
+/**
+ * Pair a draft with an upload destination (from a validated deep link +
+ * `/capabilities` lookup) and flip its mode to `'upload'`. Resets any prior
+ * upload progress (`uploadResourceUrl`/`uploadStatus`/`captionsUploadStatus`)
+ * since a new destination invalidates an in-flight upload to the old one.
+ */
+export async function setUploadDestination(
+  draftId: string,
+  destination: { server: string; token: string | null; artifactId: string; uploadUnit: 'beat' | 'merged' },
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({
+      mode: 'upload',
+      uploadServer: destination.server,
+      uploadToken: destination.token,
+      uploadArtifactId: destination.artifactId,
+      uploadUnit: destination.uploadUnit,
+      uploadResourceUrl: null,
+      uploadStatus: 'idle',
+      captionsUploadStatus: null,
+      lastModified: now,
+    })
+    .where(eq(projects.id, draftId));
+}
+
+/** Persist upload progress so a killed app can resume via `HEAD` on `resourceUrl` rather than restarting. */
+export async function setUploadProgress(
+  draftId: string,
+  progress: { status: 'idle' | 'uploading' | 'uploaded' | 'failed'; resourceUrl?: string | null },
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({
+      uploadStatus: progress.status,
+      ...(progress.resourceUrl !== undefined ? { uploadResourceUrl: progress.resourceUrl } : {}),
+      lastModified: now,
+    })
+    .where(eq(projects.id, draftId));
+}
+
+/** Persist captions-upload progress independently of the video upload (so a captions-only retry doesn't redo the video). */
+export async function setCaptionsUploadStatus(
+  draftId: string,
+  status: 'idle' | 'uploading' | 'uploaded' | 'failed',
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({ captionsUploadStatus: status, lastModified: now })
+    .where(eq(projects.id, draftId));
 }
 
 // Draft transfer (.pulse export/import) ----------------------------------------------------
