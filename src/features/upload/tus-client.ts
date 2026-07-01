@@ -43,6 +43,12 @@ export type TusUploadOptions = {
   file: File;
   /** A previously-created upload's resource URL, to resume instead of creating a new one. */
   resourceUrl?: string | null;
+  /**
+   * Called as soon as the resource URL is known — immediately if resuming, or right after
+   * the initial `POST` otherwise — so a caller can track "what's actually in flight right
+   * now" (e.g. for `cancel()`) without waiting for the whole upload to finish.
+   */
+  onResourceCreated?: (resourceUrl: string) => void;
   signal?: AbortSignal;
   onProgress?: (progress: TusUploadProgress) => void;
   /** Dependency-injected for testing; defaults to the global `fetch`. Only used for the headers-only requests (create/HEAD/DELETE) — never for the byte-carrying PATCH, see `uploadRemainder`. */
@@ -166,8 +172,23 @@ function statusErrorFromRemainder(result: RemainderUploadResult, fallbackMessage
   return new TusUploadError(fallbackMessage, { retryable, statusCode: result.status });
 }
 
+/**
+ * Resolves the server's `Location` response header against the paired
+ * server's base URL, then requires the result to stay on that same origin.
+ * Without this check, a malicious or compromised paired server could return
+ * an absolute `Location` pointing at a different host, and every subsequent
+ * `HEAD`/`PATCH`/`DELETE` — each carrying `Authorization: Bearer <token>` —
+ * would leak the capability token to that host instead of the paired server.
+ */
 function resolveLocation(location: string, base: string): string {
-  return new URL(location, base).toString();
+  const resolved = new URL(location, base);
+  const baseOrigin = new URL(base).origin;
+  if (resolved.origin !== baseOrigin) {
+    throw new TusUploadError('Server returned an upload location on an unexpected origin', {
+      retryable: false,
+    });
+  }
+  return resolved.toString();
 }
 
 async function createUpload(
@@ -238,6 +259,7 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
   const resourceUrl =
     opts.resourceUrl ??
     (await withRetry(() => createUpload(opts, fetchImpl), opts.signal, waitUntilForeground));
+  opts.onResourceCreated?.(resourceUrl);
 
   // HEAD-then-upload-remainder is retried as ONE unit, not as two separately
   // retried steps — a retry after a transient failure MUST re-HEAD first to
