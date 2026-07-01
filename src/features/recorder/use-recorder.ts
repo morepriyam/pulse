@@ -212,6 +212,36 @@ export function useRecorder(initialDraftId?: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reuses the current draft, or lazily creates one on the first clip/import of the session.
+  async function ensureDraft(): Promise<string> {
+    if (draftId) return draftId;
+    const id = await createDraft();
+    sessionDraftId.current = id;
+    setDraftId(id);
+    return id;
+  }
+
+  // Generates the thumbnail and writes the db row for a segment whose file is already copied
+  // into the draft, then reflects it synchronously in the unmount-cleanup refs (see the effect
+  // above) so a racing close/unmount can't see an "empty" draft and delete the clip just added.
+  async function persistSegment(
+    forDraftId: string,
+    segmentId: string,
+    originalFilename: string,
+    durationMs: number,
+  ) {
+    const thumbRel = thumbRelPath(forDraftId, segmentId);
+    const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
+    await addSegment(forDraftId, {
+      id: segmentId,
+      originalFilename,
+      durationMs,
+      thumbnail: ok ? thumbRel : null,
+    });
+    everHadSegments.current = true;
+    segmentCount.current = Math.max(segmentCount.current, 1);
+  }
+
   async function startRecording() {
     if (!cameraRef.current || isRecordingRef.current || !cameraReady) return;
     // A deferred stop aimed at the previous recording must not hit this one.
@@ -254,28 +284,11 @@ export function useRecorder(initialDraftId?: string) {
       // VisionCamera returns a bare filesystem path; file-store's File API wants a file:// URL.
       const uri = filePath.startsWith('file://') ? filePath : `file://${filePath}`;
 
-      let id = draftId;
-      if (!id) {
-        id = await createDraft();
-        sessionDraftId.current = id;
-        setDraftId(id);
-      }
-
+      const id = await ensureDraft();
       const segmentId = `${id}-${Date.now()}`;
       const originalFilename = await persistRecording(uri, id, segmentId);
       const durationMs = await getDurationMs(absolutize(originalFilename));
-      const thumbRel = thumbRelPath(id, segmentId);
-      const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
-      await addSegment(id, {
-        id: segmentId,
-        originalFilename,
-        durationMs,
-        thumbnail: ok ? thumbRel : null,
-      });
-      // Reflect the new segment synchronously: a close/unmount that races the live query must not
-      // see an "empty" draft and delete it (the deletion check below reads these refs).
-      everHadSegments.current = true;
-      segmentCount.current = Math.max(segmentCount.current, 1);
+      await persistSegment(id, segmentId, originalFilename, durationMs);
     } catch {
       // interrupted mid-record — drop the clip
     } finally {
@@ -325,31 +338,14 @@ export function useRecorder(initialDraftId?: string) {
         return;
       }
 
-      let id = draftId;
-      if (!id) {
-        id = await createDraft();
-        sessionDraftId.current = id;
-        setDraftId(id);
-      }
-
+      const id = await ensureDraft();
       const segmentId = `${id}-${Date.now()}`;
       const originalFilename = await copyIntoSegments(picked.uri, id, segmentId);
       const durationMs =
         info && info.duration > 0
           ? info.duration
           : await getDurationMs(absolutize(originalFilename));
-      const thumbRel = thumbRelPath(id, segmentId);
-      const ok = await generateThumbnailFile(absolutize(originalFilename), absolutize(thumbRel));
-      await addSegment(id, {
-        id: segmentId,
-        originalFilename,
-        durationMs,
-        thumbnail: ok ? thumbRel : null,
-      });
-      // Same as the recording path: reflect the new segment synchronously so a close/unmount that
-      // races the live query can't see an "empty" draft and delete the just-imported clip.
-      everHadSegments.current = true;
-      segmentCount.current = Math.max(segmentCount.current, 1);
+      await persistSegment(id, segmentId, originalFilename, durationMs);
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
     }

@@ -32,12 +32,12 @@ export function useDraftTranscripts(draftId: string | null): Map<string, Segment
   const { data } = useLiveQuery(transcriptsForDraft(draftId ?? ''), [draftId]);
   return useMemo(() => {
     const map = new Map<string, SegmentTranscript>();
-    for (const r of data) {
-      const edited = r.editedLines != null;
-      map.set(r.segmentId, {
-        status: r.status,
-        text: r.text,
-        lines: edited ? parseLines(r.editedLines) : parseLines(r.lines),
+    for (const row of data) {
+      const edited = row.editedLines != null;
+      map.set(row.segmentId, {
+        status: row.status,
+        text: row.text,
+        lines: edited ? parseLines(row.editedLines) : parseLines(row.lines),
         edited,
       });
     }

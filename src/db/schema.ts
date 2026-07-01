@@ -3,6 +3,13 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 const now = sql`(unixepoch('subsec') * 1000)`;
 
+/** Which artifact a draft's `uploadArtifactId` anchors: the merged export video itself, or the
+ * session that every beat/manifest/captions artifact declares via `relatedTo`. */
+type UploadUnit = 'beat' | 'merged';
+
+/** Lifecycle of a single upload (video or captions), tracked independently per artifact. */
+type UploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
+
 /** A draft project — an ordered set of segments, plus its upload destination. */
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
@@ -12,25 +19,25 @@ export const projects = sqliteTable('projects', {
     .default('camera'),
   // Reserved cover frame; currently thumbnails are derived at runtime from the first clip.
   thumbnail: text('thumbnail'),
-  // Per-draft upload destination (§4). `uploadArtifactId` is the session-anchor
-  // artifact id from the pairing deep link — used directly as the TUS artifactId
-  // for the merged-video upload (or, under `uploadUnit: "beat"`, as the
-  // `relatedTo` value every beat/manifest/captions artifact in the session
-  // declares). `uploadUnit` is resolved once from the server's `/capabilities`
-  // at pairing time and cached here so later upload runs don't re-fetch it.
+  // Per-draft upload destination (§4). `uploadArtifactId` is the session-anchor artifact id
+  // from the pairing deep link, used as the TUS artifactId directly (merged) or as `relatedTo`
+  // (beat). `uploadUnit` is resolved once from the server's `/capabilities` at pairing time and
+  // cached here so later upload runs don't re-fetch it.
   uploadServer: text('upload_server'),
   // The bearer token itself is NOT stored here — it's a live capability credential, kept in
   // expo-secure-store instead (`db/secure-token.ts`), not in this plaintext-at-rest table.
   uploadArtifactId: text('upload_artifact_id'),
-  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] }),
+  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] }).$type<UploadUnit>(),
   // The TUS resource URL (the `Location` from the initial create) for the
   // merged-video upload, persisted so a relaunch can `HEAD` it to learn the
   // true offset and resume rather than restarting from byte 0.
   uploadResourceUrl: text('upload_resource_url'),
-  uploadStatus: text('upload_status', { enum: ['idle', 'uploading', 'uploaded', 'failed'] }),
+  uploadStatus: text('upload_status', {
+    enum: ['idle', 'uploading', 'uploaded', 'failed'],
+  }).$type<UploadStatus>(),
   captionsUploadStatus: text('captions_upload_status', {
     enum: ['idle', 'uploading', 'uploaded', 'failed'],
-  }),
+  }).$type<UploadStatus>(),
   createdAt: integer('created_at').notNull().default(now),
   lastModified: integer('last_modified').notNull().default(now),
 });

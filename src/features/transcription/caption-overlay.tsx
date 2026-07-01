@@ -23,6 +23,10 @@ type Props = {
 };
 
 type Placed = { word: TranscriptWord; x: number; y: number };
+type MeasuredWord = { word: TranscriptWord; w: number };
+type Row = { items: MeasuredWord[]; width: number };
+type BackgroundRect = { x: number; y: number; w: number; h: number };
+type Layout = { placed: Placed[]; bg: BackgroundRect | null };
 
 /** Binary-search the line whose [t0,t1] (centiseconds) contains `posCs`; -1 if none. */
 function findActiveLine(lines: TranscriptLine[], posCs: number): number {
@@ -71,20 +75,15 @@ export function CaptionOverlay({ lines, positionMs }: Props) {
   }, [words, posCs]);
 
   // Lay the words out into <=2 centered rows that fit the canvas width.
-  const layout = useMemo(() => {
+  const layout = useMemo((): Layout => {
     if (!font || size.width === 0 || words.length === 0) {
-      return { placed: [] as Placed[], bg: null as null | { x: number; y: number; w: number; h: number } };
+      return { placed: [], bg: null };
     }
-    const spaceW = Math.max(
-      4,
-      font.measureText('A A').width - font.measureText('AA').width,
-    );
+    const spaceW = Math.max(4, font.measureText('A A').width - font.measureText('AA').width);
     const maxW = size.width - 2 * EDGE;
 
     // Greedy wrap into rows.
-    const rows: { items: { word: TranscriptWord; w: number }[]; width: number }[] = [
-      { items: [], width: 0 },
-    ];
+    const rows: Row[] = [{ items: [], width: 0 }];
     for (const word of words) {
       const w = font.measureText(word.text).width;
       const row = rows[rows.length - 1];
@@ -106,13 +105,13 @@ export function CaptionOverlay({ lines, positionMs }: Props) {
       let x = (size.width - row.width) / 2;
       const baseline = blockTop + ri * LINE_HEIGHT + FONT_SIZE;
       maxRowW = Math.max(maxRowW, row.width);
-      for (const it of row.items) {
-        placed.push({ word: it.word, x, y: baseline });
-        x += it.w + spaceW;
+      for (const item of row.items) {
+        placed.push({ word: item.word, x, y: baseline });
+        x += item.w + spaceW;
       }
     });
 
-    const bg = {
+    const bg: BackgroundRect = {
       x: (size.width - maxRowW) / 2 - PAD,
       y: blockTop - PAD / 2,
       w: maxRowW + 2 * PAD,

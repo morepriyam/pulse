@@ -2,7 +2,6 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import {
   ArrowDownToLine,
   ArrowRight,
-  Ban,
   Camera,
   Captions,
   Check,
@@ -61,33 +60,33 @@ const ANDROID_GLYPHS: Partial<Record<string, LucideIcon>> = {
   'camera.fill': Camera,
   'captions.bubble': Captions,
   'captions.bubble.fill': Captions,
-  'checkmark': Check,
+  checkmark: Check,
   'checkmark.circle.fill': CircleCheck,
   'chevron.up': ChevronUp,
   'circle.slash': CircleSlash,
-  'ellipsis': Ellipsis,
+  ellipsis: Ellipsis,
   'exclamationmark.triangle.fill': TriangleAlert,
-  'film': Film,
-  'folder': Folder,
-  'gyroscope': Orbit,
+  film: Film,
+  folder: Folder,
+  gyroscope: Orbit,
   'line.3.horizontal': GripHorizontal,
   'mic.fill': Mic,
   'mic.slash.fill': MicOff,
-  'minus': Minus,
-  'pencil': Pencil,
+  minus: Minus,
+  pencil: Pencil,
   'play.fill': Play,
-  'plus': Plus,
-  'scissors': Scissors,
-  'sparkles': Sparkles,
+  plus: Plus,
+  scissors: Scissors,
+  sparkles: Sparkles,
   'square.and.arrow.down': Download,
   'square.and.arrow.up': Share,
-  'trash': Trash2,
+  trash: Trash2,
   'trash.fill': Trash2,
   'icloud.and.arrow.up': Upload,
   'video.badge.plus': Video,
   'video.fill': Video,
   'wand.and.stars': WandSparkles,
-  'xmark': X,
+  xmark: X,
   'xmark.circle.fill': CircleX,
 };
 
@@ -110,7 +109,7 @@ function strokeWidthFor(weight?: SymbolWeight): number {
   }
 }
 
-type Props = {
+type IconProps = {
   name: IconName;
   size?: number;
   weight?: SymbolWeight;
@@ -122,17 +121,36 @@ type Props = {
  * Cross-platform icon. Renders a native SF Symbol on iOS and the mapped Lucide glyph on
  * Android (where SF Symbols don't exist). Drop-in for the props we used on <Icon>.
  */
-export function Icon({ name, size = 24, weight, tintColor, style }: Props) {
+export function Icon({ name, size = 24, weight, tintColor, style }: IconProps) {
   if (Platform.OS === 'ios') {
-    return <SymbolView name={name} size={size} weight={weight} tintColor={tintColor} style={style} />;
+    return (
+      <SymbolView name={name} size={size} weight={weight} tintColor={tintColor} style={style} />
+    );
   }
 
+  // `name` can also be the { ios, android, web } per-platform form, which isn't a valid map key.
   const Glyph = ANDROID_GLYPHS[name as string];
   if (!Glyph) {
     if (__DEV__) {
-      console.warn(`[Icon] No Android mapping for SF Symbol "${String(name)}" — add it to ANDROID_GLYPHS.`);
+      console.warn(
+        `[Icon] No Android mapping for SF Symbol "${String(name)}" — add it to ANDROID_GLYPHS.`,
+      );
     }
-    return <Circle size={size} color={tintColor ?? '#888'} strokeWidth={strokeWidthFor(weight)} style={style} />;
+    return (
+      <Circle
+        size={size}
+        color={tintColor ?? '#888'}
+        strokeWidth={strokeWidthFor(weight)}
+        style={style}
+      />
+    );
   }
-  return <Glyph size={size} color={tintColor ?? '#000'} strokeWidth={strokeWidthFor(weight)} style={style} />;
+  return (
+    <Glyph
+      size={size}
+      color={tintColor ?? '#000'}
+      strokeWidth={strokeWidthFor(weight)}
+      style={style}
+    />
+  );
 }

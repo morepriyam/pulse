@@ -1,5 +1,4 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { Icon } from '@/components/icon';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
@@ -97,8 +97,8 @@ export function ModelSwitcherModal({
             <View style={styles.headerText}>
               <ThemedText type="subtitle">On-device AI</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Runs entirely on your device — nothing leaves your phone. Powers captions today, with
-                more features coming.
+                Runs entirely on your device — nothing leaves your phone. Powers captions today,
+                with more features coming.
               </ThemedText>
             </View>
             <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close">
@@ -131,12 +131,12 @@ export function ModelSwitcherModal({
           </View>
 
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-            {MODELS.map((m) => {
-              const active = m.id === selectedId;
+            {MODELS.map((model) => {
+              const active = model.id === selectedId;
               return (
                 <Pressable
-                  key={m.id}
-                  onPress={() => choose(m.id)}
+                  key={model.id}
+                  onPress={() => choose(model.id)}
                   style={[
                     styles.row,
                     { borderColor: theme.border, backgroundColor: theme.backgroundElement },
@@ -144,13 +144,13 @@ export function ModelSwitcherModal({
                   ]}>
                   <View style={styles.rowText}>
                     <View style={styles.rowTitle}>
-                      <ThemedText type="smallBold">{m.label}</ThemedText>
+                      <ThemedText type="smallBold">{model.label}</ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
-                        {m.name}
+                        {model.name}
                       </ThemedText>
                     </View>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {m.note} · {sizeMb(m.approxBytes)}
+                      {model.note} · {sizeMb(model.approxBytes)}
                     </ThemedText>
                   </View>
                   {active && (

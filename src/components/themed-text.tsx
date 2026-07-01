@@ -41,12 +41,7 @@ export type ThemedTextProps = TextProps & {
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 
-  return (
-    <Text
-      style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]}
-      {...rest}
-    />
-  );
+  return <Text style={[{ color: theme[themeColor ?? 'text'] }, styles[type], style]} {...rest} />;
 }
 
 const styles = StyleSheet.create({
@@ -71,5 +66,10 @@ const styles = StyleSheet.create({
   smallBold: { fontSize: 15, lineHeight: 20, fontWeight: 600 }, // → Subheadline (emphasized)
   link: { fontSize: 15, lineHeight: 20, fontWeight: 400 }, // → Subheadline
   linkPrimary: { fontSize: 15, lineHeight: 20, fontWeight: 400, color: SystemColors.blue.light }, // iOS system blue
-  code: { fontFamily: Fonts.mono, fontSize: 13, lineHeight: 18, fontWeight: Platform.select({ android: 700 }) ?? 400 },
+  code: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: Platform.select({ android: 700 }) ?? 400,
+  },
 });

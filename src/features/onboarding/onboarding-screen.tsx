@@ -97,9 +97,7 @@ export function OnboardingScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-        onMomentumScrollEnd={(e) =>
-          setIndex(Math.round(e.nativeEvent.contentOffset.x / width))
-        }
+        onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item }) => (
           <ScrollView
             style={{ width }}
@@ -112,7 +110,9 @@ export function OnboardingScreen() {
                 <Icon name={item.symbol ?? 'sparkles'} size={56} tintColor={theme.accent} />
               </View>
             )}
-            <ThemedText type="title1" style={styles.title}>{item.title}</ThemedText>
+            <ThemedText type="title1" style={styles.title}>
+              {item.title}
+            </ThemedText>
             <View style={styles.bullets}>
               {item.bullets.map((bullet, i) => (
                 <View key={i} style={styles.bulletRow}>
@@ -127,7 +127,9 @@ export function OnboardingScreen() {
                       <View style={[styles.bulletDot, { backgroundColor: theme.accent }]} />
                     )}
                   </View>
-                  <ThemedText type="body" style={styles.bulletText}>{bullet.text}</ThemedText>
+                  <ThemedText type="body" style={styles.bulletText}>
+                    {bullet.text}
+                  </ThemedText>
                 </View>
               ))}
             </View>

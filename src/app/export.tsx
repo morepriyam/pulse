@@ -24,7 +24,7 @@ import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { mergedLines } from '@/features/transcription/srt';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import type { TranscriptLine } from '@/features/transcription/whisper';
-import { useUpload } from '@/features/upload/use-upload';
+import { type UploadState, useUpload } from '@/features/upload/use-upload';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 
@@ -38,6 +38,26 @@ function hostOf(url: string): string {
 
 // merge()/effective paths may come back as a bare fs path; expo APIs want a file:// URI.
 const toFileUri = (path: string) => (path.startsWith('/') ? `file://${path}` : path);
+
+// The watch link embeds a live bearer token (the same one that authorizes this upload) — anyone
+// who gets it can act as this session, so warn before it leaves the app via clipboard/share.
+const WATCH_LINK_WARNING =
+  'This link lets anyone who has it view (and control) this upload — treat it like a password.';
+
+// Accessibility label for the upload button, one per upload state; `idle` names the destination
+// since that's the only state where a tap actually starts something new.
+function uploadButtonLabel(state: UploadState, server: string): string {
+  switch (state.status) {
+    case 'uploading':
+      return `Uploading, ${Math.round(state.progress * 100)} percent`;
+    case 'done':
+      return 'Uploaded, copy link';
+    case 'error':
+      return state.retryable ? 'Upload failed, retry' : 'Upload rejected by server';
+    case 'idle':
+      return `Upload to ${hostOf(server)}`;
+  }
+}
 
 export default function ExportScreen() {
   const insets = useSafeAreaInsets();
@@ -64,7 +84,8 @@ export default function ExportScreen() {
   const docs = useSaveToDocuments();
   const theme = useTheme();
 
-  const merged = state.status === 'done' ? { path: state.outputPath, durationMs: state.durationMs } : null;
+  const merged =
+    state.status === 'done' ? { path: state.outputPath, durationMs: state.durationMs } : null;
   const upload = useUpload(draftId ?? '', clips, merged);
   const watchUrl =
     upload.destination?.uploadUnit === 'merged'
@@ -72,11 +93,6 @@ export default function ExportScreen() {
           upload.destination.token ? `?token=${encodeURIComponent(upload.destination.token)}` : ''
         }`
       : null;
-
-  // The link embeds a live bearer token (the same one that authorizes this upload) — anyone
-  // who gets it can act as this session, so warn before it leaves the app via clipboard/share.
-  const WATCH_LINK_WARNING =
-    'This link lets anyone who has it view (and control) this upload — treat it like a password.';
 
   const copyWatchLink = async () => {
     if (!watchUrl) return;
@@ -237,37 +253,38 @@ export default function ExportScreen() {
 
             {(upload.destination || upload.pendingPairing) && (
               <View style={styles.uploadSection}>
-                <ThemedText type="caption1" themeColor="textSecondary" style={styles.uploadSectionLabel}>
+                <ThemedText
+                  type="caption1"
+                  themeColor="textSecondary"
+                  style={styles.uploadSectionLabel}>
                   UPLOAD
                 </ThemedText>
 
                 {upload.destination ? (
                   upload.destinationExpired && upload.state.status === 'idle' ? (
                     <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
-                      <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.textSecondary} />
+                      <Icon
+                        name="exclamationmark.triangle.fill"
+                        size={18}
+                        tintColor={theme.textSecondary}
+                      />
                       <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
                     </View>
                   ) : (
                     <Pressable
                       onPress={() => {
                         if (upload.state.status === 'idle') void upload.start();
-                        else if (upload.state.status === 'error' && upload.state.retryable) void upload.retry();
+                        else if (upload.state.status === 'error' && upload.state.retryable)
+                          void upload.retry();
                         else if (upload.state.status === 'done') void copyWatchLink();
                       }}
                       onLongPress={upload.state.status === 'done' ? shareWatchLink : undefined}
                       disabled={upload.state.status === 'uploading'}
                       accessibilityRole="button"
-                      accessibilityLabel={
-                        upload.state.status === 'uploading'
-                          ? `Uploading, ${Math.round(upload.state.progress * 100)} percent`
-                          : upload.state.status === 'done'
-                            ? 'Uploaded, copy link'
-                            : upload.state.status === 'error'
-                              ? upload.state.retryable
-                                ? 'Upload failed, retry'
-                                : 'Upload rejected by server'
-                              : `Upload to ${hostOf(upload.destination.server)}`
-                      }
+                      accessibilityLabel={uploadButtonLabel(
+                        upload.state,
+                        upload.destination.server,
+                      )}
                       style={({ pressed }) => [
                         styles.button,
                         { backgroundColor: theme.backgroundElement },
@@ -276,8 +293,14 @@ export default function ExportScreen() {
                       {upload.state.status === 'uploading' ? (
                         <>
                           <ActivityIndicator color={theme.text} />
-                          <ThemedText>Uploading… {Math.round(upload.state.progress * 100)}%</ThemedText>
-                          <Pressable onPress={() => void upload.cancel()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel upload">
+                          <ThemedText>
+                            Uploading… {Math.round(upload.state.progress * 100)}%
+                          </ThemedText>
+                          <Pressable
+                            onPress={() => void upload.cancel()}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cancel upload">
                             <Icon name="xmark" size={16} tintColor={theme.textSecondary} />
                           </Pressable>
                         </>
@@ -288,9 +311,15 @@ export default function ExportScreen() {
                         </>
                       ) : upload.state.status === 'error' ? (
                         <>
-                          <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.accent} />
+                          <Icon
+                            name="exclamationmark.triangle.fill"
+                            size={18}
+                            tintColor={theme.accent}
+                          />
                           <ThemedText>
-                            {upload.state.retryable ? 'Upload failed — Retry' : 'Rejected by server'}
+                            {upload.state.retryable
+                              ? 'Upload failed — Retry'
+                              : 'Rejected by server'}
                           </ThemedText>
                         </>
                       ) : (

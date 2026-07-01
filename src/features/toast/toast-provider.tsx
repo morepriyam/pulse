@@ -25,9 +25,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     timerRef.current = setTimeout(() => setMessage(null), TOAST_DURATION_MS);
   }, []);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   return (
     <ToastContext.Provider value={{ showToast }}>

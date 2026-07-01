@@ -2,7 +2,11 @@ import { eq } from 'drizzle-orm';
 
 import { db } from './client';
 import { settings } from './schema';
-import { deletePendingPairingToken, getPendingPairingToken, setPendingPairingToken } from './secure-token';
+import {
+  deletePendingPairingToken,
+  getPendingPairingToken,
+  setPendingPairingToken,
+} from './secure-token';
 
 /**
  * A server pairing the device has connected to but no draft has claimed yet
@@ -54,14 +58,21 @@ export function parsePendingPairing(raw: string | null | undefined): PendingPair
 }
 
 export async function getPendingPairing(): Promise<PendingPairing | null> {
-  const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, PENDING_PAIRING_KEY));
+  const rows = await db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, PENDING_PAIRING_KEY));
   const meta = parsePendingPairing(rows[0]?.value);
   if (!meta) return null;
   return { ...meta, token: await getPendingPairingToken() };
 }
 
 export async function setPendingPairing(pairing: PendingPairing): Promise<void> {
-  const meta: PendingPairingMeta = { server: pairing.server, artifactId: pairing.artifactId, uploadUnit: pairing.uploadUnit };
+  const meta: PendingPairingMeta = {
+    server: pairing.server,
+    artifactId: pairing.artifactId,
+    uploadUnit: pairing.uploadUnit,
+  };
   await db
     .insert(settings)
     .values({ key: PENDING_PAIRING_KEY, value: JSON.stringify(meta) })

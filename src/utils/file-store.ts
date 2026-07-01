@@ -33,11 +33,21 @@ export function absolutize(relPath: string): string {
   return new File(Paths.document, ...relPath.split('/')).uri;
 }
 
-/** The on-disk segment file for a draft, creating the segments dir if needed. */
-function segmentDest(draftId: string, segmentId: string): File {
+/** The draft's segments dir, creating it (and any missing parents) if needed. */
+function segmentsDir(draftId: string): Directory {
   const dir = new Directory(Paths.document, 'drafts', draftId, 'segments');
   dir.create({ intermediates: true, idempotent: true });
-  return new File(dir, `${segmentId}.mp4`);
+  return dir;
+}
+
+/** The on-disk pristine segment file for a draft, creating the segments dir if needed. */
+function segmentDest(draftId: string, segmentId: string): File {
+  return new File(segmentsDir(draftId), `${segmentId}.mp4`);
+}
+
+/** The on-disk edited segment file for a draft, creating the segments dir if needed. */
+function editedSegmentDest(draftId: string, segmentId: string): File {
+  return new File(segmentsDir(draftId), `${segmentId}.edited.mp4`);
 }
 
 /** Move a recorded clip out of the cache into the draft's segments dir; returns its relative path. */
@@ -74,9 +84,7 @@ export async function importTrimmedFile(
   draftId: string,
   segmentId: string,
 ): Promise<string> {
-  const dir = new Directory(Paths.document, 'drafts', draftId, 'segments');
-  dir.create({ intermediates: true, idempotent: true });
-  const dest = new File(dir, `${segmentId}.edited.mp4`);
+  const dest = editedSegmentDest(draftId, segmentId);
   if (dest.exists) dest.delete();
   await new File(srcUri).move(dest);
   return editedSegmentRelPath(draftId, segmentId);
@@ -103,19 +111,13 @@ export async function readRelBytes(relPath: string): Promise<Uint8Array | null> 
 }
 
 /** Write an imported clip's bytes as the draft's pristine original; returns its relative path. */
-export function writeOriginalBytes(
-  draftId: string,
-  segmentId: string,
-  bytes: Uint8Array,
-): string {
+export function writeOriginalBytes(draftId: string, segmentId: string, bytes: Uint8Array): string {
   segmentDest(draftId, segmentId).write(bytes);
   return segmentRelPath(draftId, segmentId);
 }
 
 /** Write an imported clip's edited (re-encoded) bytes alongside its original; returns its rel path. */
 export function writeEditedBytes(draftId: string, segmentId: string, bytes: Uint8Array): string {
-  const dir = new Directory(Paths.document, 'drafts', draftId, 'segments');
-  dir.create({ intermediates: true, idempotent: true });
-  new File(dir, `${segmentId}.edited.mp4`).write(bytes);
+  editedSegmentDest(draftId, segmentId).write(bytes);
   return editedSegmentRelPath(draftId, segmentId);
 }
