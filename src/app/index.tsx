@@ -56,6 +56,7 @@ export default function HomeScreen() {
   const selectedModel = getModel(modelRow[0]?.value);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Once the live query reflects the pending name, drop it so the DB value takes back over.
   if (
     pendingRename &&
     drafts.some((d) => d.id === pendingRename.id && d.name === pendingRename.name)
@@ -126,7 +127,7 @@ export default function HomeScreen() {
     );
   };
 
-  // Built per-render from the open draft; new options are added here (§extensible menu).
+  // Built per-render from the open draft; new actions are added here.
   const menuActions: MenuAction[] = actionsDraft
     ? [
         {
@@ -181,7 +182,9 @@ export default function HomeScreen() {
               hitSlop={12}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={transferState === 'importing' ? 'Importing drafts' : 'Import drafts'}
+              accessibilityLabel={
+                transferState === 'importing' ? 'Importing drafts' : 'Import drafts'
+              }
               accessibilityHint="Imports drafts from a .pulse file"
               accessibilityState={{ disabled: busy, busy: transferState === 'importing' }}
               style={({ pressed }) => [
@@ -259,7 +262,9 @@ export default function HomeScreen() {
       {visibleDrafts.length === 0 ? (
         <View style={styles.empty}>
           <Icon name="video.badge.plus" size={52} tintColor={theme.textSecondary} />
-          <ThemedText type="title3" style={styles.emptyTitle}>No drafts yet</ThemedText>
+          <ThemedText type="title3" style={styles.emptyTitle}>
+            No drafts yet
+          </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyHint}>
             Tap + to record your first video.
           </ThemedText>
@@ -320,7 +325,12 @@ export default function HomeScreen() {
           {transferState === 'exporting' ? (
             <ActivityIndicator color={theme.onAccent} />
           ) : (
-            <Icon name="square.and.arrow.up" size={26} weight="semibold" tintColor={theme.onAccent} />
+            <Icon
+              name="square.and.arrow.up"
+              size={26}
+              weight="semibold"
+              tintColor={theme.onAccent}
+            />
           )}
         </Pressable>
       ) : (

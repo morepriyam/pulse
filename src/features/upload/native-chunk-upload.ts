@@ -57,7 +57,12 @@ function prepareUploadSource(
   } finally {
     reader.close();
   }
-  return { file: temp, cleanup: () => { if (temp.exists) temp.delete(); } };
+  return {
+    file: temp,
+    cleanup: () => {
+      if (temp.exists) temp.delete();
+    },
+  };
 }
 
 /**
@@ -70,6 +75,17 @@ function prepareUploadSource(
  * `ArrayBuffer`/`TypedArray` parts, and `expo-file-system`'s own
  * `File.slice()` happens to construct exactly that internally, so even the
  * "use a Blob from slice()" approach doesn't avoid this on React Native).
+ *
+ * KNOWN LIMITATION: unlike the `fetch`-based POST/HEAD/DELETE in
+ * `tus-client.ts`, this PATCH has no `redirect: 'manual'` equivalent —
+ * `expo-file-system`'s `UploadOptions` doesn't expose one, and neither
+ * `FileSystemUploadTask.swift` nor its Android counterpart intercepts
+ * redirects, so a 3xx here falls through to the platform default
+ * (`URLSession`/`OkHttp` both follow automatically; Android's OkHttp also
+ * resends `Authorization` unchanged to the redirect target). Closing this
+ * would require patching `expo-file-system`'s native upload task, not just
+ * this module. Accepted as a residual risk: it requires a compromised or
+ * MITM'd paired server to trigger, matching the fetch layer before this fix.
  */
 export const uploadRemainderNative: UploadRemainder = async ({
   resourceUrl,

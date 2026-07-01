@@ -167,9 +167,32 @@ async function statusError(res: Response, fallbackMessage: string): Promise<TusU
   return new TusUploadError(message, { retryable, statusCode: res.status });
 }
 
-function statusErrorFromRemainder(result: RemainderUploadResult, fallbackMessage: string): TusUploadError {
+function statusErrorFromRemainder(
+  result: RemainderUploadResult,
+  fallbackMessage: string,
+): TusUploadError {
   const retryable = result.status >= 500 || result.status === 429;
   return new TusUploadError(fallbackMessage, { retryable, statusCode: result.status });
+}
+
+/**
+ * Every headers-only request (`POST`/`HEAD`/`DELETE`) passes `redirect:
+ * 'manual'` and then calls this immediately on the result. Without it, a
+ * compromised or MITM'd paired server could 3xx any of those requests and
+ * the platform's `fetch` would transparently resend it — Authorization
+ * header included — to an attacker-controlled host, with tus-client never
+ * seeing anything other than the final response to inspect. A manual
+ * redirect surfaces as `response.type === 'opaqueredirect'` per the fetch
+ * spec, or as a literal 3xx status on runtimes that don't implement that
+ * type; both are treated as a hard, non-retryable failure here rather than
+ * ever being followed.
+ */
+function rejectRedirect(res: Response): void {
+  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+    throw new TusUploadError('Server returned a redirect instead of a direct response', {
+      retryable: false,
+    });
+  }
 }
 
 /**
@@ -191,12 +214,10 @@ function resolveLocation(location: string, base: string): string {
   return resolved.toString();
 }
 
-async function createUpload(
-  opts: TusUploadOptions,
-  fetchImpl: typeof fetch,
-): Promise<string> {
+async function createUpload(opts: TusUploadOptions, fetchImpl: typeof fetch): Promise<string> {
   const res = await fetchImpl(`${opts.server}/upload`, {
     method: 'POST',
+    redirect: 'manual',
     signal: opts.signal,
     headers: {
       'Tus-Resumable': TUS_VERSION,
@@ -205,9 +226,12 @@ async function createUpload(
       ...authHeaders(opts.token),
     },
   });
-  if (res.status !== 201) throw await statusError(res, `Could not start the upload (${res.status})`);
+  rejectRedirect(res);
+  if (res.status !== 201)
+    throw await statusError(res, `Could not start the upload (${res.status})`);
   const location = res.headers.get('location');
-  if (!location) throw new TusUploadError('Server did not return an upload location', { retryable: false });
+  if (!location)
+    throw new TusUploadError('Server did not return an upload location', { retryable: false });
   return resolveLocation(location, opts.server);
 }
 
@@ -220,9 +244,11 @@ async function fetchOffset(
 ): Promise<number> {
   const res = await fetchImpl(resourceUrl, {
     method: 'HEAD',
+    redirect: 'manual',
     signal,
     headers: { 'Tus-Resumable': TUS_VERSION, ...authHeaders(token) },
   });
+  rejectRedirect(res);
   if (!res.ok) throw await statusError(res, `Could not resume the upload (${res.status})`);
   const offset = Number(res.headers.get('upload-offset'));
   if (!Number.isFinite(offset)) {
@@ -309,8 +335,10 @@ export async function cancelTusUpload(
   token: string | null,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  await fetchImpl(resourceUrl, {
+  const res = await fetchImpl(resourceUrl, {
     method: 'DELETE',
+    redirect: 'manual',
     headers: { 'Tus-Resumable': TUS_VERSION, ...authHeaders(token) },
   });
+  rejectRedirect(res);
 }

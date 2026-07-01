@@ -44,6 +44,50 @@ function createRemainderStub(results: { status: number; headers?: Record<string,
 
 const JSON_HEADERS: Record<string, string> = { 'content-type': 'application/json' };
 
+/**
+ * A redirect descriptor for `createRedirectFollowingFetchStub`: models a real
+ * HTTP 3xx response instead of a plain 200/204/4xx Response.
+ */
+type RedirectDescriptor = { to: string; status?: number };
+
+/**
+ * Unlike `createFetchStub`, this models what an actual `fetch` implementation
+ * does with a 3xx response: with the default `redirect: 'follow'` mode, the
+ * runtime transparently resends the same method/headers (including
+ * `Authorization`) to the `Location` target and only ever hands the caller the
+ * final response — the 3xx itself, and the fact a redirect happened at all,
+ * is invisible to application code unless the request explicitly opted out
+ * via `redirect: 'manual'`. `leaked` records every request the *redirect
+ * target* actually received, so a test can assert whether secrets reached an
+ * attacker-controlled origin even though tus-client itself never saw an error.
+ */
+function createRedirectFollowingFetchStub(
+  responses: Partial<Record<string, (Response | RedirectDescriptor)[]>>,
+  finalResponse: () => Response,
+) {
+  const calls: FetchCall[] = [];
+  const leaked: { url: string; headers: Record<string, string> }[] = [];
+  const queues = new Map(Object.entries(responses).map(([k, v]) => [k, [...(v ?? [])]]));
+  const fetchImpl = jest.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const method = init?.method ?? 'GET';
+    const queue = queues.get(method);
+    const next = queue?.shift();
+    if (!next) throw new Error(`No stubbed response for ${method} ${url}`);
+    if (next instanceof Response) return next;
+
+    if (init?.redirect === 'manual') {
+      return new Response(null, { status: next.status ?? 307, headers: { location: next.to } });
+    }
+    // Simulate the runtime transparently following the redirect: the target
+    // receives the original request (with its Authorization header) before
+    // tus-client ever gets a response back.
+    leaked.push({ url: next.to, headers: { ...((init?.headers ?? {}) as Record<string, string>) } });
+    return finalResponse();
+  });
+  return { fetchImpl: fetchImpl as unknown as typeof fetch, calls, leaked };
+}
+
 describe('uploadViaTus', () => {
   it('creates, HEADs, uploads the remainder in one attempt, then confirms via a final HEAD', async () => {
     const file = fakeFile(20);
@@ -238,6 +282,56 @@ describe('uploadViaTus', () => {
       uploadRemainder,
     });
     expect(result.resourceUrl).toBe('https://vault.example.test/other-prefix/upload/abc');
+  });
+
+  describe('redirect handling', () => {
+    // `resolveLocation` only validates the *application-level* `Location`
+    // header returned in a 201 body from `createUpload`. Without `redirect:
+    // 'manual'` on the follow-up HEAD/PATCH/DELETE requests, a real fetch
+    // implementation would otherwise follow an actual HTTP 3xx there
+    // transparently, resending the bearer token to whatever host a
+    // compromised or MITM'd paired server names, before tus-client ever sees
+    // a response to inspect. These assert that never happens.
+
+    it('rejects rather than following a redirect target on the offset HEAD request', async () => {
+      const file = fakeFile(20);
+      const { fetchImpl, leaked } = createRedirectFollowingFetchStub(
+        {
+          POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+          HEAD: [{ to: 'https://evil.example/collect' }],
+        },
+        () => new Response(null, { status: 200, headers: { 'upload-offset': '20' } }),
+      );
+      const { uploadRemainder } = createRemainderStub([]);
+
+      await expect(
+        uploadViaTus({
+          server: SERVER,
+          token: 'tok',
+          artifactId: ARTIFACT_ID,
+          filename: 'clip.mp4',
+          kind: 'video',
+          file: file as never,
+          fetchImpl,
+          uploadRemainder,
+        }),
+      ).rejects.toBeInstanceOf(TusUploadError);
+
+      expect(leaked).toHaveLength(0);
+    });
+
+    it('rejects rather than following a redirect target on cancelTusUpload', async () => {
+      const { fetchImpl, leaked } = createRedirectFollowingFetchStub(
+        { DELETE: [{ to: 'https://evil.example/collect' }] },
+        () => new Response(null, { status: 204 }),
+      );
+
+      await expect(cancelTusUpload(`${SERVER}/upload/abc`, 'tok', fetchImpl)).rejects.toBeInstanceOf(
+        TusUploadError,
+      );
+
+      expect(leaked).toHaveLength(0);
+    });
   });
 });
 

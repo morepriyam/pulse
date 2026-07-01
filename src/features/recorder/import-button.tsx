@@ -1,11 +1,8 @@
 import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet } from 'react-native';
 
-/**
- * The "+" import control to the right of the record button — opens the system video
- * picker to add an existing device clip as a segment (§2.1, orig §4.6). Styled like the
- * original app's video-library button: solid white circle, black plus.
- */
+/** The "+" import control next to the record button — opens the system video picker to add
+ *  an existing device clip as a segment. */
 export function ImportButton({ onPress, disabled }: { onPress: () => void; disabled: boolean }) {
   return (
     <Pressable

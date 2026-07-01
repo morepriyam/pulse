@@ -15,8 +15,7 @@ import { initWhisperVad, type WhisperVadContext } from 'whisper.rn';
  * lives under `vad/` — NOT `models/` — so the single-speech-model-on-disk cleanup
  * (`deleteModelsExcept`) never wipes it on a model switch.
  */
-const VAD_URL =
-  'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin';
+const VAD_URL = 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin';
 const VAD_FILENAME = 'ggml-silero-v6.2.0.bin';
 // Completeness floor for a partial/interrupted download (the real file is ~865 KB).
 const VAD_MIN_BYTES = 512 * 1024;
@@ -81,15 +80,15 @@ async function loadVad(): Promise<WhisperVadContext> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
     await ensureVadModel(); // transient (offline) failures throw here and are intentionally not cached
-    let c: WhisperVadContext;
+    let vadCtx: WhisperVadContext;
     try {
-      c = await initVadContext(vadFile().uri);
-    } catch (e) {
+      vadCtx = await initVadContext(vadFile().uri);
+    } catch (error) {
       unavailable = true; // failed even on CPU — don't retry this on every clip
-      throw e;
+      throw error;
     }
-    ctx = c;
-    return c;
+    ctx = vadCtx;
+    return vadCtx;
   })();
   try {
     return await loadPromise;
@@ -102,9 +101,9 @@ async function loadVad(): Promise<WhisperVadContext> {
 export async function releaseVad(): Promise<void> {
   loadPromise = null;
   unavailable = false; // allow a fresh attempt after a model toggle
-  const c = ctx;
+  const prevCtx = ctx;
   ctx = null;
-  await c?.release();
+  await prevCtx?.release();
 }
 
 /**
@@ -117,7 +116,7 @@ export async function releaseVad(): Promise<void> {
  * timestamps, do NOT apply the centisecond (`*10` / `/100`) conversion used for caption lines.
  */
 export async function hasSpeech(wavPath: string): Promise<boolean> {
-  const c = await loadVad();
-  const segments = await c.detectSpeech(wavPath);
+  const vadCtx = await loadVad();
+  const segments = await vadCtx.detectSpeech(wavPath);
   return segments.length > 0;
 }

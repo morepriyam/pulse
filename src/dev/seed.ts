@@ -14,6 +14,9 @@ const SEED_DRAFT_ID = 'dev-seed';
 const SPEED_UNIFORM_DRAFT_ID = 'dev-seed-speed-uniform';
 const SPEED_MIXED_DRAFT_ID = 'dev-seed-speed-mixed';
 
+/** A bundled sample clip: `module` is the Metro asset module id from `require(...)`. */
+type SeedFixture = { readonly module: number; readonly label: string };
+
 /**
  * Bundled sample clips, laid into the seed draft in array order. Pick clips with
  * **deliberately mismatched** resolution / fps / codec / orientation so they also stress the
@@ -22,7 +25,7 @@ const SPEED_MIXED_DRAFT_ID = 'dev-seed-speed-mixed';
  * `require()` of a bundled `.mp4` returns an asset module id (resolved by metro at build time),
  * so paths must be static string literals — no variables, no globbing.
  */
-const FIXTURES: { module: number; label: string }[] = [
+const FIXTURES: readonly SeedFixture[] = [
   // primary surface: short-form portrait (matches the recorder / iPhone Camera — coded landscape
   // + 90deg rotation metadata, QuickTime container). The h264 one mirrors this recorder exactly.
   {
@@ -59,21 +62,21 @@ const FIXTURES: { module: number; label: string }[] = [
 // bundle only carries one clip per distinct format while the draft still holds 20 segments.
 
 const SPEED = {
-  h264: require('../../assets/dev/speed/portrait-h264.mp4'), // recorder match — the dominant
-  hevc: require('../../assets/dev/speed/portrait-hevc.mp4'),
-  p60: require('../../assets/dev/speed/portrait-60.mp4'),
-  p4k: require('../../assets/dev/speed/portrait-4k.mp4'),
-  land1080: require('../../assets/dev/speed/landscape-1080.mp4'),
-  land4k: require('../../assets/dev/speed/landscape-4k.mp4'),
+  h264: require('../../assets/dev/speed/portrait-h264.mp4') as number, // recorder match — the dominant clip
+  hevc: require('../../assets/dev/speed/portrait-hevc.mp4') as number,
+  p60: require('../../assets/dev/speed/portrait-60.mp4') as number,
+  p4k: require('../../assets/dev/speed/portrait-4k.mp4') as number,
+  land1080: require('../../assets/dev/speed/landscape-1080.mp4') as number,
+  land4k: require('../../assets/dev/speed/landscape-4k.mp4') as number,
 };
 
 // Dev sample 2: 20× the same recorder-match clip → one shared signature → the lossless
 // passthrough join (production fast path). Exercises how the fast path scales to a 2-min draft.
-const SPEED_UNIFORM_MODULES: number[] = Array.from({ length: 20 }, () => SPEED.h264);
+const SPEED_UNIFORM_MODULES: readonly number[] = Array.from({ length: 20 }, () => SPEED.h264);
 
 // Dev sample 3: 14× recorder-match portrait (dominant) + 6 interleaved outliers → selective
 // conform re-encodes only the outliers, then passthrough-joins. Real-world mixed-format cost.
-const SPEED_MIXED_MODULES: number[] = [
+const SPEED_MIXED_MODULES: readonly number[] = [
   SPEED.h264,
   SPEED.h264,
   SPEED.hevc,
@@ -104,7 +107,7 @@ const SPEED_MIXED_MODULES: number[] = [
 async function seedModules(
   draftId: string,
   name: string,
-  modules: number[],
+  modules: readonly number[],
 ): Promise<string | undefined> {
   if (modules.length === 0) {
     console.warn('[seed] no modules to seed — generate clips and list them in src/dev/seed.ts');
