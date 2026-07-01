@@ -19,7 +19,8 @@ export const projects = sqliteTable('projects', {
   // declares). `uploadUnit` is resolved once from the server's `/capabilities`
   // at pairing time and cached here so later upload runs don't re-fetch it.
   uploadServer: text('upload_server'),
-  uploadToken: text('upload_token'),
+  // The bearer token itself is NOT stored here — it's a live capability credential, kept in
+  // expo-secure-store instead (`db/secure-token.ts`), not in this plaintext-at-rest table.
   uploadArtifactId: text('upload_artifact_id'),
   uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] }),
   // The TUS resource URL (the `Location` from the initial create) for the
@@ -96,6 +97,25 @@ export const settings = sqliteTable('settings', {
   value: text('value'),
 });
 
+/**
+ * A sub-artifact within an upload session (a beat-mode segment's video/captions, or the
+ * merged-mode session's captions), keyed so a retry can look up and resume the SAME
+ * server-side artifact instead of minting a fresh UUID and re-uploading from scratch.
+ * `localKey` is `"captions"` for the merged-mode session's SRT, or
+ * `` `${segmentId}:video` ``/`` `${segmentId}:captions` `` for beat mode.
+ */
+export const uploadArtifacts = sqliteTable('upload_artifacts', {
+  id: text('id').primaryKey(), // `${projectId}:${localKey}`
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  localKey: text('local_key').notNull(),
+  artifactId: text('artifact_id').notNull(),
+  // Null until the first PATCH round succeeds — see `tus-client.ts`'s `createUpload`.
+  resourceUrl: text('resource_url'),
+});
+
 export type Project = typeof projects.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
 export type Transcript = typeof transcripts.$inferSelect;
+export type UploadArtifact = typeof uploadArtifacts.$inferSelect;
