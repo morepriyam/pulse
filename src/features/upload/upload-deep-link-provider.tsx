@@ -1,4 +1,5 @@
 import { useLinkingURL } from 'expo-linking';
+import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 
@@ -71,6 +72,15 @@ export function UploadDeepLinkProvider({ children }: { children: React.ReactNode
     if (!url || url === handledUrl.current || !url.startsWith('pulsecam://')) return;
     handledUrl.current = url;
 
+    // Expo Router has no route matching this scheme-only URL (no path, just query params), so
+    // its own automatic Linking-to-route resolution pushes the root route on top of whatever
+    // screen was already open (PROTOCOL.md §3 — this link is data-only, never meant to navigate
+    // anywhere on its own). By the time this effect runs, that push has already happened — this
+    // provider is the parent of `<Stack>`, so its own linking subscription fires first. Collapse
+    // it back to a single screen immediately, before even asking to confirm the pairing, so a
+    // rejected/invalid link doesn't leave the extra screen behind either.
+    router.dismissAll();
+
     const result = parseUploadDeepLink(url);
     if (!result.ok) {
       Alert.alert("Can't open this link", REJECTION_MESSAGE[result.reason]);
@@ -93,11 +103,14 @@ export function UploadDeepLinkProvider({ children }: { children: React.ReactNode
             Alert.alert("Can't connect", CAPABILITIES_REJECTION_MESSAGE[capResult.reason]);
             return;
           }
+          // The link's own `uploadUnit` (if present) is a per-session override of the
+          // deployment-wide value `/capabilities` reports (PROTOCOL.md §3, §8) — prefer it.
+          // `/capabilities` is still fetched regardless, for the protocol-version check above.
           return setPendingPairing({
             server: link.server,
             token: link.token,
             artifactId: link.artifactId,
-            uploadUnit: capResult.capabilities.uploadUnit,
+            uploadUnit: link.uploadUnit ?? capResult.capabilities.uploadUnit,
           }).then(() => {
             showToast(`Connected to ${host} — open a pulse or make a new one to upload`);
           });
