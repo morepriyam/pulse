@@ -6,6 +6,30 @@ function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+const TUS_RESUME_DIR_NAME = 'tus-resume';
+
+/**
+ * Deletes any leftover files under the cache dir's `tus-resume/` scratch
+ * space. `prepareUploadSource`'s temp copy is only cleaned up in a `finally`
+ * block, which never runs if the app process is killed outright (not just an
+ * aborted upload) mid-resume — leaving a duplicate, unencrypted copy of
+ * potentially sensitive video content sitting in app cache indefinitely.
+ * Call once at app startup: any file found here by definition belongs to a
+ * session that never got a chance to finish uploading, and the next resume
+ * attempt always writes a fresh temp file from the current offset anyway, so
+ * nothing here is ever needed after the process that wrote it is gone.
+ */
+export function cleanupStaleUploadTempFiles(): void {
+  const dir = new Directory(Paths.cache, TUS_RESUME_DIR_NAME);
+  if (!dir.exists) return;
+  try {
+    dir.delete();
+  } catch {
+    // Best-effort — a locked/missing file here just means it'll be retried
+    // next launch, not a reason to fail app startup.
+  }
+}
+
 /**
  * When resuming a partial upload (`offset > 0`), streams just the remainder
  * (from `offset` to EOF) into a temp file via `FileHandle` (seek + bounded
