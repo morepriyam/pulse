@@ -73,14 +73,31 @@ export default function ExportScreen() {
         }`
       : null;
 
+  // The link embeds a live bearer token (the same one that authorizes this upload) — anyone
+  // who gets it can act as this session, so warn before it leaves the app via clipboard/share.
+  const WATCH_LINK_WARNING =
+    'This link lets anyone who has it view (and control) this upload — treat it like a password.';
+
   const copyWatchLink = async () => {
     if (!watchUrl) return;
-    await Clipboard.setStringAsync(watchUrl);
-    Alert.alert('Link copied', 'The watch link is on your clipboard.');
+    Alert.alert('Copy watch link?', WATCH_LINK_WARNING, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Copy',
+        onPress: () => {
+          void Clipboard.setStringAsync(watchUrl).then(() =>
+            Alert.alert('Link copied', 'The watch link is on your clipboard.'),
+          );
+        },
+      },
+    ]);
   };
   const shareWatchLink = () => {
     if (!watchUrl) return;
-    void Share.share({ message: watchUrl, url: watchUrl });
+    Alert.alert('Share watch link?', WATCH_LINK_WARNING, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share', onPress: () => void Share.share({ message: watchUrl, url: watchUrl }) },
+    ]);
   };
 
   const runShare = async () => {
