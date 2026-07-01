@@ -21,6 +21,18 @@ import {
 /** Tolerance for "playhead reached the clip's out-point" (ms). */
 const END_EPSILON_MS = 60;
 
+/** Index of the selected segment, falling back to the first clip when the selection is gone
+ * (e.g. its row was deleted). -1 while the preview is closed or the draft is empty. */
+function resolveActiveIndex(
+  segments: readonly Segment[],
+  anchorId: string | null,
+  selectedId: string | null,
+): number {
+  if (anchorId == null || segments.length === 0) return -1;
+  const i = segments.findIndex((s) => s.id === selectedId);
+  return i >= 0 ? i : 0;
+}
+
 /**
  * In-recorder preview state: drives one `expo-video` player across a draft's segments
  * (sequential playback of each clip's effective file — edited if present, else original),
@@ -76,13 +88,8 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     if (anchorId != null) wantPlayRef.current = true;
   }, [anchorId]);
 
-  // The active clip is the selection, falling back to the first clip when the selection
-  // is gone (e.g. its row was deleted). Playback and the cursor act on this row.
-  const activeIndex = (() => {
-    if (anchorId == null || segments.length === 0) return -1;
-    const i = segments.findIndex((s) => s.id === selectedId);
-    return i >= 0 ? i : 0;
-  })();
+  // Playback and the cursor act on this row.
+  const activeIndex = resolveActiveIndex(segments, anchorId, selectedId);
   const active = activeIndex >= 0 ? segments[activeIndex] : null;
   const activeId = active?.id ?? null;
   // The active clip's effective file — changes when it's edited (a new `editedFilename`).

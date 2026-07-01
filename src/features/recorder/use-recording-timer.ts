@@ -7,10 +7,7 @@ import { effMs } from '@/utils/segment-window';
 // clip durations; while recording it adds the wall-clock elapsed since `recordStartedAt`,
 // ticking every 100ms. On stop the new clip's precise file duration lands in `segments` and
 // the live estimate is dropped — a sub-second snap that's expected.
-export function useRecordingTimer(
-  segments: Segment[],
-  recordStartedAt: number | null,
-): number {
+export function useRecordingTimer(segments: Segment[], recordStartedAt: number | null): number {
   const savedTotal = segments.reduce((sum, s) => sum + effMs(s), 0);
   // Only the interval mutates `now`; elapsed is derived in render. A stale `now` (idle, or the
   // first 100ms of a fresh recording) yields a negative diff that the clamp floors to 0.

@@ -105,7 +105,10 @@ export function DraftCard({
       </View>
 
       {selectionMode ? (
-        <View style={styles.more} accessibilityRole="checkbox" accessibilityState={{ checked: selected }}>
+        <View
+          style={styles.more}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selected }}>
           <Icon
             name={selected ? 'checkmark.circle.fill' : 'circle'}
             size={22}

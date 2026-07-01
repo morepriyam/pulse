@@ -35,11 +35,7 @@ export function RecordButton({
       <Animated.View
         accessibilityRole="button"
         accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-        style={[
-          styles.recordOuter,
-          { opacity: dragging ? 0 : cameraReady ? 1 : 0.4 },
-          outerStyle,
-        ]}>
+        style={[styles.recordOuter, { opacity: dragging ? 0 : cameraReady ? 1 : 0.4 }, outerStyle]}>
         <Animated.View
           style={[isRecording ? styles.recordInnerActive : styles.recordInner, innerStyle]}
         />

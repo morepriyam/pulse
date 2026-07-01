@@ -1,6 +1,6 @@
 import { useEvent } from 'expo';
 import { useLocalSearchParams, router } from 'expo-router';
-import { Icon } from '@/components/icon';
+import { Icon, type IconName } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,11 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
 import { getSegment } from '@/db/drafts';
 import type { Segment } from '@/db/schema';
-import {
-  clearEditedTranscript,
-  getTranscriptRow,
-  saveEditedTranscript,
-} from '@/db/transcripts';
+import { clearEditedTranscript, getTranscriptRow, saveEditedTranscript } from '@/db/transcripts';
 import { CloseButton } from '@/features/recorder/close-button';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { useSubtitleEditor, type Cue } from '@/features/transcription/use-subtitle-editor';
@@ -38,7 +34,7 @@ const CPS_WARN = 17;
 const CPS_BAD = 20;
 const MAX_CHARS = 42;
 
-function parse(json: string | null): TranscriptLine[] {
+function parseTranscriptLines(json: string | null): TranscriptLine[] {
   if (!json) return [];
   try {
     return JSON.parse(json) as TranscriptLine[];
@@ -70,8 +66,8 @@ export default function SubtitlesScreen() {
       const segment = await getSegment(segmentId);
       if (!segment) return alive && setMissing(true);
       const row = await getTranscriptRow(segmentId);
-      const autoLines = parse(row?.lines ?? null);
-      const initial = row?.editedLines ? parse(row.editedLines) : autoLines;
+      const autoLines = parseTranscriptLines(row?.lines ?? null);
+      const initial = row?.editedLines ? parseTranscriptLines(row.editedLines) : autoLines;
       if (alive) setData({ segment, initial, autoLines });
     })();
     return () => {
@@ -193,7 +189,10 @@ function Editor({
       </View>
 
       <View style={styles.previewWrap}>
-        <Pressable style={styles.previewCard} onPress={togglePlay} accessibilityLabel="Toggle playback">
+        <Pressable
+          style={styles.previewCard}
+          onPress={togglePlay}
+          accessibilityLabel="Toggle playback">
           <VideoView
             style={StyleSheet.absoluteFill}
             player={player}
@@ -226,7 +225,9 @@ function Editor({
         {editor.cues.map((cue) => (
           <View
             key={cue.id}
-            onLayout={(e: LayoutChangeEvent) => offsets.current.set(cue.id, e.nativeEvent.layout.y)}>
+            onLayout={(e: LayoutChangeEvent) =>
+              offsets.current.set(cue.id, e.nativeEvent.layout.y)
+            }>
             <CueRow
               cue={cue}
               playing={cue.id === playingId}
@@ -406,11 +407,19 @@ function TimeControl({
       <ThemedText themeColor="textSecondary" style={styles.timeLabel}>
         {label}
       </ThemedText>
-      <Pressable onPress={onMinus} hitSlop={8} style={styles.stepBtn} accessibilityLabel={`${label} earlier`}>
+      <Pressable
+        onPress={onMinus}
+        hitSlop={8}
+        style={styles.stepBtn}
+        accessibilityLabel={`${label} earlier`}>
         <Icon name="minus" size={12} weight="semibold" tintColor={theme.text} />
       </Pressable>
       <ThemedText style={styles.timeValue}>{value}</ThemedText>
-      <Pressable onPress={onPlus} hitSlop={8} style={styles.stepBtn} accessibilityLabel={`${label} later`}>
+      <Pressable
+        onPress={onPlus}
+        hitSlop={8}
+        style={styles.stepBtn}
+        accessibilityLabel={`${label} later`}>
         <Icon name="plus" size={12} weight="semibold" tintColor={theme.text} />
       </Pressable>
       <Pressable
@@ -431,7 +440,7 @@ function ActionBtn({
   onPress,
   tint,
 }: {
-  name: string;
+  name: IconName;
   label: string;
   theme: ReturnType<typeof useTheme>;
   onPress: () => void;
@@ -439,7 +448,7 @@ function ActionBtn({
 }) {
   return (
     <Pressable onPress={onPress} hitSlop={6} accessibilityLabel={label} style={styles.actionBtn}>
-      <Icon name={name as never} size={15} tintColor={tint ?? theme.text} />
+      <Icon name={name} size={15} tintColor={tint ?? theme.text} />
       <ThemedText style={[styles.actionLabel, { color: tint ?? theme.text }]}>{label}</ThemedText>
     </Pressable>
   );

@@ -301,7 +301,7 @@ function SegmentThumb({
       {/* Drag handle — the only reorder/drag activator (drag onto the trash to delete).
           A full-width grab strip along the top: large enough to hold reliably on a 48pt-wide
           thumb, styled like a sheet grabber so it reads as "drag me". */}
-      <Sortable.Handle style={[styles.handle]}>
+      <Sortable.Handle style={styles.handle}>
         <View style={styles.handleGrabber} />
       </Sortable.Handle>
     </Animated.View>
