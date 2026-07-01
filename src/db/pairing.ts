@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from './client';
 import { settings } from './schema';
+import { deletePendingPairingToken, getPendingPairingToken, setPendingPairingToken } from './secure-token';
 
 /**
  * A server pairing the device has connected to but no draft has claimed yet
@@ -20,6 +21,10 @@ export type PendingPairing = {
   uploadUnit: 'beat' | 'merged';
 };
 
+/** The non-secret portion of a `PendingPairing`, persisted as JSON in `settings`. The token
+ * (a live bearer credential) lives in expo-secure-store instead — see `secure-token.ts`. */
+export type PendingPairingMeta = Omit<PendingPairing, 'token'>;
+
 /** Live-queryable row holding the pending pairing's JSON, if any. */
 export const pendingPairingQuery = db
   .select({ value: settings.value })
@@ -27,10 +32,10 @@ export const pendingPairingQuery = db
   .where(eq(settings.key, PENDING_PAIRING_KEY));
 
 /** Parses a `pendingPairingQuery` row's raw value; `null` for missing/corrupt data. */
-export function parsePendingPairing(raw: string | null | undefined): PendingPairing | null {
+export function parsePendingPairing(raw: string | null | undefined): PendingPairingMeta | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<PendingPairing>;
+    const parsed = JSON.parse(raw) as Partial<PendingPairingMeta>;
     if (
       typeof parsed.server !== 'string' ||
       typeof parsed.artifactId !== 'string' ||
@@ -40,7 +45,6 @@ export function parsePendingPairing(raw: string | null | undefined): PendingPair
     }
     return {
       server: parsed.server,
-      token: parsed.token ?? null,
       artifactId: parsed.artifactId,
       uploadUnit: parsed.uploadUnit,
     };
@@ -51,16 +55,21 @@ export function parsePendingPairing(raw: string | null | undefined): PendingPair
 
 export async function getPendingPairing(): Promise<PendingPairing | null> {
   const rows = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, PENDING_PAIRING_KEY));
-  return parsePendingPairing(rows[0]?.value);
+  const meta = parsePendingPairing(rows[0]?.value);
+  if (!meta) return null;
+  return { ...meta, token: await getPendingPairingToken() };
 }
 
 export async function setPendingPairing(pairing: PendingPairing): Promise<void> {
+  const meta: PendingPairingMeta = { server: pairing.server, artifactId: pairing.artifactId, uploadUnit: pairing.uploadUnit };
   await db
     .insert(settings)
-    .values({ key: PENDING_PAIRING_KEY, value: JSON.stringify(pairing) })
-    .onConflictDoUpdate({ target: settings.key, set: { value: JSON.stringify(pairing) } });
+    .values({ key: PENDING_PAIRING_KEY, value: JSON.stringify(meta) })
+    .onConflictDoUpdate({ target: settings.key, set: { value: JSON.stringify(meta) } });
+  await setPendingPairingToken(pairing.token);
 }
 
 export async function clearPendingPairing(): Promise<void> {
   await db.delete(settings).where(eq(settings.key, PENDING_PAIRING_KEY));
+  await deletePendingPairingToken();
 }
