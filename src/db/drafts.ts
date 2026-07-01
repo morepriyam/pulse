@@ -9,7 +9,8 @@ import {
 } from '@/utils/file-store';
 import { generateThumbnailFile } from '@/utils/video';
 import { db } from './client';
-import { projects, segments } from './schema';
+import { projects, segments, uploadArtifacts } from './schema';
+import { deleteDraftToken, setDraftToken } from './secure-token';
 
 const now = sql`(unixepoch('subsec') * 1000)`;
 
@@ -166,14 +167,15 @@ export async function renameDraft(draftId: string, name: string | null): Promise
 export async function deleteDraft(draftId: string): Promise<void> {
   await db.delete(projects).where(eq(projects.id, draftId));
   deleteDraftDir(draftId);
+  await deleteDraftToken(draftId);
 }
 
 // Upload destination (deep-link pairing) -----------------------------------------------------
 
-/** A draft's currently-set upload destination, or null fields if it has none. */
+/** A draft's currently-set upload destination, or null fields if it has none. The token lives
+ * in expo-secure-store, not this row — see `getDraftToken` in `secure-token.ts`. */
 export async function getUploadDestination(draftId: string): Promise<{
   uploadServer: string | null;
-  uploadToken: string | null;
   uploadArtifactId: string | null;
   uploadUnit: 'beat' | 'merged' | null;
 } | null> {
@@ -181,7 +183,6 @@ export async function getUploadDestination(draftId: string): Promise<{
   if (!project) return null;
   return {
     uploadServer: project.uploadServer,
-    uploadToken: project.uploadToken,
     uploadArtifactId: project.uploadArtifactId,
     uploadUnit: project.uploadUnit,
   };
@@ -192,6 +193,7 @@ export async function getUploadDestination(draftId: string): Promise<{
  * `/capabilities` lookup) and flip its mode to `'upload'`. Resets any prior
  * upload progress (`uploadResourceUrl`/`uploadStatus`/`captionsUploadStatus`)
  * since a new destination invalidates an in-flight upload to the old one.
+ * The bearer token is written to expo-secure-store, not this row (§ token security).
  */
 export async function setUploadDestination(
   draftId: string,
@@ -202,7 +204,6 @@ export async function setUploadDestination(
     .set({
       mode: 'upload',
       uploadServer: destination.server,
-      uploadToken: destination.token,
       uploadArtifactId: destination.artifactId,
       uploadUnit: destination.uploadUnit,
       uploadResourceUrl: null,
@@ -211,6 +212,10 @@ export async function setUploadDestination(
       lastModified: now,
     })
     .where(eq(projects.id, draftId));
+  await setDraftToken(draftId, destination.token);
+  // A new destination invalidates any sub-artifacts (beat videos/captions, merged
+  // captions) uploaded to the old one — they'd resume against the wrong server otherwise.
+  await db.delete(uploadArtifacts).where(eq(uploadArtifacts.projectId, draftId));
 }
 
 /** Persist upload progress so a killed app can resume via `HEAD` on `resourceUrl` rather than restarting. */
@@ -237,6 +242,43 @@ export async function setCaptionsUploadStatus(
     .update(projects)
     .set({ captionsUploadStatus: status, lastModified: now })
     .where(eq(projects.id, draftId));
+}
+
+// Upload sub-artifacts (beat/captions resume identity) --------------------------------------
+
+/** A sub-artifact's identity/progress, or `null` if this `localKey` hasn't been reserved yet. */
+export async function getUploadArtifact(
+  draftId: string,
+  localKey: string,
+): Promise<{ artifactId: string; resourceUrl: string | null } | null> {
+  const [row] = await db
+    .select({ artifactId: uploadArtifacts.artifactId, resourceUrl: uploadArtifacts.resourceUrl })
+    .from(uploadArtifacts)
+    .where(eq(uploadArtifacts.id, `${draftId}:${localKey}`));
+  return row ?? null;
+}
+
+/** Reserve (or update the progress of) a sub-artifact, so a retry resumes it instead of
+ * minting a fresh artifactId and re-uploading from scratch. */
+export async function upsertUploadArtifact(
+  draftId: string,
+  localKey: string,
+  data: { artifactId: string; resourceUrl?: string | null },
+): Promise<void> {
+  const id = `${draftId}:${localKey}`;
+  await db
+    .insert(uploadArtifacts)
+    .values({
+      id,
+      projectId: draftId,
+      localKey,
+      artifactId: data.artifactId,
+      resourceUrl: data.resourceUrl ?? null,
+    })
+    .onConflictDoUpdate({
+      target: uploadArtifacts.id,
+      set: { artifactId: data.artifactId, ...(data.resourceUrl !== undefined ? { resourceUrl: data.resourceUrl } : {}) },
+    });
 }
 
 // Draft transfer (.pulse export/import) ----------------------------------------------------

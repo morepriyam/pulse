@@ -43,6 +43,20 @@
       "when": 1782857970496,
       "tag": "0005_abandoned_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1782880024088,
+      "tag": "0006_glossy_king_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1782880133288,
+      "tag": "0007_clear_doctor_faustus",
+      "breakpoints": true
     }
   ]
 }
