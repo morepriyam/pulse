@@ -6,4 +6,9 @@ module.exports = {
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
   moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
   testMatch: ['<rootDir>/src/**/*.test.ts'],
+  // Independent git submodules with their own package.json — exclude them from
+  // haste-map scanning so jest doesn't see a naming collision with this app's own
+  // package.json (both happen to be named "pulse").
+  modulePathIgnorePatterns: ['<rootDir>/pulse-mieweb', '<rootDir>/pulsevault-mieweb'],
+  watchPathIgnorePatterns: ['<rootDir>/pulse-mieweb', '<rootDir>/pulsevault-mieweb'],
 };
