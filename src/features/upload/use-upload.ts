@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   getUploadArtifact,
@@ -138,11 +138,18 @@ function describeError(err: unknown): ErrorDescription {
  * `${segmentId}:video`) — a retry looks up the existing entry and resumes it
  * via `tus-client`'s normal HEAD-then-PATCH resume path instead of minting a
  * fresh artifactId and re-uploading a duplicate from byte 0.
+ *
+ * `mergedRef` is a ref (not a plain value) so this hook can be called — and its `destination` read
+ * — before the merged output is known. Its identity is stable across renders, which is what lets
+ * `export.tsx` decide whether to auto-merge at all (via `useExport`'s `auto` option) using this
+ * hook's own `destination`, without a circular "useExport needs destination, useUpload needs
+ * merged" dependency. Only read at upload time (`uploadMerged`), never rendered, so a ref is
+ * enough — no re-render needed when the merge finishes.
  */
 export function useUpload(
   draftId: string,
   segments: Segment[],
-  merged: { path: string; durationMs: number } | null,
+  mergedRef: RefObject<{ path: string; durationMs: number } | null>,
 ) {
   const { data: projectRows } = useLiveQuery(projectQuery(draftId), [draftId]);
   const project = projectRows[0];
@@ -303,6 +310,7 @@ export function useUpload(
 
   const uploadMerged = useCallback(
     async (destination: Destination, signal: AbortSignal) => {
+      const merged = mergedRef.current;
       if (!merged) throw new Error('Export is not ready yet');
       const file = new File(merged.path);
       const checksum = await sha256Checksum(file);
@@ -351,7 +359,7 @@ export function useUpload(
       }
       return result.resourceUrl;
     },
-    [draftId, merged, segments, transcripts, uploadOne],
+    [draftId, mergedRef, segments, transcripts, uploadOne],
   );
 
   const uploadBeats = useCallback(
