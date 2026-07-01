@@ -1,0 +1,4 @@
+[submodule "pulsevault-mieweb"]
+	path = pulsevault-mieweb
+	url = https://github.com/mieweb/pulsevault.git
+	branch = main

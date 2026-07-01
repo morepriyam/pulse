@@ -4,7 +4,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MigrationGate } from '@/db/migrate';
+import { ToastProvider } from '@/features/toast/toast-provider';
 import { TranscriptionProvider } from '@/features/transcription/transcription-provider';
+import { UploadDeepLinkProvider } from '@/features/upload/upload-deep-link-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function RootLayout() {
@@ -16,14 +18,18 @@ export default function RootLayout() {
         <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
           <MigrationGate>
             <TranscriptionProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
-                <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
-                <Stack.Screen
-                  name="onboarding"
-                  options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
-                />
-              </Stack>
+              <ToastProvider>
+                <UploadDeepLinkProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
+                    <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
+                    <Stack.Screen
+                      name="onboarding"
+                      options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+                    />
+                  </Stack>
+                </UploadDeepLinkProvider>
+              </ToastProvider>
             </TranscriptionProvider>
           </MigrationGate>
           <StatusBar style="auto" />
