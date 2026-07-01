@@ -38,19 +38,19 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
 
   const files: Record<string, Uint8Array> = {};
   const bundleDrafts: BundleDraft[] = [];
-  let firstName: string | null = null;
+  let singleExportName: string | null = null;
 
-  for (let d = 0; d < draftIds.length; d++) {
-    const loaded = await getDraftForExport(draftIds[d]);
+  for (let draftIndex = 0; draftIndex < draftIds.length; draftIndex++) {
+    const loaded = await getDraftForExport(draftIds[draftIndex]);
     if (!loaded) continue;
     const { project, segments } = loaded;
     const bundleSegments: BundleSegment[] = [];
 
-    for (let s = 0; s < segments.length; s++) {
-      const seg = segments[s];
+    for (let segIndex = 0; segIndex < segments.length; segIndex++) {
+      const seg = segments[segIndex];
       const origBytes = await readRelBytes(seg.originalFilename);
       if (!origBytes) continue; // clip file vanished — skip this segment
-      const original = `${MEDIA_DIR}/d${d}-s${s}.mp4`;
+      const original = `${MEDIA_DIR}/d${draftIndex}-s${segIndex}.mp4`;
       files[original] = origBytes;
 
       // Preserve full fidelity: ship the edited cut alongside the pristine original so the
@@ -59,7 +59,7 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
       if (seg.editedFilename) {
         const editedBytes = await readRelBytes(seg.editedFilename);
         if (editedBytes) {
-          edited = `${MEDIA_DIR}/d${d}-s${s}.edited.mp4`;
+          edited = `${MEDIA_DIR}/d${draftIndex}-s${segIndex}.edited.mp4`;
           files[edited] = editedBytes;
         }
       }
@@ -74,7 +74,7 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
     }
 
     if (bundleSegments.length === 0) continue; // nothing to carry for this draft
-    if (bundleDrafts.length === 0) firstName = project.name;
+    if (bundleDrafts.length === 0) singleExportName = project.name;
     bundleDrafts.push({
       name: project.name,
       mode: project.mode,
@@ -98,7 +98,7 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
 
   const fileName =
     bundleDrafts.length === 1
-      ? `pulse-draft-${safeName(firstName)}-${now}.pulse`
+      ? `pulse-draft-${safeName(singleExportName)}-${now}.pulse`
       : `pulse-backup-${now}.pulse`;
 
   const dir = new Directory(Paths.cache, EXPORT_DIRNAME);

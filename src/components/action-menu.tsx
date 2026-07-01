@@ -20,7 +20,7 @@ export type MenuAction = {
   onPress: () => void;
 };
 
-type Props = {
+type ActionMenuProps = {
   visible: boolean;
   /** The control the menu anchors to; its right edge aligns to the anchor's right edge. */
   anchor: Anchor | null;
@@ -38,7 +38,7 @@ const EST_ROW_HEIGHT = 48;
  * below the anchor, or above it when there isn't room. Generic by design: callers pass a
  * list of {@link MenuAction}s, so new options are added by extending that array.
  */
-export function ActionMenu({ visible, anchor, actions, onClose }: Props) {
+export function ActionMenu({ visible, anchor, actions, onClose }: ActionMenuProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();

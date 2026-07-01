@@ -111,16 +111,17 @@ export function PlayheadCursor({
     () => cursorX.value,
     (x) => {
       if (suspendAutoScroll.value || scrubbing.value) return;
-      const vw = viewportW.value;
-      if (vw <= 0) return;
-      const maxScroll = Math.max(0, contentW.value - vw);
+      const viewportWidth = viewportW.value;
+      if (viewportWidth <= 0) return;
+      const maxScroll = Math.max(0, contentW.value - viewportWidth);
       const knobX = x + SCRUB_INSET; // content-x of the knob/line (matches the translate inset)
-      const cur = scrollOffset.value;
-      let target = cur;
-      if (knobX < cur + EDGE_MARGIN) target = knobX - EDGE_MARGIN;
-      else if (knobX > cur + vw - EDGE_MARGIN) target = knobX - vw + EDGE_MARGIN;
+      const currentOffset = scrollOffset.value;
+      let target = currentOffset;
+      if (knobX < currentOffset + EDGE_MARGIN) target = knobX - EDGE_MARGIN;
+      else if (knobX > currentOffset + viewportWidth - EDGE_MARGIN)
+        target = knobX - viewportWidth + EDGE_MARGIN;
       target = Math.min(Math.max(target, 0), maxScroll);
-      if (Math.abs(target - cur) > 0.5) scrollTo(scrollRef, target, 0, false);
+      if (Math.abs(target - currentOffset) > 0.5) scrollTo(scrollRef, target, 0, false);
     },
   );
 
@@ -170,7 +171,10 @@ export function PlayheadCursor({
       // little into the first clip. KNOB/2 lets contentX reach 0 and maxContentX exactly.
       const knobSeek = Math.min(Math.max(raw, KNOB / 2), vw - KNOB / 2);
       // content-x (the playhead/seek position) = knob screen-x − inset + offset.
-      const contentX = Math.min(Math.max(knobSeek - SCRUB_INSET + nextOffset, 0), maxContentX.value);
+      const contentX = Math.min(
+        Math.max(knobSeek - SCRUB_INSET + nextOffset, 0),
+        maxContentX.value,
+      );
       cursorX.value = contentX; // drives the knob render (cursorX − scrollOffset)
       sinceSeek.value += dt;
       if (sinceSeek.value >= SCRUB_INTERVAL_MS / 1000) {

@@ -71,6 +71,10 @@ export function decodeCapabilityClaims(token: string): CapabilityClaims | null {
  * stop offering an upload that would race the server's clock to a 403
  * rather than actually have time to send anything.
  */
-export function isClaimsExpired(claims: CapabilityClaims, bufferMs: number, nowMs: number): boolean {
+export function isClaimsExpired(
+  claims: CapabilityClaims,
+  bufferMs: number,
+  nowMs: number,
+): boolean {
   return nowMs >= claims.exp * 1000 - bufferMs;
 }

@@ -11,17 +11,17 @@ const csToMs = (cs: number) => Math.round(cs * 10);
 const msToCs = (ms: number) => Math.round(ms / 10);
 
 function linesToCaptions(lines: TranscriptLine[]): ContentCaption[] {
-  return lines.map((l, i) => {
-    const start = csToMs(l.t0);
-    const end = csToMs(l.t1);
+  return lines.map((line, index) => {
+    const start = csToMs(line.t0);
+    const end = csToMs(line.t1);
     return {
       type: 'caption',
-      index: i + 1,
+      index: index + 1,
       start,
       end,
       duration: Math.max(0, end - start),
-      content: l.text,
-      text: l.text,
+      content: line.text,
+      text: line.text,
     };
   });
 }
@@ -34,17 +34,21 @@ export function linesToSrt(lines: TranscriptLine[]): string {
 /** Parse an SRT document back into caption lines (no word-level data — SRT has none). */
 export function srtToLines(srt: string): TranscriptLine[] {
   return parse(srt)
-    .filter((c: Caption): c is ContentCaption => c.type === 'caption')
-    .map((c) => ({ text: c.text.trim(), t0: msToCs(c.start), t1: msToCs(c.end) }));
+    .filter((caption: Caption): caption is ContentCaption => caption.type === 'caption')
+    .map((caption) => ({
+      text: caption.text.trim(),
+      t0: msToCs(caption.start),
+      t1: msToCs(caption.end),
+    }));
 }
 
 /** Offset a line (and its words) by `offsetCs` centiseconds — used to stitch clips into one timeline. */
-function shiftLine(l: TranscriptLine, offsetCs: number): TranscriptLine {
+function shiftLine(line: TranscriptLine, offsetCs: number): TranscriptLine {
   return {
-    text: l.text,
-    t0: l.t0 + offsetCs,
-    t1: l.t1 + offsetCs,
-    words: l.words?.map((w) => ({ text: w.text, t0: w.t0 + offsetCs, t1: w.t1 + offsetCs })),
+    text: line.text,
+    t0: line.t0 + offsetCs,
+    t1: line.t1 + offsetCs,
+    words: line.words?.map((w) => ({ text: w.text, t0: w.t0 + offsetCs, t1: w.t1 + offsetCs })),
   };
 }
 
@@ -59,13 +63,13 @@ export function mergedLines(
 ): TranscriptLine[] {
   const out: TranscriptLine[] = [];
   let offsetMs = 0;
-  for (const s of segments) {
-    const t = transcripts.get(s.id);
-    if (t?.lines.length) {
+  for (const segment of segments) {
+    const transcript = transcripts.get(segment.id);
+    if (transcript?.lines.length) {
       const offsetCs = offsetMs / 10;
-      for (const l of t.lines) out.push(shiftLine(l, offsetCs));
+      for (const line of transcript.lines) out.push(shiftLine(line, offsetCs));
     }
-    offsetMs += effMs(s);
+    offsetMs += effMs(segment);
   }
   return out;
 }

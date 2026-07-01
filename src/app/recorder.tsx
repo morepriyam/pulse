@@ -42,11 +42,7 @@ import { closeToHome } from '@/utils/navigation';
 
 // Ask for the full multi-camera device on the back so 0.5x / 1x / Tele are all reachable via
 // zoom; the front falls back to its single wide lens automatically.
-const PHYSICAL_DEVICES: PhysicalDeviceType[] = [
-  'ultra-wide-angle',
-  'wide-angle',
-  'telephoto',
-];
+const PHYSICAL_DEVICES: PhysicalDeviceType[] = ['ultra-wide-angle', 'wide-angle', 'telephoto'];
 // Upper zoom cap (factor). Devices expose 100x+ of mostly-unusable digital zoom; cap so the
 // drag/pinch range stays useful. Tunable on-device.
 const MAX_ZOOM_FACTOR = 16;
@@ -261,18 +257,14 @@ export default function RecorderScreen() {
   // Hold the camera until persisted prefs load, so the first frame uses the saved facing.
   if (!prefsReady) return <ThemedView style={styles.fill} />;
 
-  // The camera should be live only when recording is possible: not while a clip preview is open
-  // and not while the Export screen covers the recorder. VisionCamera's `isActive` pauses the
-  // session in place on BOTH platforms (no Android unmount dance needed), dropping torch and
-  // battery drain. Recording is never in flight when inactive; useRecorder's unmount effect is
-  // the stop backstop regardless.
-  // Stop the session while backgrounded too (not just on preview / screen blur): iOS would
-  // otherwise auto-resume the capture session on foreground with the mic still attached — straight
-  // into a call that started in the background (the -11800 freeze). Restarting only once
-  // `appActive` is true lets call detection re-poll first, so the mic isn't resumed into a call.
-  // `|| isRecording` keeps the session alive while a clip is being finalized on background, so the
-  // segment saves before we explicitly tear the session down.
-  // `!recovering` drops the session for one bounce after a mic-priority error so it rebuilds cleanly.
+  // The camera is live only when recording is possible: not during preview, not while Export
+  // covers this screen, and not while backgrounded — VisionCamera's `isActive` pauses the session
+  // in place on both platforms. Background is included (not just preview/blur) because iOS would
+  // otherwise auto-resume the session on foreground with the mic still attached, straight into a
+  // call that started in the background (the -11800 freeze below); waiting for `appActive` lets
+  // call detection re-poll first. `|| isRecording` keeps the session up while a clip finalizes in
+  // background, so the segment saves before we tear it down. `!recovering` drops it for one bounce
+  // after a mic-priority error so it rebuilds cleanly.
   const cameraActive = !previewing && focused && (appActive || isRecording) && !recovering;
 
   // Close: finalize any in-flight clip (saving it into the draft) before navigating home, so the

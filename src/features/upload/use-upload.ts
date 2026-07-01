@@ -11,7 +11,12 @@ import {
   setUploadProgress,
   upsertUploadArtifact,
 } from '@/db/drafts';
-import { clearPendingPairing, parsePendingPairing, type PendingPairing, pendingPairingQuery } from '@/db/pairing';
+import {
+  clearPendingPairing,
+  parsePendingPairing,
+  type PendingPairing,
+  pendingPairingQuery,
+} from '@/db/pairing';
 import { getDraftToken, getPendingPairingToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
 import { useTick } from '@/hooks/use-tick';
@@ -69,6 +74,15 @@ type Destination = {
   resourceUrl: string | null;
 };
 
+/** One artifact to hand to `uploadOne` — a session anchor (video/manifest) or a related sub-artifact (captions). */
+type UploadArtifactSpec = {
+  artifactId: string;
+  filename: string;
+  kind: ArtifactKind;
+  relatedTo?: string;
+  file: File;
+};
+
 function bufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -90,10 +104,18 @@ function writeTempTextFile(name: string, contents: string): File {
   return file;
 }
 
-function describeError(err: unknown): { reason: string; retryable: boolean } {
+/** Shared shape of `TusUploadError` and `ExpiredPairingError` — the two error types `describeError` special-cases. */
+type RetryableError = Error & { retryable: boolean };
+
+type ErrorDescription = { reason: string; retryable: boolean };
+
+function describeError(err: unknown): ErrorDescription {
   if (err && typeof err === 'object' && 'retryable' in err) {
-    const e = err as { message?: string; retryable: boolean };
-    return { reason: e.message ?? 'Upload failed', retryable: e.retryable };
+    const retryableError = err as RetryableError;
+    return {
+      reason: retryableError.message ?? 'Upload failed',
+      retryable: retryableError.retryable,
+    };
   }
   if (err instanceof Error && err.name === 'AbortError') {
     return { reason: 'Cancelled', retryable: true };
@@ -147,7 +169,10 @@ export function useUpload(
   useTick(EXPIRY_CHECK_INTERVAL_MS);
 
   const hasDestination =
-    project?.mode === 'upload' && !!project.uploadServer && !!project.uploadArtifactId && !!project.uploadUnit;
+    project?.mode === 'upload' &&
+    !!project.uploadServer &&
+    !!project.uploadArtifactId &&
+    !!project.uploadUnit;
 
   // The bearer token lives in expo-secure-store, not the (reactive) drizzle-backed `project`
   // row — SecureStore has no live-query equivalent, so it's loaded into local state keyed off
@@ -217,14 +242,16 @@ export function useUpload(
   }, [rawPendingPairing, pendingPairingExpired]);
 
   const state: UploadState =
-    activeState.status === 'idle' && project?.uploadStatus === 'uploaded' && project.uploadResourceUrl
+    activeState.status === 'idle' &&
+    project?.uploadStatus === 'uploaded' &&
+    project.uploadResourceUrl
       ? { status: 'done', resourceUrl: project.uploadResourceUrl }
       : activeState;
 
   const uploadOne = useCallback(
     async (
       destination: Destination,
-      artifact: { artifactId: string; filename: string; kind: ArtifactKind; relatedTo?: string; file: File },
+      artifact: UploadArtifactSpec,
       resourceUrl: string | null,
       checksum: string | undefined,
       signal: AbortSignal,
@@ -265,7 +292,10 @@ export function useUpload(
         uploadRemainder: uploadRemainderNative,
         onProgress,
       });
-      currentUploadRef.current = { artifactId: artifact.artifactId, resourceUrl: result.resourceUrl };
+      currentUploadRef.current = {
+        artifactId: artifact.artifactId,
+        resourceUrl: result.resourceUrl,
+      };
       return result;
     },
     [],
@@ -283,7 +313,10 @@ export function useUpload(
         checksum,
         signal,
         ({ bytesSent, totalBytes }) =>
-          setActiveState({ status: 'uploading', progress: totalBytes ? bytesSent / totalBytes : 0 }),
+          setActiveState({
+            status: 'uploading',
+            progress: totalBytes ? bytesSent / totalBytes : 0,
+          }),
       );
       await setUploadProgress(draftId, { status: 'uploaded', resourceUrl: result.resourceUrl });
 
@@ -295,7 +328,8 @@ export function useUpload(
         // failure resumes it instead of minting a new UUID and uploading a duplicate.
         const existing = await getUploadArtifact(draftId, 'captions');
         const captionsArtifactId = existing?.artifactId ?? Crypto.randomUUID();
-        if (!existing) await upsertUploadArtifact(draftId, 'captions', { artifactId: captionsArtifactId });
+        if (!existing)
+          await upsertUploadArtifact(draftId, 'captions', { artifactId: captionsArtifactId });
         const captionsResult = await uploadOne(
           destination,
           {
@@ -338,7 +372,8 @@ export function useUpload(
         const videoKey = `${segment.id}:video`;
         const existingVideo = await getUploadArtifact(draftId, videoKey);
         const videoArtifactId = existingVideo?.artifactId ?? Crypto.randomUUID();
-        if (!existingVideo) await upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId });
+        if (!existingVideo)
+          await upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId });
         const videoResult = await uploadOne(
           destination,
           {
@@ -406,7 +441,12 @@ export function useUpload(
       const manifestFile = writeTempTextFile(`${draftId}-manifest.pulse`, manifest);
       const result = await uploadOne(
         destination,
-        { artifactId: destination.artifactId, filename: `${draftId}-manifest.pulse`, kind: 'project', file: manifestFile },
+        {
+          artifactId: destination.artifactId,
+          filename: `${draftId}-manifest.pulse`,
+          kind: 'project',
+          file: manifestFile,
+        },
         destination.resourceUrl,
         undefined,
         signal,
@@ -500,5 +540,14 @@ export function useUpload(
     };
   }, []);
 
-  return { state, destination, destinationExpired, pendingPairing, start, retry: start, cancel, claim };
+  return {
+    state,
+    destination,
+    destinationExpired,
+    pendingPairing,
+    start,
+    retry: start,
+    cancel,
+    claim,
+  };
 }

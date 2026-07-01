@@ -9,10 +9,28 @@ import {
 } from '@/utils/file-store';
 import { generateThumbnailFile } from '@/utils/video';
 import { db } from './client';
+import type { Project, Segment } from './schema';
 import { projects, segments, uploadArtifacts } from './schema';
 import { deleteDraftToken, setDraftToken } from './secure-token';
 
 const now = sql`(unixepoch('subsec') * 1000)`;
+
+/** A new clip to append to a draft; `thumbnail` is populated only when the camera/importer
+ * already produced one, otherwise it's derived later from the first frame. */
+type NewSegment = {
+  id: string;
+  originalFilename: string;
+  durationMs: number;
+  thumbnail?: string | null;
+};
+
+/** A validated deep-link + `/capabilities` lookup result, ready to pair with a draft. */
+type UploadDestination = {
+  server: string;
+  token: string | null;
+  artifactId: string;
+  uploadUnit: NonNullable<Project['uploadUnit']>;
+};
 
 /** One row per draft with its segment count, trim-aware duration, and cover clip. */
 export const draftListQuery = db
@@ -66,10 +84,7 @@ export async function createDraft(): Promise<string> {
   return id;
 }
 
-export async function addSegment(
-  draftId: string,
-  segment: { id: string; originalFilename: string; durationMs: number; thumbnail?: string | null },
-): Promise<void> {
+export async function addSegment(draftId: string, segment: NewSegment): Promise<void> {
   const [{ value: order }] = await db
     .select({ value: count() })
     .from(segments)
@@ -175,9 +190,9 @@ export async function deleteDraft(draftId: string): Promise<void> {
 /** A draft's currently-set upload destination, or null fields if it has none. The token lives
  * in expo-secure-store, not this row — see `getDraftToken` in `secure-token.ts`. */
 export async function getUploadDestination(draftId: string): Promise<{
-  uploadServer: string | null;
-  uploadArtifactId: string | null;
-  uploadUnit: 'beat' | 'merged' | null;
+  uploadServer: Project['uploadServer'];
+  uploadArtifactId: Project['uploadArtifactId'];
+  uploadUnit: Project['uploadUnit'];
 } | null> {
   const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
   if (!project) return null;
@@ -197,7 +212,7 @@ export async function getUploadDestination(draftId: string): Promise<{
  */
 export async function setUploadDestination(
   draftId: string,
-  destination: { server: string; token: string | null; artifactId: string; uploadUnit: 'beat' | 'merged' },
+  destination: UploadDestination,
 ): Promise<void> {
   await db
     .update(projects)
@@ -221,7 +236,7 @@ export async function setUploadDestination(
 /** Persist upload progress so a killed app can resume via `HEAD` on `resourceUrl` rather than restarting. */
 export async function setUploadProgress(
   draftId: string,
-  progress: { status: 'idle' | 'uploading' | 'uploaded' | 'failed'; resourceUrl?: string | null },
+  progress: { status: NonNullable<Project['uploadStatus']>; resourceUrl?: string | null },
 ): Promise<void> {
   await db
     .update(projects)
@@ -236,7 +251,7 @@ export async function setUploadProgress(
 /** Persist captions-upload progress independently of the video upload (so a captions-only retry doesn't redo the video). */
 export async function setCaptionsUploadStatus(
   draftId: string,
-  status: 'idle' | 'uploading' | 'uploaded' | 'failed',
+  status: NonNullable<Project['captionsUploadStatus']>,
 ): Promise<void> {
   await db
     .update(projects)
@@ -277,7 +292,10 @@ export async function upsertUploadArtifact(
     })
     .onConflictDoUpdate({
       target: uploadArtifacts.id,
-      set: { artifactId: data.artifactId, ...(data.resourceUrl !== undefined ? { resourceUrl: data.resourceUrl } : {}) },
+      set: {
+        artifactId: data.artifactId,
+        ...(data.resourceUrl !== undefined ? { resourceUrl: data.resourceUrl } : {}),
+      },
     });
 }
 
@@ -286,7 +304,7 @@ export async function upsertUploadArtifact(
 /** Load a draft's project row + ordered segments for packing into a `.pulse` bundle. */
 export async function getDraftForExport(
   draftId: string,
-): Promise<{ project: typeof projects.$inferSelect; segments: (typeof segments.$inferSelect)[] } | null> {
+): Promise<{ project: Project; segments: Segment[] } | null> {
   const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
   if (!project) return null;
   const rows = await segmentsForDraft(draftId);

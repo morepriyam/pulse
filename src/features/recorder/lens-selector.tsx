@@ -1,8 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-/** A selectable lens, expressed as a zoom factor on the (possibly multi-camera) device.
+/**
+ * A selectable lens, expressed as a zoom factor on the (possibly multi-camera) device.
  * VisionCamera switches the underlying physical lens automatically as the zoom factor crosses
- * the device's `zoomLensSwitchFactors`, so "0.5x / 1x / Tele" are just zoom presets. */
+ * the device's `zoomLensSwitchFactors`, so "0.5x / 1x / Tele" are just zoom presets.
+ */
 export type LensPreset = { label: string; zoom: number };
 
 /** The label of the neutral 1x lens — the default selection and the reset target on flip. */
@@ -29,20 +31,22 @@ export function LensSelector({
 
   return (
     <View style={styles.row}>
-      {presets.map((p) => (
+      {presets.map((preset) => (
         <Pressable
-          key={p.label}
-          onPress={() => onSelect(p)}
+          key={preset.label}
+          onPress={() => onSelect(preset)}
           disabled={disabled}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={`Lens ${p.label}`}
+          accessibilityLabel={`Lens ${preset.label}`}
           style={({ pressed }) => [
             styles.chip,
-            p.label === active && styles.chipActive,
+            preset.label === active && styles.chipActive,
             { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 },
           ]}>
-          <Text style={[styles.label, p.label === active && styles.labelActive]}>{p.label}</Text>
+          <Text style={[styles.label, preset.label === active && styles.labelActive]}>
+            {preset.label}
+          </Text>
         </Pressable>
       ))}
     </View>

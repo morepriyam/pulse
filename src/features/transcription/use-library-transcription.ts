@@ -65,12 +65,12 @@ export function useLibraryTranscription(): TranscriptionStatus {
 
   const rowById = useMemo(() => {
     const map = new Map<string, Row>();
-    for (const r of transcriptRows) {
-      map.set(r.segmentId, {
-        model: r.model,
-        sourceFile: r.sourceFile,
-        status: r.status,
-        edited: r.editedLines != null,
+    for (const row of transcriptRows) {
+      map.set(row.segmentId, {
+        model: row.model,
+        sourceFile: row.sourceFile,
+        status: row.status,
+        edited: row.editedLines != null,
       });
     }
     return map;
@@ -102,14 +102,14 @@ export function useLibraryTranscription(): TranscriptionStatus {
   // only clear existing captions on an actual change, never on app launch.
   const prevModelIdRef = useRef<string | null | undefined>(undefined);
 
-  const needs = useCallback((s: Segment, m: WhisperModel): boolean => {
-    const file = effFile(s);
-    const key = `${s.id}:${file}:${m.id}`;
+  const needs = useCallback((segment: Segment, model: WhisperModel): boolean => {
+    const file = effFile(segment);
+    const key = `${segment.id}:${file}:${model.id}`;
     if (processedRef.current.has(key)) return false; // settled this session
-    const row = rowByIdRef.current.get(s.id);
+    const row = rowByIdRef.current.get(segment.id);
     return needsTranscription(
       file,
-      m.id,
+      model.id,
       row,
       errorAttemptsRef.current.get(key) ?? 0,
       MAX_TRANSCRIBE_ATTEMPTS,
@@ -126,22 +126,22 @@ export function useLibraryTranscription(): TranscriptionStatus {
     try {
       do {
         dirtyRef.current = false;
-        const m = modelRef.current;
-        const curId = m?.id ?? null;
+        const model = modelRef.current;
+        const currentModelId = model?.id ?? null;
 
         // Detect a real model change. First resolved value is adopted without clearing (don't wipe
         // captions on launch); any later change clears all transcripts so they regenerate.
         if (prevModelIdRef.current === undefined) {
-          prevModelIdRef.current = curId;
-        } else if (prevModelIdRef.current !== curId) {
-          prevModelIdRef.current = curId;
+          prevModelIdRef.current = currentModelId;
+        } else if (prevModelIdRef.current !== currentModelId) {
+          prevModelIdRef.current = currentModelId;
           processedRef.current.clear();
           // Drop auto captions so they regenerate with the new model, but keep hand-edited rows
           // (their captions are tied to the audio, not the model).
           await clearAutoTranscripts();
         }
 
-        if (!m) {
+        if (!model) {
           await releaseWhisper();
           await releaseVad();
           deleteModelsExcept(null);
@@ -149,14 +149,15 @@ export function useLibraryTranscription(): TranscriptionStatus {
         }
 
         // Ensure the selected model is the only one on disk.
-        if (!isModelReady(m)) {
+        if (!isModelReady(model)) {
           setStatus({ kind: 'deleting' });
           await releaseWhisper();
-          deleteModelsExcept(m);
-          setStatus({ kind: 'downloading', bytesWritten: 0, totalBytes: m.approxBytes });
+          deleteModelsExcept(model);
+          setStatus({ kind: 'downloading', bytesWritten: 0, totalBytes: model.approxBytes });
           try {
-            await ensureModel(m, (p) => {
-              if (modelRef.current?.id === m.id) setStatus({ kind: 'downloading', ...p });
+            await ensureModel(model, (progress) => {
+              if (modelRef.current?.id === model.id)
+                setStatus({ kind: 'downloading', ...progress });
             });
           } catch {
             break; // download failed (offline) — user can reselect to retry
@@ -165,19 +166,19 @@ export function useLibraryTranscription(): TranscriptionStatus {
 
         // Transcribe everything that needs it, yielding while recording. The draft currently on
         // screen is captioned first so its captions appear quickly, ahead of the rest of the library.
-        const pending = segmentsRef.current.filter((s) => needs(s, m));
+        const pending = segmentsRef.current.filter((segment) => needs(segment, model));
         const activeDraft = getActiveDraft();
         const todo = activeDraft
           ? [
-              ...pending.filter((s) => s.projectId === activeDraft),
-              ...pending.filter((s) => s.projectId !== activeDraft),
+              ...pending.filter((segment) => segment.projectId === activeDraft),
+              ...pending.filter((segment) => segment.projectId !== activeDraft),
             ]
           : pending;
         if (todo.length > 0) {
           let done = 0;
           setStatus({ kind: 'transcribing', done, total: todo.length });
-          for (const s of todo) {
-            if (modelRef.current?.id !== m.id) {
+          for (const segment of todo) {
+            if (modelRef.current?.id !== model.id) {
               dirtyRef.current = true; // switched mid-run — restart with the new model
               break;
             }
@@ -185,15 +186,15 @@ export function useLibraryTranscription(): TranscriptionStatus {
               dirtyRef.current = true; // defer; the resume handler re-runs when recording stops
               break;
             }
-            const file = effFile(s);
-            const key = `${s.id}:${file}:${m.id}`;
+            const file = effFile(segment);
+            const key = `${segment.id}:${file}:${model.id}`;
             try {
-              await markTranscribing(s.id, file, m.id);
-              const result = await transcribeVideo(absolutize(file), m);
-              await saveTranscript(s.id, file, m.id, result);
+              await markTranscribing(segment.id, file, model.id);
+              const result = await transcribeVideo(absolutize(file), model);
+              await saveTranscript(segment.id, file, model.id, result);
               processedRef.current.add(key); // done — settled for the session
             } catch {
-              await markTranscriptError(s.id, file, m.id).catch(() => {});
+              await markTranscriptError(segment.id, file, model.id).catch(() => {});
               const attempts = (errorAttemptsRef.current.get(key) ?? 0) + 1;
               errorAttemptsRef.current.set(key, attempts);
               if (attempts >= MAX_TRANSCRIBE_ATTEMPTS)

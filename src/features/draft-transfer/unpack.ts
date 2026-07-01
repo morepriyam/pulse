@@ -42,24 +42,26 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
   } catch {
     throw new Error('This .pulse bundle is corrupted.');
   }
-  if (!isPulseManifest(manifest)) throw new Error('This .pulse bundle is corrupted or unsupported.');
+  if (!isPulseManifest(manifest))
+    throw new Error('This .pulse bundle is corrupted or unsupported.');
 
-  // One id base for the batch; `+ d` keeps draft ids unique and stamps lastModified in import order.
+  // One id base for the batch; offsetting by index keeps draft ids unique and stamps
+  // lastModified in import order.
   const base = Date.now();
   const draftIds: string[] = [];
 
-  for (let d = 0; d < manifest.drafts.length; d++) {
-    const draft = manifest.drafts[d];
-    const draftId = String(base + d);
+  for (let draftIndex = 0; draftIndex < manifest.drafts.length; draftIndex++) {
+    const draft = manifest.drafts[draftIndex];
+    const draftId = String(base + draftIndex);
 
     try {
       const segmentRows = [];
-      for (let s = 0; s < draft.segments.length; s++) {
-        const seg = draft.segments[s];
+      for (let segIndex = 0; segIndex < draft.segments.length; segIndex++) {
+        const seg = draft.segments[segIndex];
         const origBytes = archive[seg.original];
         if (!origBytes) continue; // clip referenced by the manifest is missing from the archive
 
-        const segmentId = `${draftId}-${s}`;
+        const segmentId = `${draftId}-${segIndex}`;
         const originalFilename = writeOriginalBytes(draftId, segmentId, origBytes);
 
         let editedFilename: string | null = null;
@@ -81,7 +83,7 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
         segmentRows.push({
           id: segmentId,
           projectId: draftId,
-          order: typeof seg.order === 'number' ? seg.order : s,
+          order: typeof seg.order === 'number' ? seg.order : segIndex,
           originalFilename,
           durationMs: seg.durationMs,
           editedFilename,
@@ -101,14 +103,14 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
           name: draft.name ?? null,
           mode: draft.mode === 'upload' ? 'upload' : 'camera',
           createdAt: typeof draft.createdAt === 'number' ? draft.createdAt : base,
-          lastModified: base + d, // freshly imported → surface at the top of the list
+          lastModified: base + draftIndex, // freshly imported → surface at the top of the list
         },
         segmentRows,
       );
       draftIds.push(draftId);
     } catch (e) {
       deleteDraftDir(draftId); // roll back this draft's files; keep importing the rest
-      console.warn('[draft-transfer] failed to import draft', d, e);
+      console.warn('[draft-transfer] failed to import draft', draftIndex, e);
     }
   }
 
