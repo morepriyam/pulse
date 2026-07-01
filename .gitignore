@@ -8,6 +8,9 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+.claude/
+.vscode/
+.cursor/
 
 # Native
 .kotlin/
