@@ -1,5 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import {
+  closeCoalescing,
+  emptyHistory,
+  record,
+  redo as redoHistory,
+  undo as undoHistory,
+  type History,
+} from './edit-history';
 import type { TranscriptLine, TranscriptWord } from './whisper';
 
 /** One editable caption cue. Times are centiseconds; `words` drives word-level highlighting. */
@@ -11,7 +19,8 @@ export type Cue = {
   words: TranscriptWord[];
 };
 
-const MIN_DUR_CS = 30; // never let a cue collapse below ~0.3s
+export const MIN_DUR_CS = 30; // never let a cue collapse below ~0.3s
+const MAX_HISTORY = 100; // undo depth (snapshots share unchanged cue objects, so this is cheap)
 
 /** Split `text` into word tokens, spreading [t0,t1] across them by character length. */
 function distributeWords(text: string, t0: number, t1: number): TranscriptWord[] {
@@ -70,6 +79,10 @@ const serialize = (cues: Cue[]) => JSON.stringify(cuesToLines(cues));
  * Editing state for one segment's captions. Seeds cues from the effective lines, keeps them sorted,
  * and maintains word-level timing across edits (rescale on timing changes, re-distribute on text
  * changes) so the karaoke overlay keeps working. `dirty` tracks unsaved changes vs. the seed.
+ *
+ * Every mutation is undoable. Rapid edits of the same kind on the same cue (typing bursts, handle
+ * drags) coalesce into a single undo step; `endCoalescing` (call on blur / gesture end) closes the
+ * current step so the next edit starts a fresh one.
  */
 export function useSubtitleEditor(initial: TranscriptLine[]) {
   // Monotonic id source for cues created at runtime (add/split). Read ONLY inside event handlers,
@@ -90,127 +103,209 @@ export function useSubtitleEditor(initial: TranscriptLine[]) {
   // lines), so the editor opens clean rather than appearing dirty from that normalization.
   const [baseline, setBaseline] = useState(() => serialize(seed(initial)));
 
-  const update = useCallback((id: string, fn: (cue: Cue) => Cue) => {
-    setCues((cues) => cues.map((cue) => (cue.id === id ? fn(cue) : cue)).sort(bySort));
+  // History lives in refs so mutations (which fire at drag/typing rates) don't churn extra state;
+  // all cue changes flow through mutate/undo/redo/reset, which keep cuesRef in lockstep with the
+  // rendered state. `canUndo/canRedo` mirror the stack sizes into state for the header buttons.
+  const cuesRef = useRef(cues);
+  const historyRef = useRef<History<Cue[]>>(emptyHistory());
+  const [histFlags, setHistFlags] = useState({ canUndo: false, canRedo: false });
+
+  const syncFlags = useCallback(() => {
+    setHistFlags((f) => {
+      const canUndo = historyRef.current.past.length > 0;
+      const canRedo = historyRef.current.future.length > 0;
+      return f.canUndo === canUndo && f.canRedo === canRedo ? f : { canUndo, canRedo };
+    });
   }, []);
+
+  /**
+   * Apply `fn` to the cue list, recording history. `opKey` names a coalescable operation
+   * (e.g. `text:<id>`, see edit-history.ts); `null` = structural op, never coalesced.
+   * Returning the input array skips history (no-op).
+   */
+  const mutate = useCallback(
+    (opKey: string | null, fn: (cues: Cue[]) => Cue[]) => {
+      const prev = cuesRef.current;
+      const next = fn(prev);
+      if (next === prev) return;
+      historyRef.current = record(historyRef.current, prev, opKey, Date.now(), MAX_HISTORY);
+      cuesRef.current = next;
+      setCues(next);
+      syncFlags();
+    },
+    [syncFlags],
+  );
+
+  /** Close the current coalescing window (call on text blur / drag end). */
+  const endCoalescing = useCallback(() => {
+    historyRef.current = closeCoalescing(historyRef.current);
+  }, []);
+
+  const undo = useCallback(() => {
+    const result = undoHistory(historyRef.current, cuesRef.current);
+    if (!result) return;
+    historyRef.current = result.history;
+    cuesRef.current = result.value;
+    setCues(result.value);
+    syncFlags();
+  }, [syncFlags]);
+
+  const redo = useCallback(() => {
+    const result = redoHistory(historyRef.current, cuesRef.current);
+    if (!result) return;
+    historyRef.current = result.history;
+    cuesRef.current = result.value;
+    setCues(result.value);
+    syncFlags();
+  }, [syncFlags]);
+
+  const updateCue = useCallback(
+    (opKey: string, id: string, fn: (cue: Cue) => Cue) => {
+      mutate(opKey, (cues) => {
+        if (!cues.some((cue) => cue.id === id)) return cues;
+        return cues.map((cue) => (cue.id === id ? fn(cue) : cue)).sort(bySort);
+      });
+    },
+    [mutate],
+  );
 
   const setText = useCallback(
     (id: string, text: string) =>
-      update(id, (cue) => ({ ...cue, text, words: distributeWords(text, cue.t0, cue.t1) })),
-    [update],
+      updateCue(`text:${id}`, id, (cue) => ({
+        ...cue,
+        text,
+        words: distributeWords(text, cue.t0, cue.t1),
+      })),
+    [updateCue],
   );
 
   const setStart = useCallback(
     (id: string, t0: number) =>
-      update(id, (cue) => {
+      updateCue(`t0:${id}`, id, (cue) => {
         const next = Math.min(Math.max(0, Math.round(t0)), cue.t1 - MIN_DUR_CS);
         return { ...cue, t0: next, words: rescaleWords(cue.words, cue.t0, cue.t1, next, cue.t1) };
       }),
-    [update],
+    [updateCue],
   );
 
   const setEnd = useCallback(
     (id: string, t1: number) =>
-      update(id, (cue) => {
+      updateCue(`t1:${id}`, id, (cue) => {
         const next = Math.max(Math.round(t1), cue.t0 + MIN_DUR_CS);
         return { ...cue, t1: next, words: rescaleWords(cue.words, cue.t0, cue.t1, cue.t0, next) };
       }),
-    [update],
+    [updateCue],
   );
 
   const nudgeStart = useCallback(
     (id: string, delta: number) =>
-      update(id, (cue) => {
+      updateCue(`t0:${id}`, id, (cue) => {
         const next = Math.min(Math.max(0, cue.t0 + delta), cue.t1 - MIN_DUR_CS);
         return { ...cue, t0: next, words: rescaleWords(cue.words, cue.t0, cue.t1, next, cue.t1) };
       }),
-    [update],
+    [updateCue],
   );
 
   const nudgeEnd = useCallback(
     (id: string, delta: number) =>
-      update(id, (cue) => {
+      updateCue(`t1:${id}`, id, (cue) => {
         const next = Math.max(cue.t1 + delta, cue.t0 + MIN_DUR_CS);
         return { ...cue, t1: next, words: rescaleWords(cue.words, cue.t0, cue.t1, cue.t0, next) };
       }),
-    [update],
+    [updateCue],
   );
 
   const remove = useCallback(
-    (id: string) => setCues((cues) => cues.filter((cue) => cue.id !== id)),
-    [],
+    (id: string) =>
+      mutate(null, (cues) => {
+        const next = cues.filter((cue) => cue.id !== id);
+        return next.length === cues.length ? cues : next;
+      }),
+    [mutate],
   );
 
-  /** Insert a new empty cue starting at `atCs` (a ~1.5s default span). */
+  /** Insert a new empty cue starting at `atCs` (a ~1.5s default span). Returns its id. */
   const addCueAt = useCallback(
-    (atCs: number) => {
+    (atCs: number): string => {
+      const id = nextId();
       const t0 = Math.max(0, Math.round(atCs));
       const t1 = t0 + 150;
-      setCues((cues) => [...cues, { id: nextId(), text: '', t0, t1, words: [] }].sort(bySort));
+      mutate(null, (cues) => [...cues, { id, text: '', t0, t1, words: [] }].sort(bySort));
+      return id;
     },
-    [nextId],
+    [mutate, nextId],
   );
 
-  /** Split a cue at `atCs`, partitioning its words into the two halves. */
+  /**
+   * Split a cue at `atCs`, partitioning its words into the two halves.
+   * Returns the id of the half that starts at the split point (or null if the split was invalid),
+   * so callers can keep the selection on the playhead's side.
+   */
   const splitAt = useCallback(
-    (id: string, atCs: number) => {
-      setCues((cues) => {
-        const target = cues.find((cue) => cue.id === id);
-        if (!target || atCs <= target.t0 + MIN_DUR_CS || atCs >= target.t1 - MIN_DUR_CS)
-          return cues;
-        const leftWords = target.words.filter((w) => w.t0 < atCs);
-        const rightWords = target.words.filter((w) => w.t0 >= atCs);
-        const makeHalf = (words: TranscriptWord[], t0: number, t1: number): Cue => ({
-          id: nextId(),
-          text: words
-            .map((w) => w.text)
-            .join(' ')
-            .trim(),
-          t0,
-          t1,
-          words,
-        });
-        const left = makeHalf(leftWords, target.t0, Math.round(atCs));
-        const right = makeHalf(rightWords, Math.round(atCs), target.t1);
-        return cues
+    (id: string, atCs: number): string | null => {
+      const target = cuesRef.current.find((cue) => cue.id === id);
+      if (!target || atCs <= target.t0 + MIN_DUR_CS || atCs >= target.t1 - MIN_DUR_CS) return null;
+      const leftWords = target.words.filter((w) => w.t0 < atCs);
+      const rightWords = target.words.filter((w) => w.t0 >= atCs);
+      const makeHalf = (words: TranscriptWord[], t0: number, t1: number): Cue => ({
+        id: nextId(),
+        text: words
+          .map((w) => w.text)
+          .join(' ')
+          .trim(),
+        t0,
+        t1,
+        words,
+      });
+      const left = makeHalf(leftWords, target.t0, Math.round(atCs));
+      const right = makeHalf(rightWords, Math.round(atCs), target.t1);
+      mutate(null, (cues) =>
+        cues
           .filter((cue) => cue.id !== id)
           .concat([left, right])
-          .sort(bySort);
-      });
+          .sort(bySort),
+      );
+      return right.id;
     },
-    [nextId],
+    [mutate, nextId],
   );
 
   /** Merge a cue with the next one in time order. */
-  const mergeNext = useCallback((id: string) => {
-    setCues((cues) => {
-      const sorted = [...cues].sort(bySort);
-      const index = sorted.findIndex((cue) => cue.id === id);
-      if (index < 0 || index >= sorted.length - 1) return cues;
-      const first = sorted[index];
-      const second = sorted[index + 1];
-      const merged: Cue = {
-        id: first.id,
-        text: `${first.text} ${second.text}`.trim(),
-        t0: first.t0,
-        t1: second.t1,
-        words: [...first.words, ...second.words],
-      };
-      return sorted
-        .filter((cue) => cue.id !== first.id && cue.id !== second.id)
-        .concat(merged)
-        .sort(bySort);
-    });
-  }, []);
+  const mergeNext = useCallback(
+    (id: string) => {
+      mutate(null, (cues) => {
+        const sorted = [...cues].sort(bySort);
+        const index = sorted.findIndex((cue) => cue.id === id);
+        if (index < 0 || index >= sorted.length - 1) return cues;
+        const first = sorted[index];
+        const second = sorted[index + 1];
+        const merged: Cue = {
+          id: first.id,
+          text: `${first.text} ${second.text}`.trim(),
+          t0: first.t0,
+          t1: second.t1,
+          words: [...first.words, ...second.words],
+        };
+        return sorted
+          .filter((cue) => cue.id !== first.id && cue.id !== second.id)
+          .concat(merged)
+          .sort(bySort);
+      });
+    },
+    [mutate],
+  );
 
-  /** Reseed the editor (e.g. "reset to auto"); marks the editor clean against the new lines. */
+  /** Reseed the editor (e.g. "reset to auto"); marks the editor clean and clears history. */
   const reset = useCallback(
     (lines: TranscriptLine[]) => {
       const next = seed(lines);
+      cuesRef.current = next;
+      historyRef.current = emptyHistory();
       setCues(next);
       setBaseline(serialize(next));
+      syncFlags();
     },
-    [seed],
+    [seed, syncFlags],
   );
 
   const toLines = useCallback((): TranscriptLine[] => cuesToLines(cues), [cues]);
@@ -220,6 +315,11 @@ export function useSubtitleEditor(initial: TranscriptLine[]) {
   return {
     cues,
     dirty,
+    canUndo: histFlags.canUndo,
+    canRedo: histFlags.canRedo,
+    undo,
+    redo,
+    endCoalescing,
     setText,
     setStart,
     setEnd,
