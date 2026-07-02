@@ -26,9 +26,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "allowBackup": false,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "package": "com.mieweb.pulse.dev"
     },
@@ -54,6 +58,7 @@
       "./plugins/with-video-trim",
       "expo-image",
       "expo-sharing",
+      "./plugins/with-strip-legacy-storage",
       [
         "expo-media-library",
         {
@@ -79,7 +84,16 @@
       ],
       "expo-asset",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
