@@ -8,7 +8,7 @@ export type WhisperModel = {
   id: string;
   label: string;
   /**
-   * The underlying Whisper checkpoint name (e.g. `tiny.en`, `large-v3-turbo`), shown muted in the
+   * The underlying Whisper checkpoint name (e.g. `base.en`, `large-v3-turbo`), shown muted in the
    * picker so it's transparent which actual model — and quantization — the friendly label maps to.
    */
   name: string;
@@ -26,15 +26,6 @@ export type WhisperModel = {
 };
 
 export const MODELS: WhisperModel[] = [
-  {
-    id: 'tiny.en',
-    label: 'Tiny (English)',
-    name: 'tiny.en · q5_1',
-    filename: 'ggml-tiny.en-q5_1.bin',
-    approxBytes: 31 * 1024 * 1024,
-    note: 'Fastest · English only',
-    lang: 'en',
-  },
   {
     id: 'base.en',
     label: 'Base (English)',
@@ -78,5 +69,22 @@ export const LARGE_MODEL_BYTES = 300 * 1024 * 1024;
 
 export const getModel = (id: string | null | undefined): WhisperModel | null =>
   MODELS.find((m) => m.id === id) ?? null;
+
+/**
+ * Ids of models retired from the catalog, mapped to the id users should migrate to (`null` to just
+ * clear the selection). Add an entry here whenever a model is removed from MODELS. The engine
+ * rewrites a stored retired selection on launch, which then flows through the normal switch path:
+ * old weights deleted, replacement downloaded, auto captions regenerated.
+ */
+export const RETIRED_MODELS: Record<string, string | null> = {
+  'tiny.en': 'base.en',
+};
+
+/**
+ * Where a stored id that no longer resolves should migrate: a retired id's designated replacement,
+ * or `null` (clear the selection) for anything unknown/corrupt.
+ */
+export const migrateStaleModelId = (id: string): WhisperModel | null =>
+  getModel(RETIRED_MODELS[id]);
 
 export const modelUrl = (m: WhisperModel): string => BASE_URL + m.filename;
