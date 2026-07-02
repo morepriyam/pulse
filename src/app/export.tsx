@@ -26,6 +26,7 @@ import { mergedLines } from '@/features/transcription/srt';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import type { TranscriptLine } from '@/features/transcription/whisper';
 import { type UploadState, useUpload } from '@/features/upload/use-upload';
+import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 
@@ -440,19 +441,11 @@ function MergedPreview({ uri, lines }: { uri: string; lines: TranscriptLine[] })
     p.timeUpdateEventInterval = 0.1;
     p.play();
   });
-  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+  // Parked playback: on end the playhead reparks at 0 (while paused), so play always restarts
+  // cleanly — replay()'s seek-then-play races an audible blip of the clip's end otherwise.
+  const { isPlaying, togglePlay } = useParkedPlayback(player);
   const timeUpdate = useEvent(player, 'timeUpdate');
   const positionMs = (timeUpdate?.currentTime ?? player.currentTime) * 1000;
-
-  const togglePlay = () => {
-    if (isPlaying) {
-      player.pause();
-    } else if (player.duration > 0 && player.currentTime >= player.duration - 0.05) {
-      player.replay();
-    } else {
-      player.play();
-    }
-  };
 
   return (
     <Pressable
