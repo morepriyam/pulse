@@ -71,7 +71,7 @@ export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
     bullets: [
       {
         icon: 'sparkles',
-        text: 'Every clip is captioned automatically — tap Model to choose a transcription model, from Tiny to multilingual Large Turbo.',
+        text: 'Every clip is captioned automatically — tap Model to choose a transcription model, from Base to multilingual Large Turbo.',
       },
       {
         icon: 'captions.bubble',
