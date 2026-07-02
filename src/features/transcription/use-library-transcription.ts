@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { allSegmentsQuery } from '@/db/drafts';
 import type { Segment } from '@/db/schema';
-import { selectedModelQuery } from '@/db/settings';
+import { selectedModelQuery, setSelectedModel } from '@/db/settings';
 import {
   allTranscriptsQuery,
   clearAutoTranscripts,
@@ -15,7 +15,7 @@ import { absolutize } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
 import { getActiveDraft } from './active-draft';
 import { cancelModelDownloadsExcept, deleteModelsExcept, ensureModel, isModelReady } from './model';
-import { getModel, type WhisperModel } from './models';
+import { getModel, migrateStaleModelId, type WhisperModel } from './models';
 import { needsTranscription } from './needs-transcription';
 import { isRecordingActive, setResumeHandler } from './recording-signal';
 import { releaseVad } from './vad';
@@ -56,7 +56,18 @@ type Row = {
 export function useLibraryTranscription(): TranscriptionStatus {
   const { data: modelRow, updatedAt } = useLiveQuery(selectedModelQuery, []);
   const ready = updatedAt != null;
-  const model = getModel(modelRow[0]?.value);
+  const storedModelId = modelRow[0]?.value ?? null;
+  const model = getModel(storedModelId);
+
+  // A stored selection that no longer resolves (the model was retired from the catalog, or the
+  // value is corrupt) is rewritten to its designated replacement — or cleared — so the user isn't
+  // silently left with transcription off. The write flows back through the live query and behaves
+  // like a normal model switch: stale weights are deleted and auto captions regenerate.
+  useEffect(() => {
+    if (ready && storedModelId != null && model == null) {
+      void setSelectedModel(migrateStaleModelId(storedModelId)?.id ?? null);
+    }
+  }, [ready, storedModelId, model]);
 
   const { data: segments } = useLiveQuery(allSegmentsQuery, []);
   const { data: transcriptRows } = useLiveQuery(allTranscriptsQuery, []);

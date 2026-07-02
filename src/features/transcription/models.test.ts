@@ -1,10 +1,17 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { getModel, LARGE_MODEL_BYTES, MODELS, modelUrl } from './models';
+import {
+  getModel,
+  LARGE_MODEL_BYTES,
+  migrateStaleModelId,
+  MODELS,
+  modelUrl,
+  RETIRED_MODELS,
+} from './models';
 
 describe('model catalog', () => {
   it('resolves a known id and rejects unknown / nullish ids', () => {
-    expect(getModel('tiny.en')?.id).toBe('tiny.en');
+    expect(getModel('base.en')?.id).toBe('base.en');
     expect(getModel('nope')).toBeNull();
     expect(getModel(null)).toBeNull();
     expect(getModel(undefined)).toBeNull();
@@ -31,5 +38,19 @@ describe('model catalog', () => {
   it('only the large model crosses the confirm-before-download threshold', () => {
     const large = MODELS.filter((m) => m.approxBytes >= LARGE_MODEL_BYTES);
     expect(large.map((m) => m.id)).toEqual(['large-v3-turbo-q5_0']);
+  });
+
+  it('every retired id is actually gone and maps to a model still in the catalog', () => {
+    // Guards future retirements: a retired id must not linger in MODELS, and its replacement must
+    // resolve (never another retired id, so migration can't dead-end).
+    for (const [id, replacement] of Object.entries(RETIRED_MODELS)) {
+      expect(getModel(id)).toBeNull();
+      if (replacement !== null) expect(getModel(replacement)).not.toBeNull();
+    }
+  });
+
+  it('migrates a retired id to its replacement and clears unknown ids', () => {
+    expect(migrateStaleModelId('tiny.en')?.id).toBe('base.en');
+    expect(migrateStaleModelId('some-corrupt-value')).toBeNull();
   });
 });
