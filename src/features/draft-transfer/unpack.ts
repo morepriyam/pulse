@@ -16,6 +16,13 @@ import { isPulseManifest, MANIFEST_NAME } from './manifest';
 export type ImportResult = { draftIds: string[] };
 
 const BAD_FILE = 'This file isn’t a valid .pulse bundle.';
+const TOO_BIG = 'This .pulse bundle is too large to import.';
+
+// Our own exports are STORE-only (see pack.ts), so decompressed ≈ file size; a
+// bundle whose entries claim to inflate far beyond the cap is a deflate bomb,
+// not a real export. The whole archive is held in memory during import, so the
+// cap also keeps legitimate-but-huge files from OOMing the app.
+const MAX_BUNDLE_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
 /**
  * Unpack a `.pulse` bundle: validate it, write each clip back to disk under a FRESH draft id
@@ -24,13 +31,22 @@ const BAD_FILE = 'This file isn’t a valid .pulse bundle.';
  * one is rolled back (its files removed) and skipped rather than aborting the whole import.
  */
 export async function importPulseFile(fileUri: string): Promise<ImportResult> {
-  const bytes = await new File(fileUri).bytes();
+  const file = new File(fileUri);
+  if ((file.size ?? 0) > MAX_BUNDLE_BYTES) throw new Error(TOO_BIG);
+  const bytes = await file.bytes();
 
   let archive: Record<string, Uint8Array>;
   try {
-    archive = unzipSync(bytes);
-  } catch {
-    throw new Error(BAD_FILE);
+    let declaredTotal = 0;
+    archive = unzipSync(bytes, {
+      filter: (entry) => {
+        declaredTotal += entry.originalSize;
+        if (declaredTotal > MAX_BUNDLE_BYTES) throw new Error(TOO_BIG);
+        return true;
+      },
+    });
+  } catch (e) {
+    throw new Error(e instanceof Error && e.message === TOO_BIG ? TOO_BIG : BAD_FILE);
   }
 
   const manifestEntry = archive[MANIFEST_NAME];

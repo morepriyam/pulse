@@ -85,10 +85,15 @@ user (AAB) downloads **one** ABI. Per-device (arm64) ≈ **78 MB** uncompressed 
 
 | Change | Platform | File | Result |
 |---|---|---|---|
-| **R8 / minify in release** | Android | `android/gradle.properties` (`android.enableMinifyInReleaseBuilds=true`) | **dex 54.0 → 20.9 MB** |
-| **Resource shrinking** | Android | `android/gradle.properties` (`android.enableShrinkResourcesInReleaseBuilds=true`) | included above |
+| **R8 / minify in release** | Android | `app.json` → `expo-build-properties` (`android.enableMinifyInReleaseBuilds: true`) | **dex 54.0 → 20.9 MB** |
+| **Resource shrinking** | Android | `app.json` → `expo-build-properties` (`android.enableShrinkResourcesInReleaseBuilds: true`) | included above |
 | **Disable libdav1d (AVIF)** | iOS | `ios/Podfile.properties.json` (`expo-image.disable-libdav1d=true`) | **no-op** (precompiled ExpoImage bundles AVIF) |
 | ~~Disable barcode/QR scanner~~ | both | reverted | **kept** — QR needed later |
+
+> The R8/shrink flags were originally set directly in `android/gradle.properties`, but
+> `android/` is gitignored prebuild output — any edit there evaporates on a fresh clone or
+> `expo prebuild --clean`. They now live in `app.json` via the `expo-build-properties`
+> plugin, which writes them into `gradle.properties` at prebuild time (CNG-safe).
 
 ### Before / after
 
@@ -101,7 +106,9 @@ user (AAB) downloads **one** ABI. Per-device (arm64) ≈ **78 MB** uncompressed 
 > ⚠️ **R8 runtime caveat:** R8 passed at build time, but minification can surface
 > reflection issues only at *runtime*. Smoke-test a release build on device (camera,
 > transcription, video trim, QR) before shipping. Fix any breakage with targeted `-keep`
-> rules in `android/app/proguard-rules.pro`, not by disabling R8.
+> rules via `expo-build-properties`' `android.extraProguardRules` in `app.json` (NOT by
+> editing `android/app/proguard-rules.pro` — that's gitignored prebuild output), and not
+> by disabling R8.
 
 ---
 

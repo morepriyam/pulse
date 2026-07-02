@@ -1,4 +1,5 @@
 import { asc, count, desc, eq, sql } from 'drizzle-orm';
+import * as Crypto from 'expo-crypto';
 
 import {
   absolutize,
@@ -79,7 +80,7 @@ export async function getSegment(segmentId: string) {
 // Mutations — each is a single-row write that autosaves the draft (§3).
 
 export async function createDraft(): Promise<string> {
-  const id = String(Date.now());
+  const id = Crypto.randomUUID();
   await db.insert(projects).values({ id, mode: 'camera' });
   return id;
 }
@@ -186,22 +187,6 @@ export async function deleteDraft(draftId: string): Promise<void> {
 }
 
 // Upload destination (deep-link pairing) -----------------------------------------------------
-
-/** A draft's currently-set upload destination, or null fields if it has none. The token lives
- * in expo-secure-store, not this row — see `getDraftToken` in `secure-token.ts`. */
-export async function getUploadDestination(draftId: string): Promise<{
-  uploadServer: Project['uploadServer'];
-  uploadArtifactId: Project['uploadArtifactId'];
-  uploadUnit: Project['uploadUnit'];
-} | null> {
-  const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
-  if (!project) return null;
-  return {
-    uploadServer: project.uploadServer,
-    uploadArtifactId: project.uploadArtifactId,
-    uploadUnit: project.uploadUnit,
-  };
-}
 
 /**
  * Pair a draft with an upload destination (from a validated deep link +

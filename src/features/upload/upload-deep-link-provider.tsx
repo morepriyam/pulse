@@ -79,7 +79,10 @@ export function UploadDeepLinkProvider({ children }: { children: React.ReactNode
     // provider is the parent of `<Stack>`, so its own linking subscription fires first. Collapse
     // it back to a single screen immediately, before even asking to confirm the pairing, so a
     // rejected/invalid link doesn't leave the extra screen behind either.
-    router.dismissAll();
+    // Guarded: when the link arrives with the app already on the root screen
+    // (e.g. warm resume from background), nothing is stacked and an unguarded
+    // dismissAll logs a dev-only unhandled POP_TO_TOP warning.
+    if (router.canDismiss()) router.dismissAll();
 
     const result = parseUploadDeepLink(url);
     if (!result.ok) {

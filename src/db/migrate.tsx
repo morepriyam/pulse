@@ -21,7 +21,9 @@ export function MigrationGate({ children }: { children: React.ReactNode }) {
     if (!success || swept.current) return;
     swept.current = true;
     void cleanFiles()
-      .then((n) => console.log(`[cleanup] removed ${n} stale RNVT output file(s)`))
+      .then((n) => {
+        if (__DEV__) console.log(`[cleanup] removed ${n} stale RNVT output file(s)`);
+      })
       .catch(() => {});
   }, [success]);
 
