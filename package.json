@@ -3,9 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.1",
   "dependencies": {
-    "@expo-google-fonts/roboto": "^0.4.3",
     "@expo/ui": "~56.0.18",
-    "@shopify/react-native-skia": "2.6.2",
     "buffer": "^6.0.3",
     "drizzle-orm": "^0.45.2",
     "expo": "~56.0.12",
