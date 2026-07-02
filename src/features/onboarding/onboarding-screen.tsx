@@ -66,7 +66,11 @@ export function OnboardingScreen() {
   // Both "Skip" and the final CTA mark onboarding done so it never reappears.
   // Skipping returns to home; finishing drops the user straight into the recorder.
   const finish = useCallback((toRecorder: boolean) => {
-    markOnboardingComplete().catch(() => {});
+    // Don't block navigation on the write, but don't swallow a failure either —
+    // if this never persists, onboarding re-shows on every launch.
+    markOnboardingComplete().catch((e) => {
+      console.warn('[onboarding] failed to persist completion; onboarding will re-show', e);
+    });
     if (toRecorder) router.replace('/recorder');
     else router.back();
   }, []);
