@@ -5,11 +5,13 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -20,19 +22,18 @@ import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
 import { getSegment } from '@/db/drafts';
 import type { Segment } from '@/db/schema';
-import { clearEditedTranscript, getTranscriptRow, saveEditedTranscript } from '@/db/transcripts';
+import { clearEditedTranscript, getTranscriptRow } from '@/db/transcripts';
 import { CloseButton } from '@/features/recorder/close-button';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
+import { CueRow } from '@/features/transcription/cue-row';
+import { CueToolbar } from '@/features/transcription/cue-toolbar';
+import { useAutosaveTranscript } from '@/features/transcription/use-autosave-transcript';
 import { useSubtitleEditor, type Cue } from '@/features/transcription/use-subtitle-editor';
 import type { TranscriptLine } from '@/features/transcription/whisper';
+import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { useTheme } from '@/hooks/use-theme';
 import { absolutize } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
-
-const NUDGE_CS = 10; // ±100ms
-const CPS_WARN = 17;
-const CPS_BAD = 20;
-const MAX_CHARS = 42;
 
 function parseTranscriptLines(json: string | null): TranscriptLine[] {
   if (!json) return [];
@@ -43,19 +44,13 @@ function parseTranscriptLines(json: string | null): TranscriptLine[] {
   }
 }
 
-// Collapsed rows show a coarse clock (m:ss); the editor's timing chips show tenths (m:ss.d).
-const clock = (cs: number) => {
-  const total = Math.floor(cs / 100);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-};
-const fine = (cs: number) => `${clock(cs)}.${Math.floor((cs % 100) / 10)}`;
-
 export default function SubtitlesScreen() {
-  const { segmentId, draftId } = useLocalSearchParams<{ segmentId?: string; draftId?: string }>();
+  const { segmentId } = useLocalSearchParams<{ segmentId?: string; draftId?: string }>();
   const [data, setData] = useState<{
     segment: Segment;
     initial: TranscriptLine[];
     autoLines: TranscriptLine[];
+    savedJson: string | null;
   } | null>(null);
   const [missing, setMissing] = useState(false);
 
@@ -67,8 +62,9 @@ export default function SubtitlesScreen() {
       if (!segment) return alive && setMissing(true);
       const row = await getTranscriptRow(segmentId);
       const autoLines = parseTranscriptLines(row?.lines ?? null);
-      const initial = row?.editedLines ? parseTranscriptLines(row.editedLines) : autoLines;
-      if (alive) setData({ segment, initial, autoLines });
+      const savedJson = row?.editedLines ?? null;
+      const initial = savedJson ? parseTranscriptLines(savedJson) : autoLines;
+      if (alive) setData({ segment, initial, autoLines, savedJson });
     })();
     return () => {
       alive = false;
@@ -98,26 +94,37 @@ export default function SubtitlesScreen() {
     <Editor
       key={segmentId}
       segmentId={segmentId!}
-      draftId={draftId}
       segment={data.segment}
       initial={data.initial}
       autoLines={data.autoLines}
+      savedJson={data.savedJson}
     />
   );
 }
 
+/**
+ * Optimistic caption editor. No Save button: every edit applies immediately (undo/redo in the
+ * header) and persists via a debounced autosave. Three modes:
+ *  - browse: preview over the cue list, follows playback;
+ *  - timing (a cue selected, keyboard down): a slim CueToolbar (times + split/merge/delete)
+ *    docks under the preview;
+ *  - text (selected row tapped again): the row's text becomes an inline input, keyboard up,
+ *    the preview shrinks to keep the row visible.
+ * The karaoke word highlight renders both on the video (CaptionOverlay) and in the playing cue
+ * row (see CueRow).
+ */
 function Editor({
   segmentId,
-  draftId,
   segment,
   initial,
   autoLines,
+  savedJson,
 }: {
   segmentId: string;
-  draftId?: string;
   segment: Segment;
   initial: TranscriptLine[];
   autoLines: TranscriptLine[];
+  savedJson: string | null;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -129,68 +136,169 @@ function Editor({
     p.loop = false;
   });
   const timeUpdate = useEvent(player, 'timeUpdate');
-  const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-  const positionMs = (timeUpdate?.currentTime ?? player.currentTime) * 1000;
-  const posCs = positionMs / 10;
+  const { isPlaying, seekTo } = useParkedPlayback(player);
+  const posCs = (timeUpdate?.currentTime ?? player.currentTime) * 100;
 
-  const lines = editor.toLines();
-  // The cue under the playhead (highlighted while playing) and the cue the user opened for editing.
+  const { toLines } = editor;
+  const lines = useMemo(() => toLines(), [toLines]);
+  const { markCleared } = useAutosaveTranscript({
+    segmentId,
+    sourceFile: effFile(segment),
+    lines,
+    dirty: editor.dirty,
+    savedJson,
+  });
+
+  // Selection drives the mode; both ids are cleared/derived defensively — a stale id (cue removed
+  // by undo/delete/split) simply resolves to no cue and the screen falls back to browse mode.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const selCue = editor.cues.find((c) => c.id === selectedId) ?? null;
+  const mode: 'browse' | 'timing' | 'text' =
+    selCue && editingId === selCue.id ? 'text' : selCue ? 'timing' : 'browse';
+
   const playingId = useMemo(() => {
     const c = editor.cues.find((x) => posCs >= x.t0 && posCs <= x.t1);
     return c?.id ?? null;
   }, [editor.cues, posCs]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Best-effort auto-scroll: follow the playing cue, but don't yank the list while the user is
-  // editing an expanded cue.
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef<Map<string, number>>(new Map());
+
+  // Playback follow: auto-scroll to the playing cue, but yield while a cue is selected/being
+  // edited and for a beat after the user scrolls the list themselves.
+  const followSuspendedRef = useRef(false);
+  const suspendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (selectedId || !playingId) return;
+    if (selectedId || editingId || !playingId || followSuspendedRef.current) return;
     const y = offsets.current.get(playingId);
     if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: true });
-  }, [playingId, selectedId]);
+  }, [playingId, selectedId, editingId]);
+  const onUserScrollStart = () => {
+    followSuspendedRef.current = true;
+    if (suspendTimerRef.current) clearTimeout(suspendTimerRef.current);
+  };
+  const onUserScrollSettle = () => {
+    if (suspendTimerRef.current) clearTimeout(suspendTimerRef.current);
+    suspendTimerRef.current = setTimeout(() => {
+      followSuspendedRef.current = false;
+    }, 2000);
+  };
 
-  const selectCue = (id: string, t0: number) => {
-    setSelectedId(id);
+  // Keyboard dismissal (interactive drag, Done, back button) always ends text mode.
+  useEffect(() => {
+    if (!editingId) return;
+    const evt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hide = Keyboard.addListener(evt, () => setEditingId(null));
+    return () => hide.remove();
+  }, [editingId]);
+
+  const scrollToCue = (id: string, margin: number) => {
+    const y = offsets.current.get(id);
+    if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - margin), animated: true });
+  };
+
+  const selectCue = (cue: Cue) => {
+    setEditingId(null);
+    setSelectedId(cue.id);
     player.pause();
-    player.seekBy(t0 / 100 - player.currentTime);
+    seekTo(cue.t0 / 100);
+    scrollToCue(cue.id, 96);
   };
 
+  const beginTextEdit = (id: string) => {
+    setEditingId(id);
+    scrollToCue(id, Spacing.two);
+  };
+
+  const endTextEdit = () => {
+    setEditingId(null);
+    editor.endCoalescing();
+  };
+
+  const clearSelection = () => {
+    setSelectedId(null);
+    setEditingId(null);
+  };
+
+  // Play is the "done" gesture: it drops the selection and resumes playback follow. No
+  // end-of-clip restart logic needed — useParkedPlayback reparks the playhead at 0 on end.
   const togglePlay = () => {
-    if (isPlaying) player.pause();
-    else if (player.duration > 0 && player.currentTime >= player.duration - 0.05) player.replay();
-    else player.play();
+    if (player.playing) {
+      player.pause();
+      return;
+    }
+    clearSelection();
+    Keyboard.dismiss();
+    player.play();
   };
 
-  const onSave = async () => {
-    await saveEditedTranscript(segmentId, effFile(segment), editor.toLines(), Date.now());
-    router.back();
+  const onAddCue = () => {
+    player.pause();
+    const id = editor.addCueAt(posCs);
+    setSelectedId(id);
+    setEditingId(id); // a fresh cue is empty — jump straight to typing
   };
 
-  const onResetToAuto = async () => {
-    await clearEditedTranscript(segmentId);
-    editor.reset(autoLines);
+  const onSplit = () => {
+    if (!selCue) return;
+    const id = editor.splitAt(selCue.id, posCs);
+    if (id) setSelectedId(id); // keep selection on the playhead's half
   };
+
+  const [rowEdited, setRowEdited] = useState(savedJson != null);
+  const showReset = (rowEdited || editor.dirty) && editor.cues.length > 0;
+  const onResetToAuto = () => {
+    Alert.alert('Reset captions?', 'This discards your edits and restores the automatic captions.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset',
+        style: 'destructive',
+        onPress: async () => {
+          clearSelection();
+          await clearEditedTranscript(segmentId);
+          markCleared();
+          editor.reset(autoLines);
+          setRowEdited(false);
+        },
+      },
+    ]);
+  };
+
+  const selIndex = selCue ? editor.cues.indexOf(selCue) : -1;
 
   return (
     <ThemedView style={styles.fill}>
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
-        <CloseButton onPress={() => router.back()} />
-        <ThemedText style={styles.headerTitle}>Captions</ThemedText>
-        <Pressable
-          onPress={onSave}
-          disabled={!editor.dirty}
-          accessibilityRole="button"
-          accessibilityLabel="Save captions"
-          style={[styles.saveBtn, { backgroundColor: Accent }, !editor.dirty && styles.disabled]}>
-          <ThemedText style={styles.saveLabel}>Save</ThemedText>
-        </Pressable>
-      </View>
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
+          <View
+            style={[styles.headerTitleWrap, { top: insets.top + Spacing.two }]}
+            pointerEvents="none">
+            <ThemedText style={styles.headerTitle}>Captions</ThemedText>
+          </View>
+          <CloseButton onPress={() => router.back()} />
+          <View style={styles.headerActions}>
+            <HeaderBtn
+              name="arrow.uturn.backward"
+              label="Undo"
+              disabled={!editor.canUndo}
+              onPress={editor.undo}
+              theme={theme}
+            />
+            <HeaderBtn
+              name="arrow.uturn.forward"
+              label="Redo"
+              disabled={!editor.canRedo}
+              onPress={editor.redo}
+              theme={theme}
+            />
+          </View>
+        </View>
 
-      <View style={styles.previewWrap}>
         <Pressable
-          style={styles.previewCard}
+          style={[styles.previewCard, mode === 'text' ? styles.previewCompact : styles.previewFull]}
           onPress={togglePlay}
           accessibilityLabel="Toggle playback">
           <VideoView
@@ -200,256 +308,123 @@ function Editor({
             nativeControls={false}
           />
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <CaptionOverlay lines={lines} positionMs={positionMs} />
+            <CaptionOverlay
+              lines={lines}
+              positionMs={posCs * 10}
+              fontSize={mode === 'text' ? 12 : 17}
+            />
           </View>
           {!isPlaying && (
             <View style={styles.playOverlay} pointerEvents="none">
-              <View style={styles.playBadge}>
-                <Icon name="play.fill" size={22} tintColor="#fff" />
+              <View style={[styles.playBadge, mode === 'text' && styles.playBadgeCompact]}>
+                <Icon name="play.fill" size={mode === 'text' ? 15 : 22} tintColor="#fff" />
               </View>
             </View>
           )}
         </Pressable>
-      </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.list}
-        contentContainerStyle={{ padding: Spacing.three, paddingBottom: insets.bottom + 120 }}
-        keyboardShouldPersistTaps="handled">
-        {editor.cues.length === 0 && (
-          <ThemedText themeColor="textSecondary" style={styles.empty}>
-            No captions yet. Add a cue at the playhead to start.
-          </ThemedText>
+        {mode === 'timing' && selCue && (
+          <CueToolbar
+            cue={selCue}
+            posCs={posCs}
+            theme={theme}
+            canMerge={selIndex >= 0 && selIndex < editor.cues.length - 1}
+            onSplit={onSplit}
+            onMerge={() => editor.mergeNext(selCue.id)}
+            onDelete={() => {
+              editor.remove(selCue.id);
+              clearSelection();
+            }}
+          />
         )}
-        {editor.cues.map((cue) => (
-          <View
-            key={cue.id}
-            onLayout={(e: LayoutChangeEvent) =>
-              offsets.current.set(cue.id, e.nativeEvent.layout.y)
-            }>
-            <CueRow
-              cue={cue}
-              playing={cue.id === playingId}
-              selected={cue.id === selectedId}
-              theme={theme}
-              onSelect={() => selectCue(cue.id, cue.t0)}
-              onText={(t) => editor.setText(cue.id, t)}
-              onNudgeStart={(d) => editor.nudgeStart(cue.id, d)}
-              onNudgeEnd={(d) => editor.nudgeEnd(cue.id, d)}
-              onSetStart={() => editor.setStart(cue.id, posCs)}
-              onSetEnd={() => editor.setEnd(cue.id, posCs)}
-              onSplit={() => editor.splitAt(cue.id, posCs)}
-              onMerge={() => editor.mergeNext(cue.id)}
-              onCollapse={() => {
-                setSelectedId(null);
-                Keyboard.dismiss();
-              }}
-              onDelete={() => {
-                editor.remove(cue.id);
-                setSelectedId(null);
-              }}
-            />
-          </View>
-        ))}
-      </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.two }]}>
-        <Pressable
-          onPress={() => editor.addCueAt(posCs)}
-          style={[styles.footerBtn, { backgroundColor: theme.backgroundElement }]}>
-          <Icon name="plus" size={16} tintColor={theme.text} />
-          <ThemedText>Add cue</ThemedText>
-        </Pressable>
-        <Pressable
-          onPress={onResetToAuto}
-          style={[styles.footerBtn, { backgroundColor: theme.backgroundElement }]}>
-          <Icon name="arrow.uturn.backward" size={16} tintColor={theme.text} />
-          <ThemedText>Reset to auto</ThemedText>
-        </Pressable>
-      </View>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 96 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          onScrollBeginDrag={onUserScrollStart}
+          onScrollEndDrag={onUserScrollSettle}
+          onMomentumScrollEnd={onUserScrollSettle}>
+          {editor.cues.length === 0 && (
+            <ThemedText themeColor="textSecondary" style={styles.empty}>
+              No captions yet. Add a cue at the playhead to start.
+            </ThemedText>
+          )}
+          {editor.cues.map((cue) => (
+            <View
+              key={cue.id}
+              onLayout={(e: LayoutChangeEvent) =>
+                offsets.current.set(cue.id, e.nativeEvent.layout.y)
+              }>
+              <CueRow
+                cue={cue}
+                state={cue.id === editingId ? 'editing' : cue.id === selectedId ? 'selected' : 'view'}
+                playing={cue.id === playingId}
+                posCs={posCs}
+                theme={theme}
+                onSelect={() => selectCue(cue)}
+                onBeginTextEdit={() => beginTextEdit(cue.id)}
+                onChangeText={(t) => editor.setText(cue.id, t)}
+                onEndTextEdit={endTextEdit}
+              />
+            </View>
+          ))}
+          {showReset && (
+            <Pressable
+              onPress={onResetToAuto}
+              accessibilityRole="button"
+              style={styles.resetLink}>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Reset to automatic captions
+              </ThemedText>
+            </Pressable>
+          )}
+        </ScrollView>
+
+        {mode === 'browse' && (
+          <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.two }]}>
+            <Pressable
+              onPress={onAddCue}
+              style={[styles.footerBtn, { backgroundColor: theme.backgroundElement }]}>
+              <Icon name="plus" size={16} tintColor={theme.text} />
+              <ThemedText>Add cue</ThemedText>
+            </Pressable>
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
-type CueRowProps = {
-  cue: Cue;
-  playing: boolean;
-  selected: boolean;
-  theme: ReturnType<typeof useTheme>;
-  onSelect: () => void;
-  onText: (t: string) => void;
-  onNudgeStart: (d: number) => void;
-  onNudgeEnd: (d: number) => void;
-  onSetStart: () => void;
-  onSetEnd: () => void;
-  onSplit: () => void;
-  onMerge: () => void;
-  onDelete: () => void;
-  onCollapse: () => void;
-};
-
-function CueRow({
-  cue,
-  playing,
-  selected,
-  theme,
-  onSelect,
-  onText,
-  onNudgeStart,
-  onNudgeEnd,
-  onSetStart,
-  onSetEnd,
-  onSplit,
-  onMerge,
-  onDelete,
-  onCollapse,
-}: CueRowProps) {
-  const chars = cue.text.trim().length;
-  const cps = chars / Math.max(0.01, (cue.t1 - cue.t0) / 100);
-  const over = cps > CPS_BAD || chars > MAX_CHARS;
-  const cpsColor = cps > CPS_BAD ? Accent : cps > CPS_WARN ? theme.warning : theme.textSecondary;
-
-  // Collapsed: a calm, readable row — start time + text, accent when it's the playing cue.
-  if (!selected) {
-    return (
-      <Pressable
-        onPress={onSelect}
-        style={[
-          styles.row,
-          { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-          playing && { borderColor: Accent },
-        ]}>
-        <View style={styles.collapsed}>
-          <ThemedText style={[styles.tc, { color: playing ? Accent : theme.textSecondary }]}>
-            {clock(cue.t0)}
-          </ThemedText>
-          <ThemedText
-            numberOfLines={2}
-            style={[styles.collapsedText, !chars && { color: theme.textSecondary }]}>
-            {chars ? cue.text : 'Empty cue'}
-          </ThemedText>
-          {over && <View style={styles.cpsDot} />}
-        </View>
-      </Pressable>
-    );
-  }
-
-  // Expanded: the one cue being edited — text field + timing + actions.
-  return (
-    <View style={[styles.row, styles.rowSelected, { backgroundColor: theme.backgroundElement }]}>
-      <View style={styles.expandedHeader}>
-        <ThemedText style={[styles.tc, styles.rangeText, { color: Accent }]}>
-          {clock(cue.t0)}–{clock(cue.t1)}
-        </ThemedText>
-        <Pressable onPress={onCollapse} hitSlop={8} accessibilityLabel="Done editing cue">
-          <Icon name="chevron.up" size={15} weight="semibold" tintColor={theme.textSecondary} />
-        </Pressable>
-      </View>
-
-      <TextInput
-        value={cue.text}
-        onChangeText={onText}
-        placeholder="Caption text"
-        placeholderTextColor={theme.textSecondary}
-        multiline
-        autoFocus
-        style={[styles.input, { color: theme.text }]}
-      />
-
-      <View style={styles.timeRow}>
-        <TimeControl
-          label="In"
-          value={fine(cue.t0)}
-          theme={theme}
-          onMinus={() => onNudgeStart(-NUDGE_CS)}
-          onPlus={() => onNudgeStart(NUDGE_CS)}
-          onPlayhead={onSetStart}
-        />
-        <TimeControl
-          label="Out"
-          value={fine(cue.t1)}
-          theme={theme}
-          onMinus={() => onNudgeEnd(-NUDGE_CS)}
-          onPlus={() => onNudgeEnd(NUDGE_CS)}
-          onPlayhead={onSetEnd}
-        />
-      </View>
-
-      <View style={[styles.actionRow, { borderTopColor: theme.border }]}>
-        <ActionBtn name="scissors" label="Split" theme={theme} onPress={onSplit} />
-        <ActionBtn name="arrow.triangle.merge" label="Merge" theme={theme} onPress={onMerge} />
-        <ActionBtn name="trash" label="Delete" theme={theme} onPress={onDelete} tint={Accent} />
-        <View style={styles.flexSpacer} />
-        <ThemedText style={{ color: cpsColor, fontSize: 12 }}>{cps.toFixed(0)} cps</ThemedText>
-      </View>
-    </View>
-  );
-}
-
-function TimeControl({
-  label,
-  value,
-  theme,
-  onMinus,
-  onPlus,
-  onPlayhead,
-}: {
-  label: string;
-  value: string;
-  theme: ReturnType<typeof useTheme>;
-  onMinus: () => void;
-  onPlus: () => void;
-  onPlayhead: () => void;
-}) {
-  return (
-    <View style={[styles.timeControl, { backgroundColor: theme.backgroundSelected }]}>
-      <ThemedText themeColor="textSecondary" style={styles.timeLabel}>
-        {label}
-      </ThemedText>
-      <Pressable
-        onPress={onMinus}
-        hitSlop={8}
-        style={styles.stepBtn}
-        accessibilityLabel={`${label} earlier`}>
-        <Icon name="minus" size={12} weight="semibold" tintColor={theme.text} />
-      </Pressable>
-      <ThemedText style={styles.timeValue}>{value}</ThemedText>
-      <Pressable
-        onPress={onPlus}
-        hitSlop={8}
-        style={styles.stepBtn}
-        accessibilityLabel={`${label} later`}>
-        <Icon name="plus" size={12} weight="semibold" tintColor={theme.text} />
-      </Pressable>
-      <Pressable
-        onPress={onPlayhead}
-        hitSlop={8}
-        style={styles.stepBtn}
-        accessibilityLabel={`Set ${label} to playhead`}>
-        <Icon name="arrow.down.to.line" size={13} tintColor={Accent} />
-      </Pressable>
-    </View>
-  );
-}
-
-function ActionBtn({
+function HeaderBtn({
   name,
   label,
-  theme,
+  disabled,
   onPress,
-  tint,
+  theme,
 }: {
   name: IconName;
   label: string;
-  theme: ReturnType<typeof useTheme>;
+  disabled: boolean;
   onPress: () => void;
-  tint?: string;
+  theme: ReturnType<typeof useTheme>;
 }) {
   return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityLabel={label} style={styles.actionBtn}>
-      <Icon name={name} size={15} tintColor={tint ?? theme.text} />
-      <ThemedText style={[styles.actionLabel, { color: tint ?? theme.text }]}>{label}</ThemedText>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={[
+        styles.headerBtn,
+        { backgroundColor: theme.backgroundElement },
+        disabled && styles.headerBtnDisabled,
+      ]}>
+      <Icon name={name} size={15} tintColor={theme.text} />
     </Pressable>
   );
 }
@@ -465,18 +440,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
   },
+  headerTitleWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: { fontSize: 17, fontWeight: '700' },
-  saveBtn: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.one + 2, borderRadius: 10 },
-  saveLabel: { color: '#fff', fontWeight: '700' },
-  disabled: { opacity: 0.4 },
-  previewWrap: { alignItems: 'center', paddingVertical: Spacing.two },
+  headerActions: { flexDirection: 'row', gap: Spacing.two },
+  headerBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBtnDisabled: { opacity: 0.35 },
   previewCard: {
-    width: '44%',
     aspectRatio: 9 / 16,
     overflow: 'hidden',
     borderRadius: 12,
     backgroundColor: '#000',
+    alignSelf: 'center',
   },
+  previewFull: { width: '56%', marginVertical: Spacing.two },
+  // Text mode: smaller so the editing row stays visible above the keyboard.
+  previewCompact: { width: '36%', marginVertical: Spacing.one },
   playOverlay: {
     position: 'absolute',
     top: 0,
@@ -495,59 +486,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 3,
   },
+  playBadgeCompact: { width: 32, height: 32, borderRadius: 16, paddingLeft: 2 },
   list: { flex: 1 },
+  listContent: { padding: Spacing.three },
   empty: { textAlign: 'center', marginTop: Spacing.five },
-  row: {
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: Spacing.two,
-  },
-  rowSelected: {
-    borderWidth: 1.5,
-    borderColor: Accent,
-    padding: Spacing.three,
-    gap: Spacing.three,
-  },
-  // Collapsed row: time + text on one line.
-  collapsed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: Spacing.two + 2,
-    paddingHorizontal: Spacing.three,
-  },
-  tc: { fontSize: 13, fontVariant: ['tabular-nums'], width: 38 },
-  expandedHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  rangeText: { width: 'auto', fontWeight: '600' },
-  collapsedText: { flex: 1, fontSize: 15, lineHeight: 20 },
-  cpsDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Accent },
-  input: { fontSize: 17, lineHeight: 23, minHeight: 24, padding: 0 },
-  timeRow: { flexDirection: 'row', gap: Spacing.two },
-  timeControl: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-    borderRadius: 10,
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-  },
-  timeLabel: { fontSize: 12, width: 24 },
-  timeValue: { flex: 1, fontSize: 13, fontVariant: ['tabular-nums'], textAlign: 'center' },
-  stepBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.four,
-    paddingTop: Spacing.three,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  actionLabel: { fontSize: 13 },
-  flexSpacer: { flex: 1 },
+  resetLink: { alignItems: 'center', paddingVertical: Spacing.three },
   footer: {
     flexDirection: 'row',
-    gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.two,
   },
