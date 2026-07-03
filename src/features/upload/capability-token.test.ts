@@ -1,6 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { decodeCapabilityClaims, isClaimsExpired } from './capability-token';
+import {
+  decodeCapabilityClaims,
+  EXPIRY_BUFFER_MS,
+  formatExpiry,
+  isClaimsExpired,
+  isTokenExpired,
+} from './capability-token';
 
 // Mirrors `issueCapabilityToken` in pulsevault-mieweb/src/lib/capability-token.ts without
 // pulling in the submodule (no signature needed — decode never verifies it).
@@ -55,5 +61,44 @@ describe('isClaimsExpired', () => {
 
   it('is true inside the safety buffer even though exp has not technically passed', () => {
     expect(isClaimsExpired(VALID_CLAIMS, 10_000, VALID_CLAIMS.exp * 1000 - 5_000)).toBe(true);
+  });
+});
+
+describe('isTokenExpired', () => {
+  const expMs = VALID_CLAIMS.exp * 1000;
+
+  it('treats a null token as not-expired (validity unknown)', () => {
+    expect(isTokenExpired(null, expMs + 60_000)).toBe(false);
+  });
+
+  it('treats an opaque, undecodable token as not-expired', () => {
+    expect(isTokenExpired('sk_live_abcdef1234567890', expMs + 60_000)).toBe(false);
+  });
+
+  it('is false well before expiry and true past it (with buffer)', () => {
+    const token = fakeToken(VALID_CLAIMS);
+    expect(isTokenExpired(token, expMs - 60_000)).toBe(false);
+    expect(isTokenExpired(token, expMs - EXPIRY_BUFFER_MS + 1)).toBe(true);
+  });
+});
+
+describe('formatExpiry', () => {
+  const expMs = VALID_CLAIMS.exp * 1000;
+
+  it('is "No expiry" for a tokenless or opaque destination', () => {
+    expect(formatExpiry(null, expMs)).toBe('No expiry');
+    expect(formatExpiry('sk_live_opaque', expMs)).toBe('No expiry');
+  });
+
+  it('is "Expired" once past exp (accounting for the buffer)', () => {
+    expect(formatExpiry(fakeToken(VALID_CLAIMS), expMs)).toBe('Expired');
+  });
+
+  it('counts down in minutes then seconds', () => {
+    const token = fakeToken(VALID_CLAIMS);
+    // 5 min out, minus the 10s buffer → "Expires in 4m".
+    expect(formatExpiry(token, expMs - 5 * 60_000)).toBe('Expires in 4m');
+    // 20s out, minus the 10s buffer → "Expires in 10s".
+    expect(formatExpiry(token, expMs - 20_000)).toBe('Expires in 10s');
   });
 });

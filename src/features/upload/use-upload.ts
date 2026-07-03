@@ -11,22 +11,18 @@ import {
   setUploadProgress,
   upsertUploadArtifact,
 } from '@/db/drafts';
-import {
-  clearPendingPairing,
-  parsePendingPairing,
-  type PendingPairing,
-  pendingPairingQuery,
-} from '@/db/pairing';
-import { getDraftToken, getPendingPairingToken } from '@/db/secure-token';
+import { deleteDestination } from '@/db/destinations';
+import { getDraftToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
-import { useTick } from '@/hooks/use-tick';
+import { useNow } from '@/hooks/use-now';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
-import { linesToSrt, mergedLines } from '@/features/transcription/srt';
+import { linesToVtt, mergedLines } from '@/features/transcription/vtt';
 import { absolutize } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
 
 import { waitUntilAppForeground } from './app-state-gate';
-import { decodeCapabilityClaims, isClaimsExpired } from './capability-token';
+import { EXPIRY_CHECK_INTERVAL_MS, isTokenExpired } from './capability-token';
+import { type DestinationOption, useDestinations } from './use-destinations';
 import { uploadRemainderNative } from './native-chunk-upload';
 import {
   type ArtifactKind,
@@ -35,20 +31,6 @@ import {
   type TusUploadOptions,
   uploadViaTus,
 } from './tus-client';
-
-// Safety margin before a token's real `exp` so we never start a request that would land at the
-// server just past expiry — see `capability-token.ts`. Also how often the hook re-checks expiry
-// on its own (`useTick`), so a button that's still valid disappears within this long of going stale.
-const EXPIRY_BUFFER_MS = 10_000;
-const EXPIRY_CHECK_INTERVAL_MS = 15_000;
-
-/** Best-effort: `null` token or an opaquely-shaped one (a non-pulsevault server) means "unknown", not "expired" — never block on what we can't read. */
-function isTokenExpired(token: string | null): boolean {
-  if (!token) return false;
-  const claims = decodeCapabilityClaims(token);
-  if (!claims) return false;
-  return isClaimsExpired(claims, EXPIRY_BUFFER_MS, Date.now());
-}
 
 const EXPIRED_PAIRING_MESSAGE = 'Upload link expired — ask the operator for a new pairing link.';
 
@@ -126,7 +108,7 @@ function describeError(err: unknown): ErrorDescription {
 /**
  * Drives uploading a draft to its paired server. Branches on the destination's
  * stored `uploadUnit`: `"merged"` uploads the single merged export video plus
- * one merged-SRT captions artifact (same session); `"beat"` uploads each
+ * one merged-VTT captions artifact (same session); `"beat"` uploads each
  * segment's effective file individually under its own existing id, plus a
  * small ordering manifest and per-beat captions — no merge/re-encode pass at
  * all in that branch. Every secondary artifact in a session declares
@@ -153,7 +135,9 @@ export function useUpload(
 ) {
   const { data: projectRows } = useLiveQuery(projectQuery(draftId), [draftId]);
   const project = projectRows[0];
-  const { data: pendingPairingRows } = useLiveQuery(pendingPairingQuery);
+  // The device-wide pool of paired-but-unconsumed destinations (non-expired only). Any draft can
+  // select one to upload to; several servers can be paired at once (§ destination pool).
+  const { destinations } = useDestinations();
   const transcripts = useDraftTranscripts(draftId);
   // Transient state for an *active* run (uploading/error this session); when
   // idle, the displayed status instead derives directly from the DB below —
@@ -170,10 +154,15 @@ export function useUpload(
   // (e.g. mid-captions-upload in merged mode, or a beat segment) — so `cancel()` can DELETE
   // the resource that's really in flight instead of always targeting the anchor.
   const currentUploadRef = useRef<{ artifactId: string; resourceUrl: string | null } | null>(null);
+  // The pool destination id this draft was claimed from, so a *finished* upload can remove it
+  // from the pool (single-use — § destination lifecycle). Set at `claim`, survives retries of the
+  // same claim, cleared once consumed. Null for a draft whose destination came from a prior
+  // session (already consumed) — nothing left in the pool to delete.
+  const consumedIdRef = useRef<string | null>(null);
 
-  // Re-evaluate expiry on a timer too, not just on writes — a token can go stale while the user
-  // is just sitting on this screen.
-  useTick(EXPIRY_CHECK_INTERVAL_MS);
+  // Reactive wall-clock so expiry re-evaluates on a timer too, not just on writes — a token can go
+  // stale while the user is just sitting on this screen.
+  const now = useNow(EXPIRY_CHECK_INTERVAL_MS);
 
   const hasDestination =
     project?.mode === 'upload' &&
@@ -213,47 +202,36 @@ export function useUpload(
         : null,
     [hasDestination, project, draftToken],
   );
-  const destinationExpired = destination !== null && isTokenExpired(destination.token);
+  const destinationExpired = destination !== null && isTokenExpired(destination.token, now);
 
-  // Keyed on the row's raw value (not a fresh `parsePendingPairing()` object every render) so
-  // the token-loading effect below only re-fires when the pairing actually changes.
-  const rawPendingPairing = useMemo(
-    () => parsePendingPairing(pendingPairingRows[0]?.value),
-    [pendingPairingRows],
+  // Which pool destination the user has picked to upload to. Defaults to the most-recent
+  // non-expired one, and is kept valid as the pool changes (a consumed/deleted/expired
+  // destination drops out — fall back to the newest remaining). Reconciled during render (the
+  // adjust-state-during-render pattern, as on the home screen) rather than in an effect, so the
+  // corrected value is used the same render instead of after an extra commit. Not tied to the
+  // draft's own claimed `destination`: the pool is the "change your mind at the end" surface.
+  const [rawSelectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId =
+    rawSelectedId && destinations.some((d) => d.id === rawSelectedId)
+      ? rawSelectedId
+      : (destinations[0]?.id ?? null);
+  if (selectedId !== rawSelectedId) setSelectedId(selectedId);
+  const selectedDestination = useMemo(
+    () => destinations.find((d) => d.id === selectedId) ?? null,
+    [destinations, selectedId],
   );
-  // Stale/unused rather than actively reset when there's no pending pairing — `pendingPairing`
-  // below only ever reads it alongside a truthy `rawPendingPairing`.
-  const [pendingToken, setPendingTokenState] = useState<string | null>(null);
-  useEffect(() => {
-    if (!rawPendingPairing) return;
-    let cancelled = false;
-    void getPendingPairingToken().then((token) => {
-      if (!cancelled) setPendingTokenState(token);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [rawPendingPairing]);
-  const pendingPairingExpired = rawPendingPairing !== null && isTokenExpired(pendingToken);
-  // Only offer the global pending pairing on a draft that hasn't already claimed its own
-  // destination — and never once it's expired (§ "don't show it when expired").
-  const pendingPairing: PendingPairing | null =
-    destination === null && rawPendingPairing && !pendingPairingExpired
-      ? { ...rawPendingPairing, token: pendingToken }
-      : null;
 
-  // Garbage-collect a pairing that went stale before anyone claimed it, so it doesn't linger as
-  // dead state and doesn't get raced into `claim()` by a stale closure.
-  useEffect(() => {
-    if (rawPendingPairing && pendingPairingExpired) void clearPendingPairing();
-  }, [rawPendingPairing, pendingPairingExpired]);
+  // Deliberately NOT derived from the persisted `uploadStatus === 'uploaded'` — a finished
+  // upload is surfaced once (the watch prompt on the export screen) and then leaves no
+  // lingering "uploaded" UI behind in the draft. `done` therefore only ever appears for a run
+  // that completed in THIS session; the DB row still records the upload for resume/history.
+  const state: UploadState = activeState;
 
-  const state: UploadState =
-    activeState.status === 'idle' &&
-    project?.uploadStatus === 'uploaded' &&
-    project.uploadResourceUrl
-      ? { status: 'done', resourceUrl: project.uploadResourceUrl }
-      : activeState;
+  // Dismisses a completed run's `done` state after the one-time watch prompt has been shown —
+  // returns the section to its normal selector view with no persistent post-upload button.
+  const acknowledgeDone = useCallback(() => {
+    setActiveState((prev) => (prev.status === 'done' ? { status: 'idle' } : prev));
+  }, []);
 
   const uploadOne = useCallback(
     async (
@@ -268,7 +246,7 @@ export function useUpload(
       // beat-mode session uploads many small files in sequence, and a token that was fine at
       // the start can go stale partway through. Stopping here with a clear, non-retryable
       // reason beats letting the loop run into a confusing wall of 403s.
-      if (isTokenExpired(destination.token)) throw new ExpiredPairingError();
+      if (isTokenExpired(destination.token, Date.now())) throw new ExpiredPairingError();
       currentUploadRef.current = { artifactId: artifact.artifactId, resourceUrl };
       const result = await uploadViaTus({
         server: destination.server,
@@ -292,7 +270,7 @@ export function useUpload(
         // of a confusing 403 deep inside the retry loop's backoff.
         waitUntilForeground: async (sig) => {
           await waitUntilAppForeground(sig);
-          if (isTokenExpired(destination.token)) {
+          if (isTokenExpired(destination.token, Date.now())) {
             throw new TusUploadError(EXPIRED_PAIRING_MESSAGE, { retryable: false });
           }
         },
@@ -331,7 +309,9 @@ export function useUpload(
       const lines = mergedLines(segments, transcripts);
       if (lines.length > 0) {
         await setCaptionsUploadStatus(draftId, 'uploading');
-        const srtFile = writeTempTextFile(`${draftId}.srt`, linesToSrt(lines));
+        // VTT rather than SRT: WebVTT carries whisper's word-level timing as inline cue
+        // timestamps, so web viewers can karaoke-highlight exactly like the in-app overlay.
+        const vttFile = writeTempTextFile(`${draftId}.vtt`, linesToVtt(lines));
         // Reuse a previously-reserved captions artifact so a retry after a captions-PATCH
         // failure resumes it instead of minting a new UUID and uploading a duplicate.
         const existing = await getUploadArtifact(draftId, 'captions');
@@ -342,10 +322,10 @@ export function useUpload(
           destination,
           {
             artifactId: captionsArtifactId,
-            filename: `${draftId}.srt`,
+            filename: `${draftId}.vtt`,
             kind: 'captions',
             relatedTo: destination.artifactId,
-            file: srtFile,
+            file: vttFile,
           },
           existing?.resourceUrl ?? null,
           undefined,
@@ -408,15 +388,15 @@ export function useUpload(
           if (!existingCaptions) {
             await upsertUploadArtifact(draftId, captionsKey, { artifactId: captionsArtifactId });
           }
-          const srtFile = writeTempTextFile(`${segment.id}.srt`, linesToSrt(lines));
+          const vttFile = writeTempTextFile(`${segment.id}.vtt`, linesToVtt(lines));
           const captionsResult = await uploadOne(
             destination,
             {
               artifactId: captionsArtifactId,
-              filename: `${segment.id}.srt`,
+              filename: `${segment.id}.vtt`,
               kind: 'captions',
               relatedTo: destination.artifactId,
-              file: srtFile,
+              file: vttFile,
             },
             existingCaptions?.resourceUrl ?? null,
             undefined,
@@ -476,7 +456,7 @@ export function useUpload(
       if (runningRef.current) return;
       // Checked before even attempting the request, not just inside `uploadOne` — no point
       // flashing "uploading" for a run that's already dead on arrival.
-      if (isTokenExpired(dest.token)) {
+      if (isTokenExpired(dest.token, Date.now())) {
         const { reason, retryable } = describeError(new ExpiredPairingError());
         setActiveState({ status: 'error', reason, retryable });
         await setUploadProgress(draftId, { status: 'failed' });
@@ -493,6 +473,13 @@ export function useUpload(
             ? await uploadMerged(dest, controller.signal)
             : await uploadBeats(dest, controller.signal);
         setActiveState({ status: 'done', resourceUrl });
+        // Upload finished — remove the consumed destination from the pool so it stops showing in
+        // the selector/home float (its single-use artifactId is spent). No-op if this draft's
+        // destination came from an already-consumed prior session.
+        if (consumedIdRef.current) {
+          await deleteDestination(consumedIdRef.current);
+          consumedIdRef.current = null;
+        }
       } catch (err) {
         const { reason, retryable } = describeError(err);
         setActiveState({ status: 'error', reason, retryable });
@@ -505,25 +492,36 @@ export function useUpload(
     [destination, draftId, uploadMerged, uploadBeats],
   );
 
-  // Claims the device's one pending pairing for this draft and starts uploading immediately —
-  // there's no separate "choose destination" step anymore (§ pairing UX), so a single tap both
-  // commits the draft to this server and kicks off the upload.
+  // Commits this draft to a chosen pool destination and starts uploading in the same tap. The
+  // pool destination isn't removed here — only once the upload actually *finishes* (see `start`)
+  // — so a failed/cancelled attempt keeps it around to retry or re-pick. Re-claiming an
+  // already-claimed draft to a different destination RE-PAIRS it (setUploadDestination resets
+  // progress, rotates the token, wipes the old session's sub-artifact mappings) — the escape
+  // hatch when the prior session is dead or the operator minted a different upload unit.
   const claim = useCallback(
-    async (pairing: PendingPairing) => {
-      if (isTokenExpired(pairing.token)) return;
+    async (destinationId: string | null) => {
+      const option = destinationId
+        ? (destinations.find((d) => d.id === destinationId) ?? null)
+        : null;
+      if (!option || isTokenExpired(option.token, Date.now())) return;
       const claimedDestination: Destination = {
-        server: pairing.server,
-        token: pairing.token,
-        artifactId: pairing.artifactId,
-        uploadUnit: pairing.uploadUnit,
+        server: option.server,
+        token: option.token,
+        artifactId: option.artifactId,
+        uploadUnit: option.uploadUnit,
         resourceUrl: null,
       };
-      await setUploadDestination(draftId, pairing);
-      setDraftTokenState(pairing.token);
-      await clearPendingPairing();
+      await setUploadDestination(draftId, {
+        server: option.server,
+        token: option.token,
+        artifactId: option.artifactId,
+        uploadUnit: option.uploadUnit,
+      });
+      setDraftTokenState(option.token);
+      consumedIdRef.current = option.id;
       await start(claimedDestination);
     },
-    [draftId, start],
+    [destinations, draftId, start],
   );
 
   const cancel = useCallback(async () => {
@@ -548,14 +546,25 @@ export function useUpload(
     };
   }, []);
 
+  // The destination whose host/mode the UI should name right now: the draft's own claimed
+  // destination once a run is underway or finished (uploading/done/error/expired), otherwise the
+  // pool option the user has currently selected to upload to.
+  const activeDestination: Destination | DestinationOption | null =
+    destination && state.status !== 'idle' ? destination : selectedDestination;
+
   return {
     state,
     destination,
     destinationExpired,
-    pendingPairing,
+    destinations,
+    selectedId,
+    setSelectedId,
+    selectedDestination,
+    activeDestination,
     start,
     retry: start,
     cancel,
     claim,
+    acknowledgeDone,
   };
 }

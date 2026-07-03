@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 
-import { setPendingPairing } from '@/db/pairing';
+import { addDestination } from '@/db/destinations';
 import { useToast } from '@/features/toast/toast-provider';
 
 import { CAPABILITIES_REJECTION_MESSAGE, checkCapabilities } from './capabilities';
@@ -51,11 +51,12 @@ function confirmPairing(host: string): Promise<boolean> {
  * of where it's rendered, avoiding duplicate-listener bugs.
  *
  * A recognized link asks the user to confirm the server's origin (TOFU)
- * before anything is fetched from it. Confirming just stores a global
- * "pending pairing" (db/pairing.ts) and toasts — it does NOT pick a draft.
- * Any draft (a fresh recording or an existing one) can claim it later from
- * its export screen, matching the "this server can receive one upload from
- * this device" single-use model without forcing that choice up front.
+ * before anything is fetched from it. Confirming adds the destination to the
+ * device-wide pool (db/destinations.ts) and toasts — it does NOT pick a draft.
+ * Any draft (a fresh recording or an existing one) can select it later from
+ * its export screen, and several servers can be paired at once. Each
+ * destination is single-use (one server-minted artifactId) and drops out of
+ * the pool once its upload finishes or the user deletes it.
  */
 export function UploadDeepLinkProvider({ children }: { children: React.ReactNode }) {
   const url = useLinkingURL();
@@ -109,13 +110,15 @@ export function UploadDeepLinkProvider({ children }: { children: React.ReactNode
           // The link's own `uploadUnit` (if present) is a per-session override of the
           // deployment-wide value `/capabilities` reports (PROTOCOL.md §3, §8) — prefer it.
           // `/capabilities` is still fetched regardless, for the protocol-version check above.
-          return setPendingPairing({
+          // Added to the device-wide pool (not a single slot) — any draft can pick it at
+          // upload time, and several servers can be paired at once.
+          return addDestination({
             server: link.server,
             token: link.token,
             artifactId: link.artifactId,
             uploadUnit: link.uploadUnit ?? capResult.capabilities.uploadUnit,
           }).then(() => {
-            showToast(`Connected to ${host} — open a pulse or make a new one to upload`);
+            showToast(`Connected to ${host} — pick it when you upload`);
           });
         })
         .catch(() => {
