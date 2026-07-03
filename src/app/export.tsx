@@ -113,6 +113,9 @@ export default function ExportScreen() {
   // Merged-only: uploading the single video needs the merge done first. Beat mode has nothing to
   // wait on — each clip uploads on its own, so the section shows up immediately.
   const uploadReady = isBeatOnly || state.status === 'done';
+  // Same rule for RE-pairing an already-claimed draft to a new link: a merged-unit pairing
+  // can't start until the merged file exists.
+  const pendingReady = upload.pendingPairing?.uploadUnit !== 'merged' || state.status === 'done';
 
   const watchUrl =
     upload.destination?.uploadUnit === 'merged'
@@ -417,6 +420,28 @@ export default function ExportScreen() {
                 </Pressable>
               )
             )}
+
+            {/* A fresh pairing scanned while this draft is already claimed: offer to re-pair.
+                Claiming resets progress + sub-artifact mappings (see setUploadDestination), so
+                this is the escape hatch for a dead session — expired link, server that lost the
+                uploads, or an operator link with a different upload unit. */}
+            {upload.destination &&
+              upload.pendingPairing &&
+              pendingReady &&
+              upload.state.status !== 'uploading' && (
+                <Pressable
+                  onPress={() => void upload.claim(upload.pendingPairing!)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Upload to ${hostOf(upload.pendingPairing.server)} instead`}
+                  style={({ pressed }) => [
+                    styles.button,
+                    { backgroundColor: theme.backgroundElement },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.text} />
+                  <ThemedText>Upload to {hostOf(upload.pendingPairing.server)} instead</ThemedText>
+                </Pressable>
+              )}
 
             {upload.state.status === 'error' && (
               <ThemedText themeColor="textSecondary" type="small" style={styles.errorMessage}>
