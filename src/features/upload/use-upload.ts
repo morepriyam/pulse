@@ -16,7 +16,7 @@ import { getDraftToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
 import { useNow } from '@/hooks/use-now';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
-import { linesToVtt, mergedLines } from '@/features/transcription/srt';
+import { linesToVtt, mergedLines } from '@/features/transcription/vtt';
 import { absolutize } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
 

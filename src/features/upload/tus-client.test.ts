@@ -285,7 +285,7 @@ describe('uploadViaTus', () => {
       server: SERVER,
       token: null,
       artifactId: ARTIFACT_ID,
-      filename: 'clip.srt',
+      filename: 'clip.vtt',
       kind: 'captions',
       relatedTo: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       checksum: 'sha256:deadbeef',

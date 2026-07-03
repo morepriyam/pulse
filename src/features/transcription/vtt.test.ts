@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { linesToVtt } from './srt';
+import { linesToVtt } from './vtt';
 import type { TranscriptLine } from './whisper';
 
 describe('linesToVtt', () => {
