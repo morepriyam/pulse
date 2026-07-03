@@ -7,7 +7,7 @@ import * as SecureStore from 'expo-secure-store';
  * backup or a rooted/jailbroken device.
  */
 const draftTokenKey = (draftId: string) => `upload.token.${draftId}`;
-const PENDING_PAIRING_TOKEN_KEY = 'upload.pendingPairing.token';
+const destinationTokenKey = (id: string) => `upload.dest.token.${id}`;
 
 export async function getDraftToken(draftId: string): Promise<string | null> {
   return (await SecureStore.getItemAsync(draftTokenKey(draftId))) ?? null;
@@ -22,15 +22,15 @@ export async function deleteDraftToken(draftId: string): Promise<void> {
   await SecureStore.deleteItemAsync(draftTokenKey(draftId));
 }
 
-export async function getPendingPairingToken(): Promise<string | null> {
-  return (await SecureStore.getItemAsync(PENDING_PAIRING_TOKEN_KEY)) ?? null;
+export async function getDestinationToken(id: string): Promise<string | null> {
+  return (await SecureStore.getItemAsync(destinationTokenKey(id))) ?? null;
 }
 
-export async function setPendingPairingToken(token: string | null): Promise<void> {
-  if (token) await SecureStore.setItemAsync(PENDING_PAIRING_TOKEN_KEY, token);
-  else await SecureStore.deleteItemAsync(PENDING_PAIRING_TOKEN_KEY);
+export async function setDestinationToken(id: string, token: string | null): Promise<void> {
+  if (token) await SecureStore.setItemAsync(destinationTokenKey(id), token);
+  else await SecureStore.deleteItemAsync(destinationTokenKey(id));
 }
 
-export async function deletePendingPairingToken(): Promise<void> {
-  await SecureStore.deleteItemAsync(PENDING_PAIRING_TOKEN_KEY);
+export async function deleteDestinationToken(id: string): Promise<void> {
+  await SecureStore.deleteItemAsync(destinationTokenKey(id));
 }

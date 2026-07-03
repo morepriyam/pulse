@@ -16,6 +16,7 @@ import { DraftCard } from '@/features/home/draft-card';
 import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redirect';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import { getModel } from '@/features/transcription/models';
+import { DestinationsFloat } from '@/features/upload/destinations-float';
 import { useTheme } from '@/hooks/use-theme';
 
 // Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
@@ -349,6 +350,10 @@ export default function HomeScreen() {
           <Icon name="plus" size={28} weight="semibold" tintColor={theme.onAccent} />
         </Pressable>
       )}
+
+      {/* Bottom-left float for the paired upload-destination pool (view/delete); clears the +
+          FAB at bottom-right. Hidden during .pulse multi-select to avoid crowding that toolbar. */}
+      {!selectionMode && <DestinationsFloat />}
 
       <ModelSwitcherModal visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </ThemedView>
