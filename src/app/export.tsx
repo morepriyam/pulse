@@ -22,7 +22,7 @@ import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { setActiveDraft } from '@/features/transcription/active-draft';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
-import { mergedLines } from '@/features/transcription/srt';
+import { mergedLines } from '@/features/transcription/vtt';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import type { TranscriptLine } from '@/features/transcription/whisper';
 import { DestinationSelector } from '@/features/upload/destination-selector';

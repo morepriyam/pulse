@@ -4,8 +4,6 @@
 module.exports = {
   testEnvironment: 'node',
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  // subsrt-ts ships ESM-only — it must be transformed, not ignored, for srt.ts's tests.
-  transformIgnorePatterns: ['node_modules/(?!subsrt-ts/)'],
   moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
   testMatch: ['<rootDir>/src/**/*.test.ts'],
   // Independent git submodules with their own package.json — exclude them from
