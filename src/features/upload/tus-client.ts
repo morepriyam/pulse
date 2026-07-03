@@ -282,49 +282,69 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
   const totalBytes = opts.file.size ?? 0;
   const waitUntilForeground = opts.waitUntilForeground ?? (() => Promise.resolve());
 
-  const resourceUrl =
-    opts.resourceUrl ??
-    (await withRetry(() => createUpload(opts, fetchImpl), opts.signal, waitUntilForeground));
-  opts.onResourceCreated?.(resourceUrl);
+  const createFresh = () =>
+    withRetry(() => createUpload(opts, fetchImpl), opts.signal, waitUntilForeground);
 
   // HEAD-then-upload-remainder is retried as ONE unit, not as two separately
   // retried steps — a retry after a transient failure MUST re-HEAD first to
   // learn the real offset (the previous attempt may have landed some bytes
   // before it failed); retrying with a stale offset would resend bytes the
   // server already has, which most TUS servers reject as a conflict.
-  await withRetry(
-    async () => {
-      for (;;) {
-        const offset = await fetchOffset(resourceUrl, opts.token, opts.signal, fetchImpl);
-        opts.onProgress?.({ bytesSent: offset, totalBytes });
-        if (offset >= totalBytes) return;
+  const transfer = (resourceUrl: string) =>
+    withRetry(
+      async () => {
+        for (;;) {
+          const offset = await fetchOffset(resourceUrl, opts.token, opts.signal, fetchImpl);
+          opts.onProgress?.({ bytesSent: offset, totalBytes });
+          if (offset >= totalBytes) return;
 
-        const headers = {
-          'Tus-Resumable': TUS_VERSION,
-          'Upload-Offset': String(offset),
-          'Content-Type': 'application/offset+octet-stream',
-          ...authHeaders(opts.token),
-        };
-        const result = await opts.uploadRemainder({
-          resourceUrl,
-          offset,
-          totalBytes,
-          file: opts.file,
-          headers,
-          signal: opts.signal,
-          onProgress: (sentThisAttempt) =>
-            opts.onProgress?.({ bytesSent: offset + sentThisAttempt, totalBytes }),
-        });
-        if (result.status !== 204) {
-          throw statusErrorFromRemainder(result, `Upload failed (${result.status})`);
+          const headers = {
+            'Tus-Resumable': TUS_VERSION,
+            'Upload-Offset': String(offset),
+            'Content-Type': 'application/offset+octet-stream',
+            ...authHeaders(opts.token),
+          };
+          const result = await opts.uploadRemainder({
+            resourceUrl,
+            offset,
+            totalBytes,
+            file: opts.file,
+            headers,
+            signal: opts.signal,
+            onProgress: (sentThisAttempt) =>
+              opts.onProgress?.({ bytesSent: offset + sentThisAttempt, totalBytes }),
+          });
+          if (result.status !== 204) {
+            throw statusErrorFromRemainder(result, `Upload failed (${result.status})`);
+          }
+          // Loop back to HEAD again rather than trusting the PATCH response's
+          // offset as "done" — keeps exactly one source of truth for progress.
         }
-        // Loop back to HEAD again rather than trusting the PATCH response's
-        // offset as "done" — keeps exactly one source of truth for progress.
-      }
-    },
-    opts.signal,
-    waitUntilForeground,
-  );
+      },
+      opts.signal,
+      waitUntilForeground,
+    );
+
+  let resourceUrl = opts.resourceUrl ?? (await createFresh());
+  opts.onResourceCreated?.(resourceUrl);
+
+  try {
+    await transfer(resourceUrl);
+  } catch (err) {
+    // A 404/410 on a PERSISTED resource URL means the server no longer knows
+    // this upload — retention cleanup, wiped storage, a rebuilt datastore.
+    // Standard TUS client behavior is to start over with a fresh create (the
+    // artifactId is unchanged, so the session's authorization still applies)
+    // rather than surface a terminal "rejected". Only safe when we were
+    // resuming a stored URL: a 404 on a URL the server just handed us in this
+    // run is a real error and still propagates.
+    const uploadGone =
+      err instanceof TusUploadError && (err.statusCode === 404 || err.statusCode === 410);
+    if (!opts.resourceUrl || !uploadGone) throw err;
+    resourceUrl = await createFresh();
+    opts.onResourceCreated?.(resourceUrl);
+    await transfer(resourceUrl);
+  }
 
   return { resourceUrl };
 }

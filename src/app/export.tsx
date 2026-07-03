@@ -78,21 +78,20 @@ export default function ExportScreen() {
   const clips = segments.filter((s) => effMs(s) > 0);
 
   // Stable ref (not a plain value) so `useUpload` can be called — and its `destination`/
-  // `pendingPairing` read — before the merge even starts. Breaks what would otherwise be a
-  // circular dependency: `useExport`'s `auto` option needs to know the destination's
-  // `uploadUnit`, which comes from `useUpload`, which needs the merged output. See the
-  // `useUpload` doc comment.
+  // `pendingPairing` read — before the merge finishes. `uploadMerged` reads it lazily at
+  // upload time. See the `useUpload` doc comment.
   const mergedRef = useRef<{ path: string; durationMs: number } | null>(null);
   const upload = useUpload(draftId ?? '', clips, mergedRef);
 
-  // A beat destination uploads each clip individually — `uploadBeats` never reads the merged
-  // file — so there's no reason to block this screen on a merge it doesn't need. `pendingPairing`
-  // covers a draft that hasn't claimed its destination yet (§ pairing UX): the same distinction
-  // has to apply before the first tap, not just after.
+  // `pendingPairing` covers a draft that hasn't claimed its destination yet (§ pairing UX):
+  // the same distinction has to apply before the first tap, not just after.
   const effectiveUploadUnit = upload.destination?.uploadUnit ?? upload.pendingPairing?.uploadUnit ?? null;
   const isBeatOnly = effectiveUploadUnit === 'beat';
 
-  const { state, run } = useExport(clips, { auto: !isBeatOnly });
+  // Always auto-merge, whatever the upload unit. Share/Save/Preview want the merged file in
+  // every mode anyway, and a pairing can arrive (or switch to "merged") at any moment — merging
+  // eagerly means a merged-mode upload never has to stop and ask the user to export first.
+  const { state, run } = useExport(clips);
   // `uploadMerged` reads `mergedRef.current` at upload time, not via a reactive prop — update it
   // whenever the merge's own state changes instead of threading `merged` through as a value.
   useEffect(() => {
