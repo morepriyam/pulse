@@ -160,6 +160,68 @@ describe('uploadViaTus', () => {
     expect(remainderCalls[0].headers['Upload-Offset']).toBe('5');
   });
 
+  it('recreates the upload when a persisted resume URL is gone server-side (404)', async () => {
+    const file = fakeFile(20);
+    const { fetchImpl, calls } = createFetchStub({
+      HEAD: [
+        // The stored resource URL: the server no longer knows it (retention
+        // cleanup / wiped storage) — must fall back to a fresh create, not
+        // surface a terminal "rejected".
+        new Response(null, { status: 404 }),
+        new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
+        new Response(null, { status: 200, headers: { 'upload-offset': '20' } }),
+      ],
+      POST: [
+        new Response(null, { status: 201, headers: { location: '/pulsevault/upload/fresh' } }),
+      ],
+    });
+    const { uploadRemainder, calls: remainderCalls } = createRemainderStub([{ status: 204 }]);
+
+    const seen: string[] = [];
+    const result = await uploadViaTus({
+      server: SERVER,
+      token: 'tok',
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      resourceUrl: `${SERVER}/upload/stale`,
+      onResourceCreated: (url) => seen.push(url),
+      fetchImpl,
+      uploadRemainder,
+    });
+
+    expect(result.resourceUrl).toBe(`${SERVER}/upload/fresh`);
+    // Both URLs reported in order, so the caller's persisted mapping self-heals.
+    expect(seen).toEqual([`${SERVER}/upload/stale`, `${SERVER}/upload/fresh`]);
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+    expect(remainderCalls).toHaveLength(1);
+    expect(remainderCalls[0].offset).toBe(0);
+  });
+
+  it('does NOT recreate on a 404 for a URL the server handed out in this same run', async () => {
+    const file = fakeFile(20);
+    const { fetchImpl, calls } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 404 })],
+    });
+    const { uploadRemainder } = createRemainderStub([]);
+
+    await expect(
+      uploadViaTus({
+        server: SERVER,
+        token: 'tok',
+        artifactId: ARTIFACT_ID,
+        filename: 'clip.mp4',
+        kind: 'video',
+        file: file as never,
+        fetchImpl,
+        uploadRemainder,
+      }),
+    ).rejects.toMatchObject({ retryable: false, statusCode: 404 });
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+  });
+
   it('retries a transient (5xx) failure by re-HEADing and re-attempting from the fresh offset', async () => {
     const file = fakeFile(5);
     const { fetchImpl } = createFetchStub({
@@ -223,7 +285,7 @@ describe('uploadViaTus', () => {
       server: SERVER,
       token: null,
       artifactId: ARTIFACT_ID,
-      filename: 'clip.srt',
+      filename: 'clip.vtt',
       kind: 'captions',
       relatedTo: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       checksum: 'sha256:deadbeef',

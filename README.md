@@ -50,7 +50,7 @@ Pulse is a React Native (Expo) app for capturing institutional knowledge as shor
 - Silero VAD pre-gate skips silent clips and suppresses Whisper's hallucinated filler on empty audio
 - Word-level timestamps reflowed into broadcast-style cues (line-length, duration, and sentence-boundary aware)
 - Optimistic caption editor with autosave and undoable edit history — hand-edited cues are protected from being overwritten by re-transcription or model switches
-- Captions export as SRT alongside the video
+- Captions upload as WebVTT with word-level cue timestamps (karaoke-ready) alongside the video
 
 ### Drafts & library
 
@@ -72,12 +72,12 @@ Pulse is a React Native (Expo) app for capturing institutional knowledge as shor
 │                                                                  │
 │  Record (VisionCamera) ─▶ Trim/Merge (FFmpeg) ─▶ Draft (SQLite)  │
 │                                │                                 │
-│                    Whisper + VAD ─▶ captions (SRT)               │
+│                    Whisper + VAD ─▶ captions (VTT)               │
 │                                                                  │
 └──────────────────────────────┬───────────────────────────────────┘
                                │  pair via pulsecam:// QR / deep link
                                ▼
-                 TUS v1 resumable upload (video + SRT)
+                 TUS v1 resumable upload (video + VTT)
                                │
                                ▼
                 ┌──────────────────────────────┐

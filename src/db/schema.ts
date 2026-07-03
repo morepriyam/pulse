@@ -122,7 +122,27 @@ export const uploadArtifacts = sqliteTable('upload_artifacts', {
   resourceUrl: text('resource_url'),
 });
 
+/**
+ * The pool of upload destinations the device has paired with (via `pulsecam://` deep links)
+ * but not yet consumed. Unlike a draft's `projects.upload*` columns (which record where a
+ * specific draft is being/has been sent), this is a device-wide list any draft can pick from
+ * at upload time. Each row is single-use — its server-minted `artifactId` anchors exactly one
+ * upload session, so the row is deleted once that upload finishes (or the user deletes it).
+ * The bearer token is NOT stored here (live capability credential) — it lives in
+ * expo-secure-store keyed by `id`, same policy as the per-draft token above.
+ */
+export const uploadDestinations = sqliteTable('upload_destinations', {
+  id: text('id').primaryKey(), // local uuid (Crypto.randomUUID), also the secure-store token key
+  server: text('server').notNull(),
+  artifactId: text('artifact_id').notNull(),
+  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] })
+    .$type<UploadUnit>()
+    .notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+});
+
 export type Project = typeof projects.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
 export type Transcript = typeof transcripts.$inferSelect;
 export type UploadArtifact = typeof uploadArtifacts.$inferSelect;
+export type UploadDestination = typeof uploadDestinations.$inferSelect;

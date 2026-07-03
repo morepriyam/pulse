@@ -78,3 +78,43 @@ export function isClaimsExpired(
 ): boolean {
   return nowMs >= claims.exp * 1000 - bufferMs;
 }
+
+// Safety margin before a token's real `exp` so we never start a request that would land at the
+// server just past expiry. Also the cadence a caller should re-check expiry on its own, so a
+// button that's still valid disappears within this long of going stale.
+export const EXPIRY_BUFFER_MS = 10_000;
+export const EXPIRY_CHECK_INTERVAL_MS = 15_000;
+
+/**
+ * Best-effort expiry check for a bearer token. A `null` token or an opaquely-shaped one (a
+ * non-pulsevault server whose scheme we can't read) means "validity unknown" — treated as
+ * NOT expired, never blocking on what we can't decode. Only a token we *can* decode and that
+ * has actually lapsed (with `EXPIRY_BUFFER_MS` margin) returns true.
+ */
+export function isTokenExpired(token: string | null, nowMs: number): boolean {
+  if (!token) return false;
+  const claims = decodeCapabilityClaims(token);
+  if (!claims) return false;
+  return isClaimsExpired(claims, EXPIRY_BUFFER_MS, nowMs);
+}
+
+/** Millisecond `exp` for a decodable token, else `null` (tokenless / opaque = no known expiry). */
+export function expiresAtMs(token: string | null): number | null {
+  if (!token) return null;
+  const claims = decodeCapabilityClaims(token);
+  return claims ? claims.exp * 1000 : null;
+}
+
+/**
+ * Human label for a token's remaining validity, for the destination UI:
+ * `"No expiry"` (tokenless / opaque), `"Expired"`, or `"Expires in Nm"` / `"Expires in Ns"`.
+ */
+export function formatExpiry(token: string | null, nowMs: number): string {
+  const exp = expiresAtMs(token);
+  if (exp === null) return 'No expiry';
+  const remainingMs = exp - EXPIRY_BUFFER_MS - nowMs;
+  if (remainingMs <= 0) return 'Expired';
+  const minutes = Math.floor(remainingMs / 60_000);
+  if (minutes >= 1) return `Expires in ${minutes}m`;
+  return `Expires in ${Math.max(1, Math.ceil(remainingMs / 1000))}s`;
+}

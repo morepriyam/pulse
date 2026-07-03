@@ -1,11 +1,11 @@
 import { useEvent } from 'expo';
-import * as Clipboard from 'expo-clipboard';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import * as Linking from 'expo-linking';
 import { useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,10 +22,11 @@ import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { setActiveDraft } from '@/features/transcription/active-draft';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
-import { mergedLines } from '@/features/transcription/srt';
+import { mergedLines } from '@/features/transcription/vtt';
 import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import type { TranscriptLine } from '@/features/transcription/whisper';
-import { type UploadState, useUpload } from '@/features/upload/use-upload';
+import { DestinationSelector } from '@/features/upload/destination-selector';
+import { useUpload } from '@/features/upload/use-upload';
 import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
@@ -44,26 +45,6 @@ function hostOf(url: string): string {
 // merge()/effective paths may come back as a bare fs path; expo APIs want a file:// URI.
 const toFileUri = (path: string) => (path.startsWith('/') ? `file://${path}` : path);
 
-// The watch link embeds a live bearer token (the same one that authorizes this upload) — anyone
-// who gets it can act as this session, so warn before it leaves the app via clipboard/share.
-const WATCH_LINK_WARNING =
-  'This link lets anyone who has it view (and control) this upload — treat it like a password.';
-
-// Accessibility label for the upload button, one per upload state; `idle` names the destination
-// since that's the only state where a tap actually starts something new.
-function uploadButtonLabel(state: UploadState, server: string): string {
-  switch (state.status) {
-    case 'uploading':
-      return `Uploading, ${Math.round(state.progress * 100)} percent`;
-    case 'done':
-      return 'Uploaded, copy link';
-    case 'error':
-      return state.retryable ? 'Upload failed, retry' : 'Upload rejected by server';
-    case 'idle':
-      return `Upload to ${hostOf(server)}`;
-  }
-}
-
 export default function ExportScreen() {
   const insets = useSafeAreaInsets();
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
@@ -77,22 +58,22 @@ export default function ExportScreen() {
   // Zero-length clips (failed native reads) can't be concatenated — drop them before merging.
   const clips = segments.filter((s) => effMs(s) > 0);
 
-  // Stable ref (not a plain value) so `useUpload` can be called — and its `destination`/
-  // `pendingPairing` read — before the merge even starts. Breaks what would otherwise be a
-  // circular dependency: `useExport`'s `auto` option needs to know the destination's
-  // `uploadUnit`, which comes from `useUpload`, which needs the merged output. See the
+  // Stable ref (not a plain value) so `useUpload` can be called — and its `destination`/pool
+  // read — before the merge finishes. `uploadMerged` reads it lazily at upload time. See the
   // `useUpload` doc comment.
   const mergedRef = useRef<{ path: string; durationMs: number } | null>(null);
   const upload = useUpload(draftId ?? '', clips, mergedRef);
 
-  // A beat destination uploads each clip individually — `uploadBeats` never reads the merged
-  // file — so there's no reason to block this screen on a merge it doesn't need. `pendingPairing`
-  // covers a draft that hasn't claimed its destination yet (§ pairing UX): the same distinction
-  // has to apply before the first tap, not just after.
-  const effectiveUploadUnit = upload.destination?.uploadUnit ?? upload.pendingPairing?.uploadUnit ?? null;
+  // The upload unit that governs the current view: the draft's claimed destination once a run is
+  // underway/finished, otherwise the pool destination the user has currently selected. Drives the
+  // error-title wording and (via the selected unit below) the Upload button's readiness.
+  const effectiveUploadUnit = upload.activeDestination?.uploadUnit ?? null;
   const isBeatOnly = effectiveUploadUnit === 'beat';
 
-  const { state, run } = useExport(clips, { auto: !isBeatOnly });
+  // Always auto-merge, whatever the upload unit. Share/Save/Preview want the merged file in
+  // every mode anyway, and a pairing can arrive (or switch to "merged") at any moment — merging
+  // eagerly means a merged-mode upload never has to stop and ask the user to export first.
+  const { state, run } = useExport(clips);
   // `uploadMerged` reads `mergedRef.current` at upload time, not via a reactive prop — update it
   // whenever the merge's own state changes instead of threading `merged` through as a value.
   useEffect(() => {
@@ -111,9 +92,15 @@ export default function ExportScreen() {
   const docs = useSaveToDocuments();
   const theme = useTheme();
 
-  // Merged-only: uploading the single video needs the merge done first. Beat mode has nothing to
-  // wait on — each clip uploads on its own, so the section shows up immediately.
-  const uploadReady = isBeatOnly || state.status === 'done';
+  // Merged-only: uploading the single video needs the merge done first (beat uploads each clip on
+  // its own). Computed from the currently *selected* pool destination so switching beat↔merged in
+  // the selector updates the Upload button's readiness immediately.
+  const selectedNeedsMerge = upload.selectedDestination?.uploadUnit === 'merged';
+  const selectedUploadReady = !selectedNeedsMerge || state.status === 'done';
+  const selectedHost = upload.selectedDestination ? hostOf(upload.selectedDestination.server) : '';
+  // Local const so TS narrows the discriminated union within the UPLOAD section below — property
+  // chains like `upload.state` don't stay narrowed across nested JSX the way a plain const does.
+  const uState = upload.state;
 
   const watchUrl =
     upload.destination?.uploadUnit === 'merged'
@@ -122,27 +109,36 @@ export default function ExportScreen() {
         }`
       : null;
 
-  const copyWatchLink = async () => {
-    if (!watchUrl) return;
-    Alert.alert('Copy watch link?', WATCH_LINK_WARNING, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Copy',
-        onPress: () => {
-          void Clipboard.setStringAsync(watchUrl).then(() =>
-            Alert.alert('Link copied', 'The watch link is on your clipboard.'),
-          );
-        },
-      },
-    ]);
-  };
-  const shareWatchLink = () => {
-    if (!watchUrl) return;
-    Alert.alert('Share watch link?', WATCH_LINK_WARNING, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Share', onPress: () => void Share.share({ message: watchUrl, url: watchUrl }) },
-    ]);
-  };
+  // A finished upload is surfaced exactly once — a prompt to watch the video in the browser —
+  // then acknowledged so no "uploaded" button lingers in the draft (§ post-upload UX). `done`
+  // only occurs for a run completed this session (see `useUpload`), so this can't fire for a
+  // draft that was uploaded some other time. Beat sessions have no single watchable video (the
+  // anchor artifact is the ordering manifest), so they get a plain confirmation instead.
+  const acknowledgeDone = upload.acknowledgeDone;
+  useEffect(() => {
+    if (upload.state.status !== 'done') return;
+    if (watchUrl) {
+      Alert.alert(
+        'Upload complete',
+        'Watch the video in your browser?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: acknowledgeDone },
+          {
+            text: 'Watch',
+            onPress: () => {
+              void Linking.openURL(watchUrl);
+              acknowledgeDone();
+            },
+          },
+        ],
+        { cancelable: true, onDismiss: acknowledgeDone },
+      );
+    } else {
+      Alert.alert('Upload complete', 'Your pulse was uploaded.', [
+        { text: 'OK', onPress: acknowledgeDone },
+      ]);
+    }
+  }, [upload.state.status, watchUrl, acknowledgeDone]);
 
   const runShare = async () => {
     if (state.status !== 'done' || busy) return;
@@ -155,6 +151,42 @@ export default function ExportScreen() {
       setBusy(false);
     }
   };
+
+  // The pool selector + claim button, shared by every non-uploading state — including a draft
+  // that was already uploaded before (claiming re-pairs it and restarts cleanly, see `claim`),
+  // so a destination paired after a finished upload is always reachable.
+  const selectorAndUpload = upload.destinations.length > 0 && (
+    <>
+      <DestinationSelector
+        destinations={upload.destinations}
+        selectedId={upload.selectedId}
+        onSelect={upload.setSelectedId}
+      />
+      <Pressable
+        onPress={() => void upload.claim(upload.selectedId)}
+        disabled={!upload.selectedId || !selectedUploadReady}
+        accessibilityRole="button"
+        accessibilityLabel={selectedHost ? `Upload to ${selectedHost}` : 'Upload'}
+        style={({ pressed }) => [
+          styles.button,
+          { backgroundColor: theme.accent },
+          (!upload.selectedId || !selectedUploadReady) && styles.disabled,
+          pressed && styles.pressed,
+        ]}>
+        {selectedNeedsMerge && !selectedUploadReady ? (
+          <>
+            <ActivityIndicator color={theme.onAccent} />
+            <ThemedText style={{ color: theme.onAccent }}>Preparing merged video…</ThemedText>
+          </>
+        ) : (
+          <>
+            <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.onAccent} />
+            <ThemedText style={{ color: theme.onAccent }}>Upload to {selectedHost}</ThemedText>
+          </>
+        )}
+      </Pressable>
+    </>
+  );
 
   return (
     <ThemedView style={styles.fill}>
@@ -185,7 +217,9 @@ export default function ExportScreen() {
               {formatClipCount(clips.length)} · {formatDuration(state.durationMs)}
             </ThemedText>
 
-            <View style={styles.actions}>
+            {/* Compact inline row — these are secondary actions; the upload button(s) below
+                own the vertical space. */}
+            <View style={styles.actionsRow}>
               <Pressable
                 onPress={runShare}
                 disabled={busy}
@@ -193,17 +227,17 @@ export default function ExportScreen() {
                 accessibilityLabel={busy ? 'Sharing' : 'Share'}
                 accessibilityState={{ disabled: busy, busy }}
                 style={({ pressed }) => [
-                  styles.button,
-                  { backgroundColor: theme.accent },
+                  styles.smallButton,
+                  { backgroundColor: theme.backgroundElement },
                   busy && styles.disabled,
                   pressed && styles.pressed,
                 ]}>
                 {busy ? (
-                  <ActivityIndicator color={theme.onAccent} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : (
                   <>
-                    <Icon name="square.and.arrow.up" size={18} tintColor={theme.onAccent} />
-                    <ThemedText style={{ color: theme.onAccent }}>Share</ThemedText>
+                    <Icon name="square.and.arrow.up" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Share</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -224,21 +258,21 @@ export default function ExportScreen() {
                   busy: photos.status === 'saving',
                 }}
                 style={({ pressed }) => [
-                  styles.button,
+                  styles.smallButton,
                   { backgroundColor: theme.backgroundElement },
                   pressed && styles.pressed,
                 ]}>
                 {photos.status === 'saving' ? (
-                  <ActivityIndicator color={theme.text} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : photos.status === 'saved' ? (
                   <>
-                    <Icon name="checkmark" size={18} tintColor={theme.text} />
-                    <ThemedText>Saved</ThemedText>
+                    <Icon name="checkmark" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <Icon name="square.and.arrow.down" size={18} tintColor={theme.text} />
-                    <ThemedText>Save to Photos</ThemedText>
+                    <Icon name="square.and.arrow.down" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Photos</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -259,21 +293,21 @@ export default function ExportScreen() {
                   busy: docs.status === 'saving',
                 }}
                 style={({ pressed }) => [
-                  styles.button,
+                  styles.smallButton,
                   { backgroundColor: theme.backgroundElement },
                   pressed && styles.pressed,
                 ]}>
                 {docs.status === 'saving' ? (
-                  <ActivityIndicator color={theme.text} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : docs.status === 'saved' ? (
                   <>
-                    <Icon name="checkmark" size={18} tintColor={theme.text} />
-                    <ThemedText>Saved</ThemedText>
+                    <Icon name="checkmark" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <Icon name="folder" size={18} tintColor={theme.text} />
-                    <ThemedText>Save to Files</ThemedText>
+                    <Icon name="folder" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Files</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -334,95 +368,90 @@ export default function ExportScreen() {
           </>
         )}
 
-        {/* Beat mode has nothing to wait on (each clip uploads on its own) so this shows up
-            regardless of merge state; merged mode still needs `state.status === 'done'` first —
-            see `uploadReady`. */}
-        {(upload.destination || upload.pendingPairing) && uploadReady && (
+        {/* One UPLOAD section for both units. Merge always runs (above), so a merged-unit
+            destination just waits on `state.status === 'done'` while a beat-unit one is ready
+            immediately — the difference is only the Upload button's enabled state, not a
+            separate flow. Shown while there's something actionable: destinations to pick, a run
+            in flight (or its error/expiry notice). A previously-uploaded draft with nothing to
+            pick shows no upload UI at all (§ post-upload UX — no persistent buttons). */}
+        {(upload.destinations.length > 0 ||
+          uState.status === 'uploading' ||
+          uState.status === 'error' ||
+          (upload.destination && upload.destinationExpired)) && (
           <View style={styles.uploadSection}>
             <ThemedText type="caption1" themeColor="textSecondary" style={styles.uploadSectionLabel}>
               UPLOAD
             </ThemedText>
 
-            {upload.destination ? (
-              upload.destinationExpired && upload.state.status === 'idle' ? (
-                <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
-                  <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.textSecondary} />
-                  <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
-                </View>
-              ) : (
+            {uState.status === 'uploading' ? (
+              <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                <ActivityIndicator color={theme.text} />
+                <ThemedText>Uploading… {Math.round(uState.progress * 100)}%</ThemedText>
                 <Pressable
-                  onPress={() => {
-                    if (upload.state.status === 'idle') void upload.start();
-                    else if (upload.state.status === 'error' && upload.state.retryable)
-                      void upload.retry();
-                    else if (upload.state.status === 'done') void copyWatchLink();
-                  }}
-                  onLongPress={upload.state.status === 'done' ? shareWatchLink : undefined}
-                  disabled={upload.state.status === 'uploading'}
+                  onPress={() => void upload.cancel()}
+                  hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel={uploadButtonLabel(upload.state, upload.destination.server)}
-                  style={({ pressed }) => [
-                    styles.button,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.pressed,
-                  ]}>
-                  {upload.state.status === 'uploading' ? (
-                    <>
-                      <ActivityIndicator color={theme.text} />
-                      <ThemedText>Uploading… {Math.round(upload.state.progress * 100)}%</ThemedText>
-                      <Pressable
-                        onPress={() => void upload.cancel()}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel="Cancel upload">
-                        <Icon name="xmark" size={16} tintColor={theme.textSecondary} />
-                      </Pressable>
-                    </>
-                  ) : upload.state.status === 'done' ? (
-                    <>
-                      <Icon name="checkmark" size={18} tintColor={theme.text} />
-                      <ThemedText>Uploaded — Copy link</ThemedText>
-                    </>
-                  ) : upload.state.status === 'error' ? (
-                    <>
-                      <Icon name="exclamationmark.triangle.fill" size={18} tintColor={theme.accent} />
-                      <ThemedText>
-                        {upload.state.retryable ? 'Upload failed — Retry' : 'Rejected by server'}
-                      </ThemedText>
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.text} />
-                      <ThemedText>Upload to {hostOf(upload.destination.server)}</ThemedText>
-                    </>
-                  )}
+                  accessibilityLabel="Cancel upload">
+                  <Icon name="xmark" size={16} tintColor={theme.textSecondary} />
                 </Pressable>
-              )
+              </View>
             ) : (
-              // Gated on `idle` too, not just `pendingPairing` itself, so a tap can't double-fire in
-              // the brief window between `claim()` flipping local state to "uploading" and the
-              // destination/pendingPairing live queries catching up to make `destination` non-null.
-              upload.pendingPairing &&
-              upload.state.status === 'idle' && (
-                <Pressable
-                  onPress={() => void upload.claim(upload.pendingPairing!)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Upload to ${hostOf(upload.pendingPairing.server)}`}
-                  style={({ pressed }) => [
-                    styles.button,
-                    { backgroundColor: theme.backgroundElement },
-                    pressed && styles.pressed,
-                  ]}>
-                  <Icon name="icloud.and.arrow.up" size={18} tintColor={theme.text} />
-                  <ThemedText>Upload to {hostOf(upload.pendingPairing.server)}</ThemedText>
-                </Pressable>
-              )
-            )}
+              // Idle or error: pick a destination and upload (or retry the claimed one). A prior
+              // error shows its own Retry (same destination) plus the selector to re-pick a
+              // different destination — re-claiming is the escape hatch for a dead session.
+              <>
+                {uState.status === 'error' && (
+                  <>
+                    <Pressable
+                      onPress={() => {
+                        if (uState.status === 'error' && uState.retryable)
+                          void upload.retry();
+                      }}
+                      disabled={!uState.retryable}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        uState.retryable ? 'Upload failed, retry' : 'Upload rejected by server'
+                      }
+                      style={({ pressed }) => [
+                        styles.button,
+                        { backgroundColor: theme.backgroundElement },
+                        !uState.retryable && styles.disabled,
+                        pressed && styles.pressed,
+                      ]}>
+                      <Icon
+                        name="exclamationmark.triangle.fill"
+                        size={18}
+                        tintColor={theme.accent}
+                      />
+                      <ThemedText>
+                        {uState.retryable ? 'Upload failed — Retry' : 'Rejected by server'}
+                      </ThemedText>
+                    </Pressable>
+                    <ThemedText
+                      themeColor="textSecondary"
+                      type="small"
+                      style={styles.errorMessage}>
+                      {uState.reason}
+                    </ThemedText>
+                  </>
+                )}
 
-            {upload.state.status === 'error' && (
-              <ThemedText themeColor="textSecondary" type="small" style={styles.errorMessage}>
-                {upload.state.reason}
-              </ThemedText>
+                {upload.destinations.length > 0 ? (
+                  selectorAndUpload
+                ) : (
+                  upload.destination &&
+                  upload.destinationExpired && (
+                    <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                      <Icon
+                        name="exclamationmark.triangle.fill"
+                        size={18}
+                        tintColor={theme.textSecondary}
+                      />
+                      <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
+                    </View>
+                  )
+                )}
+              </>
             )}
           </View>
         )}
@@ -513,6 +542,21 @@ const styles = StyleSheet.create({
   title: { marginTop: Spacing.two },
   errorMessage: { textAlign: 'center' },
   actions: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.five },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  smallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    height: 34,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 17,
+  },
   uploadSection: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.four },
   uploadSectionLabel: { letterSpacing: 0.5 },
   button: {
