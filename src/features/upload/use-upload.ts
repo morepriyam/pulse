@@ -235,10 +235,14 @@ export function useUpload(
     };
   }, [rawPendingPairing]);
   const pendingPairingExpired = rawPendingPairing !== null && isTokenExpired(pendingToken);
-  // Only offer the global pending pairing on a draft that hasn't already claimed its own
-  // destination — and never once it's expired (§ "don't show it when expired").
+  // Offer the global pending pairing even on a draft that already claimed a destination —
+  // claiming again RE-PAIRS the draft (setUploadDestination resets progress, rotates the
+  // token, and wipes the old session's sub-artifact mappings), which is the escape hatch
+  // when the old session is dead (expired link, server lost the uploads) or the operator
+  // minted a link with a different uploadUnit. Suppressed while a run is actually in
+  // flight, and never offered once expired (§ "don't show it when expired").
   const pendingPairing: PendingPairing | null =
-    destination === null && rawPendingPairing && !pendingPairingExpired
+    activeState.status !== 'uploading' && rawPendingPairing && !pendingPairingExpired
       ? { ...rawPendingPairing, token: pendingToken }
       : null;
 
