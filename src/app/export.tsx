@@ -187,7 +187,9 @@ export default function ExportScreen() {
               {formatClipCount(clips.length)} · {formatDuration(state.durationMs)}
             </ThemedText>
 
-            <View style={styles.actions}>
+            {/* Compact inline row — these are secondary actions; the upload button(s) below
+                own the vertical space. */}
+            <View style={styles.actionsRow}>
               <Pressable
                 onPress={runShare}
                 disabled={busy}
@@ -195,17 +197,17 @@ export default function ExportScreen() {
                 accessibilityLabel={busy ? 'Sharing' : 'Share'}
                 accessibilityState={{ disabled: busy, busy }}
                 style={({ pressed }) => [
-                  styles.button,
-                  { backgroundColor: theme.accent },
+                  styles.smallButton,
+                  { backgroundColor: theme.backgroundElement },
                   busy && styles.disabled,
                   pressed && styles.pressed,
                 ]}>
                 {busy ? (
-                  <ActivityIndicator color={theme.onAccent} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : (
                   <>
-                    <Icon name="square.and.arrow.up" size={18} tintColor={theme.onAccent} />
-                    <ThemedText style={{ color: theme.onAccent }}>Share</ThemedText>
+                    <Icon name="square.and.arrow.up" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Share</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -226,21 +228,21 @@ export default function ExportScreen() {
                   busy: photos.status === 'saving',
                 }}
                 style={({ pressed }) => [
-                  styles.button,
+                  styles.smallButton,
                   { backgroundColor: theme.backgroundElement },
                   pressed && styles.pressed,
                 ]}>
                 {photos.status === 'saving' ? (
-                  <ActivityIndicator color={theme.text} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : photos.status === 'saved' ? (
                   <>
-                    <Icon name="checkmark" size={18} tintColor={theme.text} />
-                    <ThemedText>Saved</ThemedText>
+                    <Icon name="checkmark" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <Icon name="square.and.arrow.down" size={18} tintColor={theme.text} />
-                    <ThemedText>Save to Photos</ThemedText>
+                    <Icon name="square.and.arrow.down" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Photos</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -261,21 +263,21 @@ export default function ExportScreen() {
                   busy: docs.status === 'saving',
                 }}
                 style={({ pressed }) => [
-                  styles.button,
+                  styles.smallButton,
                   { backgroundColor: theme.backgroundElement },
                   pressed && styles.pressed,
                 ]}>
                 {docs.status === 'saving' ? (
-                  <ActivityIndicator color={theme.text} />
+                  <ActivityIndicator size="small" color={theme.text} />
                 ) : docs.status === 'saved' ? (
                   <>
-                    <Icon name="checkmark" size={18} tintColor={theme.text} />
-                    <ThemedText>Saved</ThemedText>
+                    <Icon name="checkmark" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Saved</ThemedText>
                   </>
                 ) : (
                   <>
-                    <Icon name="folder" size={18} tintColor={theme.text} />
-                    <ThemedText>Save to Files</ThemedText>
+                    <Icon name="folder" size={14} tintColor={theme.text} />
+                    <ThemedText type="small">Files</ThemedText>
                   </>
                 )}
               </Pressable>
@@ -537,6 +539,21 @@ const styles = StyleSheet.create({
   title: { marginTop: Spacing.two },
   errorMessage: { textAlign: 'center' },
   actions: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.five },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  smallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    height: 34,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 17,
+  },
   uploadSection: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.four },
   uploadSectionLabel: { letterSpacing: 0.5 },
   button: {
