@@ -401,39 +401,43 @@ export default function ExportScreen() {
               // different destination — re-claiming is the escape hatch for a dead session.
               <>
                 {uState.status === 'error' && (
-                  <>
-                    <Pressable
-                      onPress={() => {
-                        if (uState.status === 'error' && uState.retryable)
-                          void upload.retry();
-                      }}
-                      disabled={!uState.retryable}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        uState.retryable ? 'Upload failed, retry' : 'Upload rejected by server'
-                      }
-                      style={({ pressed }) => [
-                        styles.button,
-                        { backgroundColor: theme.backgroundElement },
-                        !uState.retryable && styles.disabled,
-                        pressed && styles.pressed,
-                      ]}>
-                      <Icon
-                        name="exclamationmark.triangle.fill"
-                        size={18}
-                        tintColor={theme.accent}
-                      />
-                      <ThemedText>
-                        {uState.retryable ? 'Upload failed — Retry' : 'Rejected by server'}
+                  // Compact banner, not a button: title + reason share one card, with Retry as
+                  // a small pill only when retrying can actually help. A non-retryable
+                  // rejection is information, so nothing about it should look pressable.
+                  <View
+                    style={[styles.errorBanner, { backgroundColor: theme.backgroundElement }]}
+                    accessibilityRole="alert"
+                    accessibilityLabel={`${uState.retryable ? 'Upload failed' : 'Upload rejected by server'}. ${uState.reason}`}>
+                    <Icon
+                      name="exclamationmark.triangle.fill"
+                      size={16}
+                      tintColor={theme.accent}
+                    />
+                    <View style={styles.errorBody}>
+                      <ThemedText type="smallBold">
+                        {uState.retryable ? 'Upload failed' : 'Rejected by server'}
                       </ThemedText>
-                    </Pressable>
-                    <ThemedText
-                      themeColor="textSecondary"
-                      type="small"
-                      style={styles.errorMessage}>
-                      {uState.reason}
-                    </ThemedText>
-                  </>
+                      <ThemedText type="caption1" themeColor="textSecondary" numberOfLines={2}>
+                        {uState.reason}
+                      </ThemedText>
+                    </View>
+                    {uState.retryable && (
+                      <Pressable
+                        onPress={() => void upload.retry()}
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry upload"
+                        style={({ pressed }) => [
+                          styles.smallButton,
+                          { backgroundColor: theme.accent },
+                          pressed && styles.pressed,
+                        ]}>
+                        <Icon name="arrow.clockwise" size={14} tintColor={theme.onAccent} />
+                        <ThemedText type="small" style={{ color: theme.onAccent }}>
+                          Retry
+                        </ThemedText>
+                      </Pressable>
+                    )}
+                  </View>
                 )}
 
                 {upload.destinations.length > 0 ? (
@@ -558,6 +562,15 @@ const styles = StyleSheet.create({
     borderRadius: 17,
   },
   uploadSection: { alignSelf: 'stretch', gap: Spacing.two, marginTop: Spacing.four },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 14,
+  },
+  errorBody: { flex: 1, gap: Spacing.half },
   uploadSectionLabel: { letterSpacing: 0.5 },
   button: {
     flexDirection: 'row',
