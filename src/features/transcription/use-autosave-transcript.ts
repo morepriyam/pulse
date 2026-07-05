@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { saveEditedTranscript } from '@/db/transcripts';
+
 import { autosaveDecision } from './autosave-gate';
 import type { TranscriptLine } from './whisper';
 

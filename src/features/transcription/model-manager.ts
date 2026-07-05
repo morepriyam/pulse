@@ -1,5 +1,5 @@
-import { cancelModelDownloadsExcept, deleteModelsExcept, ensureModel, isModelReady } from './model';
 import type { ModelProgress } from './model';
+import { cancelModelDownloadsExcept, deleteModelsExcept, ensureModel, isModelReady } from './model';
 import type { WhisperModel } from './models';
 import { setTranscriptionStatus } from './transcription-status';
 import { releaseVad } from './vad';

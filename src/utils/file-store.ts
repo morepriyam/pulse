@@ -11,8 +11,7 @@ import { Directory, File, Paths } from 'expo-file-system';
  * back bare paths, but expo's `File`, expo-video, whisper, sharing, etc. all want a URI. A value
  * that already has a scheme is returned unchanged.
  */
-export const toFileUri = (path: string): string =>
-  path.startsWith('/') ? `file://${path}` : path;
+export const toFileUri = (path: string): string => (path.startsWith('/') ? `file://${path}` : path);
 
 export function segmentRelPath(draftId: string, segmentId: string): string {
   return `drafts/${draftId}/segments/${segmentId}.mp4`;

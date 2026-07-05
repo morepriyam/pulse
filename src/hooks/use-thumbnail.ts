@@ -1,5 +1,5 @@
-import { VideoThumbnail } from 'expo-video';
 import { useEffect, useState } from 'react';
+import type { VideoThumbnail } from 'expo-video';
 
 import { absolutize } from '@/utils/file-store';
 import { generateThumbnail } from '@/utils/video';

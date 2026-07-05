@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 
 import type { TranscriptLine, TranscriptResult } from '@/features/transcription/whisper';
+
 import { db } from './client';
 import { draftTranscripts } from './schema';
 

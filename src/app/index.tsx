@@ -1,11 +1,11 @@
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { router } from 'expo-router';
-import { Icon } from '@/components/icon';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import { router } from 'expo-router';
 
 import { ActionMenu, type Anchor, type MenuAction } from '@/components/action-menu';
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -22,7 +22,8 @@ import { useTheme } from '@/hooks/use-theme';
 // Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
 // (with its perf fixtures) are dead-code-eliminated from the production bundle, not just hidden.
 const DevSeedRow = __DEV__
-  ? (require('@/dev/dev-seed-row') as typeof import('@/dev/dev-seed-row')).DevSeedRow
+  ? // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional: __DEV__-gated so the dev seed is tree-shaken from production
+    (require('@/dev/dev-seed-row') as typeof import('@/dev/dev-seed-row')).DevSeedRow
   : null;
 
 type DraftRef = { id: string; name: string | null; anchor: Anchor };

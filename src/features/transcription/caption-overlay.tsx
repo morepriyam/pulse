@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Accent } from '@/constants/theme';
+
 import type { TranscriptLine, TranscriptWord } from './whisper';
+import { activeWordIndex } from './word-timing';
 
 const COLOR_SPOKEN = 'rgba(255,255,255,1)';
 const COLOR_FUTURE = 'rgba(255,255,255,0.45)';
@@ -49,13 +51,7 @@ export function CaptionOverlay({ lines, positionMs, fontSize = 17 }: Props) {
     ? line.words
     : [{ text: line.text, t0: line.t0, t1: line.t1 }];
 
-  // Active word index within the line: the word covering the playhead, else the last one already
-  // started (so the highlight rests on the most recent word during short gaps).
-  let active = -1;
-  for (let i = 0; i < words.length; i++) {
-    if (posCs >= words[i].t0) active = i;
-    if (posCs >= words[i].t0 && posCs <= words[i].t1) break;
-  }
+  const active = activeWordIndex(words, posCs);
 
   const pad = fontSize * 0.5; // background padding around the text block
   const edge = fontSize * 0.7; // min gap from the host view's edges

@@ -1,5 +1,6 @@
-import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet } from 'react-native';
+
+import { Icon } from '@/components/icon';
 
 /** The "+" import control next to the record button — opens the system video picker to add
  *  an existing device clip as a segment. */

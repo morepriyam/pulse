@@ -1,8 +1,9 @@
-import type { SymbolViewProps } from 'expo-symbols';
-import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { SymbolViewProps } from 'expo-symbols';
 
+import { Icon } from '@/components/icon';
 import { Accent, Spacing } from '@/constants/theme';
+
 import type { CameraFacing, StabilizationMode } from './use-recorder';
 
 const STABILIZATION_LABELS: Record<StabilizationMode, string> = {

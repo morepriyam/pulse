@@ -56,10 +56,10 @@ Mirror the **real video surfaces the app meets**, and span enough variety to str
 [`scripts/make-speed-fixtures.sh`](../../scripts/make-speed-fixtures.sh); seed via the dev
 buttons **`+ s2`** / **`+ s3`** on Home (one draft each, idempotent; `clear` resets them).
 
-| draft                    | button | composition                                       | merge path                          |
-| ------------------------ | ------ | ------------------------------------------------- | ----------------------------------- |
-| `Dev sample 2 (uniform)` | `+ s2` | 20× `portrait-h264` (one signature)               | lossless passthrough join (fast)    |
-| `Dev sample 3 (mixed)`   | `+ s3` | 14× `portrait-h264` + 6 outliers (hevc/60/4K/land) | selective conform of outliers only  |
+| draft                    | button | composition                                        | merge path                         |
+| ------------------------ | ------ | -------------------------------------------------- | ---------------------------------- |
+| `Dev sample 2 (uniform)` | `+ s2` | 20× `portrait-h264` (one signature)                | lossless passthrough join (fast)   |
+| `Dev sample 3 (mixed)`   | `+ s3` | 14× `portrait-h264` + 6 outliers (hevc/60/4K/land) | selective conform of outliers only |
 
 Only one clip per distinct format is bundled (`portrait-h264`, `portrait-hevc`, `portrait-60`,
 `portrait-4k`, `landscape-1080`, `landscape-4k`); the seed references them repeatedly and copies a

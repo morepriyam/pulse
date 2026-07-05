@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import type { Segment } from '@/db/schema';
+
 import { effFile, effMs, indexAtGlobalMs, segmentOffsets } from './segment-window';
 
 // Minimal Segment factory — only the fields the timeline math reads.

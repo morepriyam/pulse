@@ -2,14 +2,17 @@
   "name": "pulse",
   "main": "expo-router/entry",
   "version": "1.0.1",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "dependencies": {
-    "@expo/ui": "~56.0.18",
+    "@expo/ui": "~56.0.20",
     "buffer": "^6.0.3",
     "drizzle-orm": "^0.45.2",
-    "expo": "~56.0.12",
+    "expo": "~56.0.14",
     "expo-asset": "~56.0.17",
     "expo-audio": "~56.0.12",
-    "expo-build-properties": "~56.0.20",
+    "expo-build-properties": "~56.0.21",
     "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.16",
     "expo-crypto": "~56.0.4",
@@ -19,13 +22,13 @@
     "expo-font": "~56.0.7",
     "expo-glass-effect": "~56.0.4",
     "expo-image": "~56.0.10",
-    "expo-image-picker": "~56.0.18",
-    "expo-linking": "~56.0.13",
-    "expo-media-library": "~56.0.7",
-    "expo-router": "~56.2.11",
+    "expo-image-picker": "~56.0.19",
+    "expo-linking": "~56.0.15",
+    "expo-media-library": "~56.0.9",
+    "expo-router": "~56.2.13",
     "expo-secure-store": "~56.0.4",
-    "expo-sharing": "~56.0.18",
-    "expo-splash-screen": "~56.0.10",
+    "expo-sharing": "~56.0.20",
+    "expo-splash-screen": "~56.0.12",
     "expo-sqlite": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "expo-symbols": "~56.0.6",
@@ -33,6 +36,7 @@
     "expo-video": "~56.1.4",
     "expo-web-browser": "~56.0.5",
     "fflate": "^0.8.3",
+    "js-sha256": "^0.11.1",
     "lucide-react-native": "^1.20.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -61,9 +65,18 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
     "jest": "^29.7.0",
     "prettier": "^3.8.3",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    },
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.0"
+    }
   },
   "expo": {
     "doctor": {

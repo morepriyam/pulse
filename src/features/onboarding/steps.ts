@@ -1,5 +1,5 @@
-import type { SymbolViewProps } from 'expo-symbols';
 import type { ImageSourcePropType } from 'react-native';
+import type { SymbolViewProps } from 'expo-symbols';
 
 /** A feature line. `icon` is the SAME SF Symbol the app uses for that action, so the
  *  tour teaches the real glyph; omit it for conceptual lines (falls back to a dot). */

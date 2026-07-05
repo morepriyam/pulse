@@ -1,22 +1,22 @@
-import { useEvent } from 'expo';
-import { useLocalSearchParams, router } from 'expo-router';
-import { Icon, type IconName } from '@/components/icon';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEvent } from 'expo';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { Icon, type IconName } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
@@ -27,7 +27,7 @@ import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { CueRow } from '@/features/transcription/cue-row';
 import { CueToolbar } from '@/features/transcription/cue-toolbar';
 import { useAutosaveTranscript } from '@/features/transcription/use-autosave-transcript';
-import { useSubtitleEditor, type Cue } from '@/features/transcription/use-subtitle-editor';
+import { type Cue, useSubtitleEditor } from '@/features/transcription/use-subtitle-editor';
 import { parseTranscriptLines, type TranscriptLine } from '@/features/transcription/whisper';
 import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { useTheme } from '@/hooks/use-theme';
@@ -246,20 +246,24 @@ function Editor({
   const [rowEdited, setRowEdited] = useState(savedJson != null);
   const showReset = (rowEdited || editor.dirty) && editor.cues.length > 0;
   const onResetToAuto = () => {
-    Alert.alert('Reset captions?', 'This discards your edits and restores the automatic captions.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset',
-        style: 'destructive',
-        onPress: async () => {
-          clearSelection();
-          await clearEditedTranscript(draftId);
-          markCleared();
-          editor.reset(autoLines);
-          setRowEdited(false);
+    Alert.alert(
+      'Reset captions?',
+      'This discards your edits and restores the automatic captions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            clearSelection();
+            await clearEditedTranscript(draftId);
+            markCleared();
+            editor.reset(autoLines);
+            setRowEdited(false);
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const selIndex = selCue ? editor.cues.indexOf(selCue) : -1;
@@ -357,7 +361,9 @@ function Editor({
               }>
               <CueRow
                 cue={cue}
-                state={cue.id === editingId ? 'editing' : cue.id === selectedId ? 'selected' : 'view'}
+                state={
+                  cue.id === editingId ? 'editing' : cue.id === selectedId ? 'selected' : 'view'
+                }
                 playing={cue.id === playingId}
                 posCs={posCs}
                 theme={theme}
@@ -369,10 +375,7 @@ function Editor({
             </View>
           ))}
           {showReset && (
-            <Pressable
-              onPress={onResetToAuto}
-              accessibilityRole="button"
-              style={styles.resetLink}>
+            <Pressable onPress={onResetToAuto} accessibilityRole="button" style={styles.resetLink}>
               <ThemedText type="footnote" themeColor="textSecondary">
                 Reset to automatic captions
               </ThemedText>

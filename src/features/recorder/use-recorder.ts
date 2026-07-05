@@ -1,6 +1,3 @@
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
-import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking } from 'react-native';
 import { isValidFile } from 'react-native-video-trim';
@@ -10,6 +7,9 @@ import {
   type Recorder,
   useVideoOutput,
 } from 'react-native-vision-camera';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
+import { usePermissions } from 'expo-media-library';
 
 import {
   addSegment,
@@ -284,13 +284,24 @@ export function useRecorder(initialDraftId?: string) {
       // VisionCamera returns a bare filesystem path; file-store's File API wants a file:// URL.
       const uri = filePath.startsWith('file://') ? filePath : `file://${filePath}`;
 
-      const id = await ensureDraft();
-      const segmentId = `${id}-${Date.now()}`;
-      const originalFilename = await persistRecording(uri, id, segmentId);
-      const durationMs = await getDurationMs(absolutize(originalFilename));
-      await persistSegment(id, segmentId, originalFilename, durationMs);
+      // Capture succeeded — from here a failure is a *persist* failure (DB/fs), not a capture
+      // interruption. Those must not be swallowed: the clip is on disk but wouldn't be in any draft,
+      // so the user would silently lose a recording with no idea why. Surface it.
+      try {
+        const id = await ensureDraft();
+        const segmentId = `${id}-${Date.now()}`;
+        const originalFilename = await persistRecording(uri, id, segmentId);
+        const durationMs = await getDurationMs(absolutize(originalFilename));
+        await persistSegment(id, segmentId, originalFilename, durationMs);
+      } catch (err) {
+        if (__DEV__) console.warn('[recorder] failed to save recorded clip', err);
+        Alert.alert(
+          'Recording not saved',
+          'Something went wrong saving that clip. Please try again.',
+        );
+      }
     } catch {
-      // interrupted mid-record — drop the clip
+      // interrupted mid-record (stop raced prepare, call/route interruption) — drop the clip
     } finally {
       recorderRef.current = null;
       stopRequestedRef.current = false;

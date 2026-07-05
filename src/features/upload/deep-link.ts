@@ -84,10 +84,14 @@ export function parseUploadDeepLink(url: string): DeepLinkResult {
   if (parsedServer.protocol !== 'https:' && !isPrivateDevOrigin(parsedServer)) {
     return { ok: false, reason: 'invalid-link' };
   }
-  // Keep the full base URL (origin + path prefix), trailing slash stripped —
-  // collapsing to just `.origin` would silently drop the prefix the operator
-  // mounted pulsevault at, breaking every subsequent request.
-  const server = rawServer.replace(/\/$/, '');
+  // Store the NORMALIZED base URL (origin + path prefix, trailing slash
+  // stripped) rather than the raw string: `origin` drops userinfo, so a
+  // crafted `https://good.com@evil.com` link can't pass validation looking
+  // like good.com yet later have fetch resolve it to evil.com — what was
+  // validated is exactly what every subsequent request targets. The path is
+  // kept because operators mount pulsevault under a prefix; query/hash (which
+  // a fetch would silently drop anyway) are discarded.
+  const server = `${parsedServer.origin}${parsedServer.pathname}`.replace(/\/$/, '');
 
   // Optional — absent on a link from an operator/server predating this field. Present but not
   // one of the two known values means a corrupt/forged link, same treatment as a bad artifactId.
@@ -96,5 +100,8 @@ export function parseUploadDeepLink(url: string): DeepLinkResult {
     return { ok: false, reason: 'invalid-link' };
   }
 
-  return { ok: true, link: { artifactId, server, token: param('token'), uploadUnit: rawUploadUnit } };
+  return {
+    ok: true,
+    link: { artifactId, server, token: param('token'), uploadUnit: rawUploadUnit },
+  };
 }

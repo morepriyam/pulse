@@ -4,10 +4,10 @@ import {
   closeCoalescing,
   COALESCE_MS,
   emptyHistory,
+  type History,
   record,
   redo,
   undo,
-  type History,
 } from './edit-history';
 
 const T0 = 1_000_000;

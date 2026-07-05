@@ -1,7 +1,7 @@
-import { useLinkingURL } from 'expo-linking';
-import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
+import { useLinkingURL } from 'expo-linking';
+import { router } from 'expo-router';
 
 import { addDestination } from '@/db/destinations';
 import { useToast } from '@/features/toast/toast-provider';

@@ -2,8 +2,10 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Accent, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import type { useTheme } from '@/hooks/use-theme';
+
 import type { Cue } from './use-subtitle-editor';
+import { activeWordIndex } from './word-timing';
 
 const CPS_WARN = 17;
 const CPS_BAD = 20;
@@ -77,7 +79,11 @@ export function CueRow({
         styles.row,
         { backgroundColor: theme.backgroundElement, borderColor: theme.border },
         playing && { borderColor: Accent },
-        active && { borderColor: Accent, borderWidth: 1.5, backgroundColor: theme.backgroundSelected },
+        active && {
+          borderColor: Accent,
+          borderWidth: 1.5,
+          backgroundColor: theme.backgroundSelected,
+        },
       ]}>
       <View style={styles.inner}>
         <ThemedText style={[styles.tc, { color: tcColor }]}>{clock(cue.t0)}</ThemedText>
@@ -120,11 +126,7 @@ function KaraokeText({
   posCs: number;
   theme: ReturnType<typeof useTheme>;
 }) {
-  let active = -1;
-  for (let i = 0; i < words.length; i++) {
-    if (posCs >= words[i].t0) active = i;
-    if (posCs >= words[i].t0 && posCs <= words[i].t1) break;
-  }
+  const active = activeWordIndex(words, posCs);
   return (
     <ThemedText numberOfLines={2} style={styles.text}>
       {words.map((w, i) => (

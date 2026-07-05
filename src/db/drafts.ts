@@ -9,6 +9,7 @@ import {
   thumbRelPath,
 } from '@/utils/file-store';
 import { generateThumbnailFile } from '@/utils/video';
+
 import { db } from './client';
 import type { Project, Segment } from './schema';
 import { projects, segments, uploadArtifacts } from './schema';

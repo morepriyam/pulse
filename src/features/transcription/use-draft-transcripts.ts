@@ -1,7 +1,8 @@
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 
 import { draftTranscriptQuery } from '@/db/transcripts';
+
 import { parseTranscriptLines, type TranscriptLine } from './whisper';
 
 /** Parsed merged transcript for a draft, ready for display/export. */

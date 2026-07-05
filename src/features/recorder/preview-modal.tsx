@@ -1,7 +1,7 @@
-import { Icon } from '@/components/icon';
-import { VideoView, type VideoPlayer } from 'expo-video';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { type VideoPlayer, VideoView } from 'expo-video';
 
+import { Icon } from '@/components/icon';
 import { Spacing } from '@/constants/theme';
 import { formatDurationPadded } from '@/utils/format';
 

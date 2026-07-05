@@ -6,56 +6,79 @@ function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const TUS_RESUME_DIR_NAME = 'tus-resume';
+// Cache-relative scratch dirs the upload flow writes to. Both hold only
+// per-session throwaway files: `tus-resume/` gets `prepareUploadSource`'s
+// resume-remainder copies, `uploads/` gets `writeTempTextFile`'s VTT/beat-manifest
+// artifacts. Both are regenerated from scratch on the next upload attempt.
+const UPLOAD_SCRATCH_DIR_NAMES = ['tus-resume', 'uploads'] as const;
 
 /**
- * Deletes any leftover files under the cache dir's `tus-resume/` scratch
- * space. `prepareUploadSource`'s temp copy is only cleaned up in a `finally`
- * block, which never runs if the app process is killed outright (not just an
- * aborted upload) mid-resume — leaving a duplicate, unencrypted copy of
- * potentially sensitive video content sitting in app cache indefinitely.
- * Call once at app startup: any file found here by definition belongs to a
- * session that never got a chance to finish uploading, and the next resume
- * attempt always writes a fresh temp file from the current offset anyway, so
- * nothing here is ever needed after the process that wrote it is gone.
+ * Deletes any leftover files under the upload scratch dirs. Their temp files are
+ * only cleaned up in `finally` blocks, which never run if the app process is
+ * killed outright (not just an aborted upload) mid-upload — leaving duplicate,
+ * unencrypted copies of potentially sensitive content (and, in `uploads/`, a
+ * VTT/manifest per draft ever uploaded) sitting in app cache indefinitely.
+ * Call once at app startup: anything found here by definition belongs to a
+ * session that never got a chance to finish, and the next attempt always writes
+ * fresh temp files anyway, so nothing here is needed after the process that
+ * wrote it is gone.
  */
 export function cleanupStaleUploadTempFiles(): void {
-  const dir = new Directory(Paths.cache, TUS_RESUME_DIR_NAME);
-  if (!dir.exists) return;
-  try {
-    dir.delete();
-  } catch {
-    // Best-effort — a locked/missing file here just means it'll be retried
-    // next launch, not a reason to fail app startup.
+  for (const name of UPLOAD_SCRATCH_DIR_NAMES) {
+    const dir = new Directory(Paths.cache, name);
+    if (!dir.exists) continue;
+    try {
+      dir.delete();
+    } catch {
+      // Best-effort — a locked/missing file here just means it'll be retried
+      // next launch, not a reason to fail app startup.
+    }
   }
 }
 
+// Copy the resume remainder in fixed-size chunks so peak memory is bounded to
+// one chunk, not the whole remainder. A resume near byte 0 of a multi-hundred-MB
+// capture would otherwise buffer almost the entire file in JS at once.
+const RESUME_COPY_CHUNK_BYTES = 8 * 1024 * 1024; // 8 MiB
+
 /**
  * When resuming a partial upload (`offset > 0`), streams just the remainder
- * (from `offset` to EOF) into a temp file via `FileHandle` (seek + bounded
- * read, never re-reading the bytes already uploaded) so the native upload
- * task has a file to point at. When starting from byte 0 — the common case —
- * uploads `source` directly with no copy at all.
+ * (from `offset` to EOF) into a temp file via `FileHandle` — seeking to
+ * `offset` and copying forward in `RESUME_COPY_CHUNK_BYTES` chunks, never
+ * re-reading the bytes already uploaded nor holding the whole remainder in
+ * memory — so the native upload task has a file to point at. Yields to the
+ * event loop between chunks (the reads/writes themselves are synchronous) so
+ * copying a large remainder never freezes the UI for its whole duration. When
+ * starting from byte 0 — the common case — uploads `source` directly with no
+ * copy at all.
  */
-function prepareUploadSource(
+async function prepareUploadSource(
   source: File,
   offset: number,
   totalBytes: number,
-): { file: File; cleanup: () => void } {
+): Promise<{ file: File; cleanup: () => void }> {
   if (offset <= 0) return { file: source, cleanup: () => {} };
 
   const dir = new Directory(Paths.cache, 'tus-resume');
   dir.create({ intermediates: true, idempotent: true });
   const temp = new File(dir, `${randomId()}.bin`);
-  if (temp.exists) temp.delete();
+  temp.create();
 
   const reader = source.open(FileMode.ReadOnly);
+  const writer = temp.open(FileMode.WriteOnly);
   try {
     reader.offset = offset;
-    const remainder = reader.readBytes(totalBytes - offset);
-    temp.write(remainder);
+    let remaining = totalBytes - offset;
+    while (remaining > 0) {
+      const chunk = reader.readBytes(Math.min(RESUME_COPY_CHUNK_BYTES, remaining));
+      if (chunk.length === 0) break; // hit EOF earlier than expected — stop rather than spin
+      writer.writeBytes(chunk);
+      remaining -= chunk.length;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   } finally {
     reader.close();
+    writer.close();
   }
   return {
     file: temp,
@@ -96,7 +119,7 @@ export const uploadRemainderNative: UploadRemainder = async ({
   signal,
   onProgress,
 }) => {
-  const { file: source, cleanup } = prepareUploadSource(file, offset, totalBytes);
+  const { file: source, cleanup } = await prepareUploadSource(file, offset, totalBytes);
   try {
     const result = await source.upload(resourceUrl, {
       httpMethod: 'PATCH',

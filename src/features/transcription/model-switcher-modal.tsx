@@ -1,4 +1,3 @@
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import {
   ActivityIndicator,
   Alert,
@@ -9,12 +8,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 
 import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+
 import { applyModelSelection, isModelReady } from './model-manager';
 import { getModel, LARGE_MODEL_BYTES, MODELS } from './models';
 import { useTranscriptionStatus } from './transcription-status';

@@ -1,13 +1,9 @@
+import { and, desc, eq } from 'drizzle-orm';
 import * as Crypto from 'expo-crypto';
-import { desc, eq } from 'drizzle-orm';
 
 import { db } from './client';
 import { uploadDestinations } from './schema';
-import {
-  deleteDestinationToken,
-  getDestinationToken,
-  setDestinationToken,
-} from './secure-token';
+import { deleteDestinationToken, setDestinationToken } from './secure-token';
 
 /**
  * A server the device has paired with (via a `pulsecam://` deep link) but no draft has
@@ -53,34 +49,28 @@ export async function addDestination(dest: PairedDestination): Promise<string> {
   const existing = await db
     .select({ id: uploadDestinations.id })
     .from(uploadDestinations)
-    .where(eq(uploadDestinations.artifactId, dest.artifactId));
-  const match = existing.find(() => true); // artifactId is server-unique in practice
+    .where(
+      and(
+        eq(uploadDestinations.server, dest.server),
+        eq(uploadDestinations.artifactId, dest.artifactId),
+      ),
+    );
+  const match = existing.at(0); // dedup key is (server, artifactId) — at most one row
   const id = match?.id ?? Crypto.randomUUID();
   if (match) {
+    // Refresh the mode AND the timestamp: the destination list orders by
+    // `createdAt desc` and the picker defaults to the newest entry, so a
+    // just-re-scanned link should surface as the current selection, not keep
+    // its original scan time. (`server` is half the match key — already equal.)
     await db
       .update(uploadDestinations)
-      .set({ server: meta.server, uploadUnit: meta.uploadUnit })
+      .set({ uploadUnit: meta.uploadUnit, createdAt: Date.now() })
       .where(eq(uploadDestinations.id, id));
   } else {
     await db.insert(uploadDestinations).values({ id, ...meta });
   }
   await setDestinationToken(id, dest.token);
   return id;
-}
-
-/** Fetch one destination (row + secure-stored token); `null` if it's gone. */
-export async function getDestination(id: string): Promise<PairedDestination | null> {
-  const rows = await db
-    .select({
-      server: uploadDestinations.server,
-      artifactId: uploadDestinations.artifactId,
-      uploadUnit: uploadDestinations.uploadUnit,
-    })
-    .from(uploadDestinations)
-    .where(eq(uploadDestinations.id, id));
-  const row = rows[0];
-  if (!row) return null;
-  return { ...row, token: await getDestinationToken(id) };
 }
 
 /** Remove a destination from the pool (consumed by a finished upload, or deleted by the user). */

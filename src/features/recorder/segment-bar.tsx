@@ -2,8 +2,6 @@
 // gesture event handlers (not during render) — the controller pattern the React-Compiler
 // immutability/refs rules flag. Disabled for this file, as in use-preview/playhead-cursor.
 /* eslint-disable react-hooks/immutability */
-import { Image } from 'expo-image';
-import { Icon } from '@/components/icon';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -16,13 +14,16 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
+import { Image } from 'expo-image';
 
+import { Icon } from '@/components/icon';
 import { Accent, Spacing } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
 import { useThumbnail } from '@/hooks/use-thumbnail';
 import { formatDurationPadded } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
-import { PlayheadCursor, type Cursor } from './playhead-cursor';
+
+import { type Cursor, PlayheadCursor } from './playhead-cursor';
 import {
   ACTIVE_SCALE,
   POP_LANE,

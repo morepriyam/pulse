@@ -1,5 +1,5 @@
-import { setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import { useCallback, useRef } from 'react';
+import { setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 
 /**
  * Audio focus for recording: while the recorder is on screen with the mic live, claim

@@ -26,7 +26,12 @@ describe('parseUploadDeepLink', () => {
     );
     expect(result).toEqual({
       ok: true,
-      link: { artifactId: ARTIFACT_ID, server: 'https://vault.example.org', token: null, uploadUnit: null },
+      link: {
+        artifactId: ARTIFACT_ID,
+        server: 'https://vault.example.org',
+        token: null,
+        uploadUnit: null,
+      },
     });
   });
 
@@ -45,11 +50,14 @@ describe('parseUploadDeepLink', () => {
   });
 
   it('rejects a missing or malformed artifactId', () => {
+    expect(parseUploadDeepLink('pulsecam://?v=1&server=https%3A%2F%2Fvault.example.org')).toEqual({
+      ok: false,
+      reason: 'invalid-link',
+    });
     expect(
-      parseUploadDeepLink('pulsecam://?v=1&server=https%3A%2F%2Fvault.example.org'),
-    ).toEqual({ ok: false, reason: 'invalid-link' });
-    expect(
-      parseUploadDeepLink('pulsecam://?v=1&artifactId=not-a-uuid&server=https%3A%2F%2Fvault.example.org'),
+      parseUploadDeepLink(
+        'pulsecam://?v=1&artifactId=not-a-uuid&server=https%3A%2F%2Fvault.example.org',
+      ),
     ).toEqual({ ok: false, reason: 'invalid-link' });
   });
 
@@ -97,6 +105,32 @@ describe('parseUploadDeepLink', () => {
       `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=not-a-url`,
     );
     expect(result).toEqual({ ok: false, reason: 'invalid-link' });
+  });
+
+  it('normalizes the stored server URL: userinfo is stripped, so what was validated is what is targeted', () => {
+    // A crafted `https://good.com@evil.com` parses with hostname evil.com; storing the raw
+    // string would let it *display* as good.com in places that show the raw value while
+    // fetch resolves it to evil.com. Normalization stores origin+path only.
+    const result = parseUploadDeepLink(
+      `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=${encodeURIComponent('https://good.example@evil.example/pulsevault')}`,
+    );
+    expect(result).toEqual({
+      ok: true,
+      link: {
+        artifactId: ARTIFACT_ID,
+        server: 'https://evil.example/pulsevault', // normalized — the host that will actually be contacted
+        token: null,
+        uploadUnit: null,
+      },
+    });
+  });
+
+  it('normalizes away query/hash noise on the server URL', () => {
+    const result = parseUploadDeepLink(
+      `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=${encodeURIComponent('https://vault.example.org/pulsevault?x=1#frag')}`,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.link.server).toBe('https://vault.example.org/pulsevault');
   });
 
   it('accepts an explicit uploadUnit override, either value', () => {

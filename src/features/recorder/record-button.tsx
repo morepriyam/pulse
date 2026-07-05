@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
-import { GestureDetector, type ComposedGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, withTiming, type SharedValue } from 'react-native-reanimated';
+import { type ComposedGesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { type SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
 import { Accent } from '@/constants/theme';
 import { RECORD_BUTTON_SIZE } from '@/features/recorder/track-metrics';

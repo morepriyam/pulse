@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       upload_to_testflight:
-        description: "Upload the build to TestFlight"
+        description: 'Upload the build to TestFlight'
         type: boolean
         default: true
 
@@ -40,7 +40,7 @@ jobs:
         uses: mieweb/actions/prepare-expo-env@cf09c85fd27cbe235184539df1b421a5c50b0ec7 # v2.2.4
         with:
           package_manager: npm
-          node_version: "20"
+          node_version: '20'
 
       # ── Give every CI build a unique, increasing build number ─────────────
       - name: Stamp build number
@@ -61,7 +61,7 @@ jobs:
       - name: Force distribution signing identity
         env:
           P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
-          P12_PW:     ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          P12_PW: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
         run: |
           set -e
           echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
@@ -90,15 +90,15 @@ jobs:
       - name: Build & upload iOS to TestFlight
         uses: mieweb/actions/sign-archive-upload-ios@cf09c85fd27cbe235184539df1b421a5c50b0ec7 # v2.2.4
         with:
-          signing_mode:            secrets
-          app_identifier:          com.mieweb.pulse.dev
-          apple_team_id:           ${{ secrets.APPLE_TEAM_ID }}
-          apple_api_key_id:        ${{ secrets.APPLE_API_KEY_ID }}
-          apple_api_issuer_id:     ${{ secrets.APPLE_API_ISSUER_ID }}
+          signing_mode: secrets
+          app_identifier: com.mieweb.pulse.dev
+          apple_team_id: ${{ secrets.APPLE_TEAM_ID }}
+          apple_api_key_id: ${{ secrets.APPLE_API_KEY_ID }}
+          apple_api_issuer_id: ${{ secrets.APPLE_API_ISSUER_ID }}
           apple_api_key_p8_base64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
-          ios_cert_p12_base64:     ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
-          ios_cert_password:       ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          ios_cert_p12_base64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          ios_cert_password: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           ios_prov_profile_base64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-          ios_build_dir:           ios
-          run_pod_install:         "true"
-          upload_to_testflight:    ${{ inputs.upload_to_testflight }}
+          ios_build_dir: ios
+          run_pod_install: 'true'
+          upload_to_testflight: ${{ inputs.upload_to_testflight }}

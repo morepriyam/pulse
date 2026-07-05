@@ -1,35 +1,35 @@
-import { useEvent } from 'expo';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import * as Linking from 'expo-linking';
-import { router, useLocalSearchParams } from 'expo-router';
-import { Icon } from '@/components/icon';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
-import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import { useEvent } from 'expo';
+import * as Linking from 'expo-linking';
+import { router, useLocalSearchParams } from 'expo-router';
+import { shareAsync } from 'expo-sharing';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CloseButton } from '@/features/recorder/close-button';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { segmentsForDraft } from '@/db/drafts';
 import type { Segment } from '@/db/schema';
+import { MergeProgressRing } from '@/features/export/merge-progress-ring';
 import { useExport } from '@/features/export/use-export';
 import {
-  useMergedTranscription,
   type MergedTranscriptionState,
+  useMergedTranscription,
 } from '@/features/export/use-merged-transcription';
-import { MergeProgressRing } from '@/features/export/merge-progress-ring';
 import { useSaveToDocuments } from '@/features/export/use-save-to-documents';
 import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
+import { CloseButton } from '@/features/recorder/close-button';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import type { TranscriptLine } from '@/features/transcription/whisper';
 import { DestinationSelector } from '@/features/upload/destination-selector';
 import { useUpload } from '@/features/upload/use-upload';
 import { useParkedPlayback } from '@/hooks/use-parked-playback';
+import { useTheme } from '@/hooks/use-theme';
 import { toFileUri } from '@/utils/file-store';
 import { formatClipCount, formatDuration } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
@@ -92,9 +92,7 @@ export default function ExportScreen() {
   // Open the merged-video caption editor (only meaningful once the merge is done).
   const openCaptionEditor = () => {
     if (state.status !== 'done' || !draftId) return;
-    router.push(
-      `/subtitles?draftId=${draftId}&videoUri=${encodeURIComponent(state.outputPath)}`,
-    );
+    router.push(`/subtitles?draftId=${draftId}&videoUri=${encodeURIComponent(state.outputPath)}`);
   };
 
   // Merged-only: uploading the single video needs the merge done first (segmented uploads each clip
@@ -385,7 +383,10 @@ export default function ExportScreen() {
           uState.status === 'error' ||
           (upload.destination && upload.destinationExpired)) && (
           <View style={styles.uploadSection}>
-            <ThemedText type="caption1" themeColor="textSecondary" style={styles.uploadSectionLabel}>
+            <ThemedText
+              type="caption1"
+              themeColor="textSecondary"
+              style={styles.uploadSectionLabel}>
               UPLOAD
             </ThemedText>
 
@@ -414,11 +415,7 @@ export default function ExportScreen() {
                     style={[styles.errorBanner, { backgroundColor: theme.backgroundElement }]}
                     accessibilityRole="alert"
                     accessibilityLabel={`${uState.retryable ? 'Upload failed' : 'Upload rejected by server'}. ${uState.reason}`}>
-                    <Icon
-                      name="exclamationmark.triangle.fill"
-                      size={16}
-                      tintColor={theme.accent}
-                    />
+                    <Icon name="exclamationmark.triangle.fill" size={16} tintColor={theme.accent} />
                     <View style={styles.errorBody}>
                       <ThemedText type="smallBold">
                         {uState.retryable ? 'Upload failed' : 'Rejected by server'}
@@ -446,31 +443,26 @@ export default function ExportScreen() {
                   </View>
                 )}
 
-                {upload.destinations.length > 0 ? (
-                  selectorAndUpload
-                ) : (
-                  upload.destination &&
-                  upload.destinationExpired && (
-                    <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
-                      <Icon
-                        name="exclamationmark.triangle.fill"
-                        size={18}
-                        tintColor={theme.textSecondary}
-                      />
-                      <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
-                    </View>
-                  )
-                )}
+                {upload.destinations.length > 0
+                  ? selectorAndUpload
+                  : upload.destination &&
+                    upload.destinationExpired && (
+                      <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
+                        <Icon
+                          name="exclamationmark.triangle.fill"
+                          size={18}
+                          tintColor={theme.textSecondary}
+                        />
+                        <ThemedText themeColor="textSecondary">Upload link expired</ThemedText>
+                      </View>
+                    )}
               </>
             )}
           </View>
         )}
       </View>
 
-      <ModelSwitcherModal
-        visible={modelSheetVisible}
-        onClose={() => setModelSheetVisible(false)}
-      />
+      <ModelSwitcherModal visible={modelSheetVisible} onClose={() => setModelSheetVisible(false)} />
     </ThemedView>
   );
 }

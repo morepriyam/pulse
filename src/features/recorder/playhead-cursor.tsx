@@ -6,24 +6,25 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  type AnimatedRef,
   cancelAnimation,
   Easing,
+  type FrameInfo,
   runOnJS,
   scrollTo,
+  type SharedValue,
   useAnimatedReaction,
   useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
   withTiming,
-  type AnimatedRef,
-  type FrameInfo,
-  type SharedValue,
 } from 'react-native-reanimated';
 
 import { Accent } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
 import { clamp } from '@/utils/math';
 import { effMs, indexAtGlobalMs, segmentOffsets } from '@/utils/segment-window';
+
 import { KNOB, POP_LANE, SCRUB_INSET, STEP, THUMB_HEIGHT, THUMB_WIDTH } from './track-metrics';
 
 /** Max rate at which a knob drag issues player seeks (the knob itself moves every frame). */

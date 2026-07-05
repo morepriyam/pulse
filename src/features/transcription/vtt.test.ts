@@ -26,9 +26,7 @@ describe('linesToVtt', () => {
 
   it('falls back to a plain cue for a line without word timing', () => {
     const lines: TranscriptLine[] = [{ text: 'Just a line.', t0: 120, t1: 480 }];
-    expect(linesToVtt(lines)).toBe(
-      'WEBVTT\n\n00:00:01.200 --> 00:00:04.800\nJust a line.\n',
-    );
+    expect(linesToVtt(lines)).toBe('WEBVTT\n\n00:00:01.200 --> 00:00:04.800\nJust a line.\n');
   });
 
   it('separates multiple cues with blank lines and rolls times past a minute', () => {

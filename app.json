@@ -27,13 +27,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "allowBackup": false,
-      "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ],
-      "blockedPermissions": [
-        "android.permission.SYSTEM_ALERT_WINDOW"
-      ],
+      "permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"],
       "package": "com.mieweb.pulse.dev"
     },
     "web": {
@@ -64,10 +59,7 @@
         {
           "photosPermission": "Allow Pulse to access your photos to import videos into your drafts.",
           "savePhotosPermission": "Allow Pulse to save exported videos to your photo library.",
-          "granularPermissions": [
-            "photo",
-            "video"
-          ]
+          "granularPermissions": ["photo", "video"]
         }
       ],
       [

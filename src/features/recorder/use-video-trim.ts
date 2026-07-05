@@ -2,9 +2,9 @@ import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import VideoTrim, { showEditor, type Spec } from 'react-native-video-trim';
 
+import { Accent } from '@/constants/theme';
 import { setEdited } from '@/db/drafts';
 import type { Segment } from '@/db/schema';
-import { Accent } from '@/constants/theme';
 import { absolutize, importTrimmedFile } from '@/utils/file-store';
 import { getDurationMs } from '@/utils/video';
 

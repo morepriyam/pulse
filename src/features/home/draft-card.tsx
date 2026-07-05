@@ -1,13 +1,13 @@
-import { Image } from 'expo-image';
-import { Icon } from '@/components/icon';
 import { useRef } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import type { Anchor } from '@/components/action-menu';
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme } from '@/hooks/use-theme';
 import { useThumbnail } from '@/hooks/use-thumbnail';
 import { formatClipCount, formatDuration, formatRelativeDate } from '@/utils/format';
 

@@ -2,9 +2,9 @@
 // `player.currentTime = …`). That intrinsic mutation is what the React-Compiler immutability rule
 // flags, so it's disabled for this file — the player controller.
 /* eslint-disable react-hooks/immutability */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer } from 'expo-video';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Segment } from '@/db/schema';
 import { absolutize } from '@/utils/file-store';

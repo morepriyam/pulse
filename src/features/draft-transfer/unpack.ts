@@ -11,6 +11,7 @@ import {
   writeOriginalBytes,
 } from '@/utils/file-store';
 import { generateThumbnailFile } from '@/utils/video';
+
 import { isPulseManifest, MANIFEST_NAME } from './manifest';
 
 export type ImportResult = { draftIds: string[] };

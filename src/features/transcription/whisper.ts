@@ -4,36 +4,14 @@ import { initWhisper, type WhisperContext } from 'whisper.rn';
 import { groupWordsIntoLines } from './group-lines';
 import { ensureModel, modelFileUri } from './model';
 import type { WhisperModel } from './models';
+import type { TranscriptResult } from './transcript';
 import { hasSpeech } from './vad';
 
-/**
- * One word of a transcript. `t0`/`t1` are whisper.cpp timestamps in **centiseconds** (1/100s)
- * relative to the clip's audio start. Words drive word-level (karaoke) caption highlighting.
- */
-export type TranscriptWord = { text: string; t0: number; t1: number };
-
-/**
- * One transcribed line (caption cue). `t0`/`t1` are **centiseconds** relative to the clip's
- * audio start — divide by 100 for seconds when rendering. `words` (when present) carries the
- * per-word timing within the line; older stored rows may omit it and render line-level only.
- */
-export type TranscriptLine = { text: string; t0: number; t1: number; words?: TranscriptWord[] };
-
-export type TranscriptResult = {
-  language: string;
-  text: string;
-  lines: TranscriptLine[];
-};
-
-/** Parse a persisted `lines`/`editedLines` JSON column to `TranscriptLine[]`; `[]` on null/malformed. */
-export function parseTranscriptLines(json: string | null | undefined): TranscriptLine[] {
-  if (!json) return [];
-  try {
-    return JSON.parse(json) as TranscriptLine[];
-  } catch {
-    return [];
-  }
-}
+// Re-exported so the many existing `from './whisper'` imports of these keep working; the definitions
+// now live in the native-free `transcript.ts` so they can be unit-tested without the whisper.rn/
+// react-native-video-trim native deps this module pulls in.
+export type { TranscriptLine, TranscriptResult, TranscriptWord } from './transcript';
+export { parseTranscriptLines } from './transcript';
 
 /** A clip with no detected speech: a settled, empty transcript (no captions, never re-run). */
 const EMPTY_TRANSCRIPT: TranscriptResult = { language: '', text: '', lines: [] };
@@ -56,6 +34,11 @@ async function isSilent(wavPath: string): Promise<boolean> {
 // releases the old context before loading the new one.
 let current: { id: string; ctx: WhisperContext } | null = null;
 let loadPromise: Promise<WhisperContext> | null = null;
+// Bumped on every release. An in-flight `loadContext` captures the value at the start of its async
+// work and, after building its context, refuses to install it if the generation has moved on — so a
+// model switch/delete (`releaseWhisper` + `deleteModelsExcept`) can never leave `current` pointing
+// at a context whose weights were deleted out from under it.
+let generation = 0;
 
 // `maxLen: 1` makes whisper emit one segment per word, each with its own t0/t1 — the only way
 // whisper.rn surfaces word-level timing (its result exposes segments, not tokens). We then fold
@@ -79,6 +62,7 @@ async function initContext(filePath: string): Promise<WhisperContext> {
 
 /** Free the active Whisper context (e.g. on model switch / delete). Re-loads lazily on next use. */
 export async function releaseWhisper(): Promise<void> {
+  generation++; // invalidate any in-flight load so it can't resurrect `current` after this returns
   loadPromise = null;
   const ctx = current?.ctx ?? null;
   current = null;
@@ -90,21 +74,51 @@ export async function releaseWhisper(): Promise<void> {
  * swapping the context when the selected model changes. Idempotent for the already-loaded model.
  */
 async function loadContext(model: WhisperModel): Promise<WhisperContext> {
-  if (current?.id === model.id) return current.ctx;
-  if (loadPromise) await loadPromise.catch(() => {});
-  if (current?.id === model.id) return current.ctx;
+  // Wait out any in-flight load in a LOOP: a resumed waiter must re-check both
+  // exits, otherwise two callers waiting on the same load would both proceed to
+  // start their own — duplicate loads where the loser's context (hundreds of MB
+  // of native memory) is overwritten in `current` without ever being released.
+  for (;;) {
+    if (current?.id === model.id) return current.ctx;
+    if (!loadPromise) break;
+    await loadPromise.catch(() => {});
+  }
 
-  loadPromise = (async () => {
-    await releaseWhisper();
+  const promise = (async () => {
+    // Snapshot SYNCHRONOUSLY — the IIFE body runs synchronously up to its first
+    // await, so nothing can bump `generation` before this line. A releaseWhisper()
+    // landing during any of the awaits below moves `generation` past this value
+    // and the post-init check discards the stale context. (Capturing after the
+    // teardown await would leave a window where a release lands first and the
+    // snapshot reads the already-bumped value, silently passing the guard.)
+    const gen = generation;
+
+    // Free the previously-loaded (different-model) context inline — not via
+    // releaseWhisper(), which would bump `generation` and immediately invalidate
+    // the load we're about to start.
+    const prev = current?.ctx ?? null;
+    current = null;
+    await prev?.release().catch(() => {});
+
     await ensureModel(model); // no-op if already on disk
     const ctx = await initContext(modelFileUri(model));
+    if (gen !== generation) {
+      // A model switch/delete raced this load; the weights may already be gone.
+      // Free what we built and fail this load rather than caching a stale context.
+      await ctx.release().catch(() => {});
+      throw new Error('whisper model load superseded by a model switch/delete');
+    }
     current = { id: model.id, ctx };
     return ctx;
   })();
+  loadPromise = promise;
   try {
-    return await loadPromise;
+    return await promise;
   } finally {
-    loadPromise = null;
+    // Clear only our own promise — releaseWhisper() or a newer load may have
+    // replaced `loadPromise` while we were settling; nulling theirs would let a
+    // third caller start yet another duplicate load.
+    if (loadPromise === promise) loadPromise = null;
   }
 }
 

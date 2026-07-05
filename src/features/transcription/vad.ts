@@ -54,6 +54,9 @@ async function ensureVadModel(): Promise<string> {
 // across model switches (it's cheap and tiny) and only release it when on-device AI is turned off.
 let ctx: WhisperVadContext | null = null;
 let loadPromise: Promise<WhisperVadContext> | null = null;
+// Bumped on every releaseVad(); an in-flight loadVad() refuses to install a context built against
+// a superseded generation (see loadVad/releaseVad).
+let generation = 0;
 // Sticky flag set when VAD init fails even on the CPU fallback — the device genuinely can't run the
 // VAD, so we stop re-attempting it on every clip (callers fail open and let Whisper run). A model
 // download failure (offline) is NOT cached here: it's transient and retried on the next clip.
@@ -78,7 +81,10 @@ async function loadVad(): Promise<WhisperVadContext> {
   if (ctx) return ctx;
   if (unavailable) throw new Error('VAD unavailable on this device');
   if (loadPromise) return loadPromise;
-  loadPromise = (async () => {
+  const promise = (async () => {
+    // Snapshot synchronously, before any await — see loadContext in whisper.ts
+    // for why capturing later would let a releaseVad() slip past the guard.
+    const gen = generation;
     await ensureVadModel(); // transient (offline) failures throw here and are intentionally not cached
     let vadCtx: WhisperVadContext;
     try {
@@ -87,18 +93,28 @@ async function loadVad(): Promise<WhisperVadContext> {
       unavailable = true; // failed even on CPU — don't retry this on every clip
       throw error;
     }
+    if (gen !== generation) {
+      // A releaseVad() (model clear) raced this load; don't install a context whose
+      // weights may have been deleted. Free it and fail this load.
+      await vadCtx.release().catch(() => {});
+      throw new Error('VAD load superseded by a model clear');
+    }
     ctx = vadCtx;
     return vadCtx;
   })();
+  loadPromise = promise;
   try {
-    return await loadPromise;
+    return await promise;
   } finally {
-    loadPromise = null;
+    // Clear only our own promise — releaseVad() (or a load it unblocked) may
+    // have replaced `loadPromise` while this one was settling.
+    if (loadPromise === promise) loadPromise = null;
   }
 }
 
 /** Free the VAD context (e.g. when the model is cleared). Re-loads lazily on next use. */
 export async function releaseVad(): Promise<void> {
+  generation++; // invalidate any in-flight load so it can't resurrect `ctx` after this returns
   loadPromise = null;
   unavailable = false; // allow a fresh attempt after a model toggle
   const prevCtx = ctx;

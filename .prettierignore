@@ -6,3 +6,6 @@ ios
 drizzle
 docs
 package-lock.json
+# Independent git submodule with its own prettier config/scripts — formatting
+# it from here would double-format against a second config.
+pulsevault-mieweb

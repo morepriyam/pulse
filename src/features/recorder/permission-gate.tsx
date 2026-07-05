@@ -1,10 +1,11 @@
-import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
+
 import { CloseButton } from './close-button';
 
 export function PermissionGate({

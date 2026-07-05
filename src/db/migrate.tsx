@@ -1,10 +1,11 @@
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator } from 'react-native';
 import { cleanFiles } from 'react-native-video-trim';
+import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+
 import migrations from '../../drizzle/migrations';
 import { db } from './client';
 

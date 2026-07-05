@@ -1,6 +1,6 @@
-import { Icon } from '@/components/icon';
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
+import { Icon } from '@/components/icon';
 import { closeToHome } from '@/utils/navigation';
 
 export function CloseButton({

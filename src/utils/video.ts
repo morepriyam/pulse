@@ -1,6 +1,7 @@
-import { File } from 'expo-file-system';
-import { createVideoPlayer, VideoThumbnail } from 'expo-video';
 import { getFrameAt, isValidFile } from 'react-native-video-trim';
+import { File } from 'expo-file-system';
+import type { VideoThumbnail } from 'expo-video';
+import { createVideoPlayer } from 'expo-video';
 
 import { toFileUri } from './file-store';
 

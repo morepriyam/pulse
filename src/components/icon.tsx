@@ -1,3 +1,4 @@
+import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import {
   ArrowDownToLine,
@@ -40,7 +41,6 @@ import {
   Zap,
   ZapOff,
 } from 'lucide-react-native';
-import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 export type IconName = SymbolViewProps['name'];
 type SymbolWeight = SymbolViewProps['weight'];

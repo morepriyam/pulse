@@ -3,10 +3,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   closeCoalescing,
   emptyHistory,
+  type History,
   record,
   redo as redoHistory,
   undo as undoHistory,
-  type History,
 } from './edit-history';
 import type { TranscriptLine, TranscriptWord } from './whisper';
 

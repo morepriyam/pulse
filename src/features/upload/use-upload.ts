@@ -1,8 +1,10 @@
-import * as Crypto from 'expo-crypto';
-import { Directory, File, Paths } from 'expo-file-system';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import * as Crypto from 'expo-crypto';
+import { Directory, File, FileMode, Paths } from 'expo-file-system';
+import { sha256 } from 'js-sha256';
 
+import { deleteDestination } from '@/db/destinations';
 import {
   getUploadArtifact,
   projectQuery,
@@ -12,21 +14,19 @@ import {
   type UploadArtifactKey,
   upsertUploadArtifact,
 } from '@/db/drafts';
-import { deleteDestination } from '@/db/destinations';
-import { getDraftToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
+import { getDraftToken } from '@/db/secure-token';
 import { getDraftTranscriptRow } from '@/db/transcripts';
-import { useNow } from '@/hooks/use-now';
 import { linesToVtt } from '@/features/transcription/vtt';
 import { parseTranscriptLines } from '@/features/transcription/whisper';
+import { useNow } from '@/hooks/use-now';
 import { absolutize, toFileUri } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
 import { generateThumbnailFile } from '@/utils/video';
 
-import { buildBeatManifest } from './beat-manifest';
 import { waitUntilAppForeground } from './app-state-gate';
+import { buildBeatManifest } from './beat-manifest';
 import { EXPIRY_CHECK_INTERVAL_MS, isTokenExpired } from './capability-token';
-import { type DestinationOption, useDestinations } from './use-destinations';
 import { uploadRemainderNative } from './native-chunk-upload';
 import {
   type ArtifactKind,
@@ -35,6 +35,7 @@ import {
   type TusUploadOptions,
   uploadViaTus,
 } from './tus-client';
+import { type DestinationOption, useDestinations } from './use-destinations';
 
 const EXPIRED_PAIRING_MESSAGE = 'Upload link expired — ask the operator for a new pairing link.';
 
@@ -75,15 +76,44 @@ type UploadArtifactSpec = {
   file: File;
 };
 
-function bufferToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+// Read size for the streaming checksum below — one chunk is the peak memory held.
+const CHECKSUM_CHUNK_BYTES = 8 * 1024 * 1024; // 8 MiB
 
-async function sha256Checksum(file: File): Promise<string> {
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await file.bytes());
-  return `sha256:${bufferToHex(digest)}`;
+/**
+ * Streaming SHA-256 of a file via js-sha256's incremental hasher + chunked
+ * `FileHandle` reads, so peak memory is one chunk — not the whole file.
+ * (expo-crypto's `digest` is one-shot only, which forced `file.bytes()` to load
+ * a potentially multi-hundred-MB merged export into the JS heap at once; and
+ * Hermes has no WebAssembly, ruling out wasm hashers.) Yields to the event loop
+ * between chunks so the pure-JS hashing never blocks the UI for the whole file,
+ * and honors `signal` at each chunk so a cancel doesn't keep burning CPU/battery
+ * hashing a file whose upload will never start.
+ */
+async function sha256Checksum(file: File, signal?: AbortSignal): Promise<string> {
+  const size = file.size;
+  if (size == null) {
+    // Hashing zero bytes would produce a "valid" checksum the server 422s on —
+    // fail loudly instead so the real problem (unreadable file) surfaces.
+    throw new Error(`Cannot checksum ${file.name}: file size unavailable`);
+  }
+  const hasher = sha256.create();
+  const reader = file.open(FileMode.ReadOnly);
+  try {
+    let remaining = size;
+    while (remaining > 0) {
+      if (signal?.aborted) {
+        throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+      }
+      const chunk = reader.readBytes(Math.min(CHECKSUM_CHUNK_BYTES, remaining));
+      if (chunk.length === 0) break; // EOF earlier than expected — hash what we got
+      hasher.update(chunk);
+      remaining -= chunk.length;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  } finally {
+    reader.close();
+  }
+  return `sha256:${hasher.hex()}`;
 }
 
 /** Writes text to a fresh temp file under the cache directory so it can be sliced/uploaded like any other File. */
@@ -102,7 +132,12 @@ type RetryableError = Error & { retryable: boolean };
 type ErrorDescription = { reason: string; retryable: boolean };
 
 function describeError(err: unknown): ErrorDescription {
-  if (err && typeof err === 'object' && 'retryable' in err) {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'retryable' in err &&
+    typeof (err as { retryable: unknown }).retryable === 'boolean'
+  ) {
     const retryableError = err as RetryableError;
     return {
       reason: retryableError.message ?? 'Upload failed',
@@ -160,6 +195,10 @@ export function useUpload(
   // otherwise overwrite `controllerRef.current` with a second one while the first is still
   // running, making the first uncancellable.
   const runningRef = useRef(false);
+  // Set synchronously by `cancel()` before it aborts the in-flight run, so `start`'s catch can tell
+  // an intentional cancellation from a real failure and leave the terminal (idle) state to `cancel()`
+  // instead of racing it with an 'error'/'failed' write. Reset at the top of each `start`.
+  const cancelledRef = useRef(false);
   // The sub-artifact actually being uploaded right now — not necessarily the session anchor
   // (e.g. mid-captions-upload in merged mode, or a segment clip) — so `cancel()` can DELETE
   // the resource that's really in flight instead of always targeting the anchor.
@@ -199,19 +238,20 @@ export function useUpload(
     };
   }, [draftId, hasDestination]);
 
-  const destination: Destination | null = useMemo(
-    () =>
-      hasDestination
-        ? {
-            server: project!.uploadServer!,
-            token: draftToken,
-            artifactId: project!.uploadArtifactId!,
-            uploadUnit: project!.uploadUnit!,
-            resourceUrl: project!.uploadResourceUrl,
-          }
-        : null,
-    [hasDestination, project, draftToken],
-  );
+  const destination: Destination | null = useMemo(() => {
+    // Re-derives the same conditions as `hasDestination`, but inside the closure
+    // so TypeScript narrows the nullable columns for real — no `!` assertions.
+    if (project?.mode !== 'upload') return null;
+    const { uploadServer, uploadArtifactId, uploadUnit, uploadResourceUrl } = project;
+    if (!uploadServer || !uploadArtifactId || !uploadUnit) return null;
+    return {
+      server: uploadServer,
+      token: draftToken,
+      artifactId: uploadArtifactId,
+      uploadUnit,
+      resourceUrl: uploadResourceUrl,
+    };
+  }, [project, draftToken]);
   const destinationExpired = destination !== null && isTokenExpired(destination.token, now);
 
   // Which pool destination the user has picked to upload to. Defaults to the most-recent
@@ -355,7 +395,7 @@ export function useUpload(
       const merged = mergedRef.current;
       if (!merged) throw new Error('Export is not ready yet');
       const file = new File(merged.path);
-      const checksum = await sha256Checksum(file);
+      const checksum = await sha256Checksum(file, signal);
       const result = await uploadOne(
         destination,
         { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', file },
@@ -430,7 +470,7 @@ export function useUpload(
 
       for (const segment of segments) {
         const file = new File(absolutize(effFile(segment)));
-        const checksum = await sha256Checksum(file);
+        const checksum = await sha256Checksum(file, signal);
 
         // The wire protocol requires a UUID `artifactId` (see PROTOCOL.md §4.1); this app's
         // local segment ids are `${draftId}-${timestamp}` strings, not UUIDs, so each segment
@@ -521,6 +561,7 @@ export function useUpload(
         return;
       }
       runningRef.current = true;
+      cancelledRef.current = false;
       const controller = new AbortController();
       controllerRef.current = controller;
       setActiveState({ status: 'uploading', progress: 0 });
@@ -539,9 +580,13 @@ export function useUpload(
           consumedIdRef.current = null;
         }
       } catch (err) {
-        const { reason, retryable } = describeError(err);
-        setActiveState({ status: 'error', reason, retryable });
-        await setUploadProgress(draftId, { status: 'failed' });
+        // A user cancel() already owns the terminal state (idle) and set `cancelledRef` before
+        // aborting — don't race it with an 'error'/'failed' write for the abort it triggered.
+        if (!cancelledRef.current) {
+          const { reason, retryable } = describeError(err);
+          setActiveState({ status: 'error', reason, retryable });
+          await setUploadProgress(draftId, { status: 'failed' });
+        }
       } finally {
         runningRef.current = false;
         currentUploadRef.current = null;
@@ -583,6 +628,9 @@ export function useUpload(
   );
 
   const cancel = useCallback(async () => {
+    // Claim the terminal state before aborting so `start`'s catch (which the abort triggers) defers
+    // to the idle write below instead of racing it with an error state.
+    cancelledRef.current = true;
     controllerRef.current?.abort();
     // Target whatever's actually in flight right now — a segment/captions sub-artifact may not
     // be the session anchor (`destination.resourceUrl`) at all — falling back to the anchor
@@ -600,6 +648,11 @@ export function useUpload(
   // potentially racing a fresh hook instance mounted for the same draft.
   useEffect(() => {
     return () => {
+      // Same claim as cancel(): mark the abort as intentional BEFORE firing it, so
+      // `start`'s catch doesn't record a navigation-away as `status: 'failed'` in the
+      // DB — worse, that late write could clobber a fresh hook instance (mounted for
+      // the same draft) that has already started and written 'uploading'.
+      cancelledRef.current = true;
       controllerRef.current?.abort();
     };
   }, []);

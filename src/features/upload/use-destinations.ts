@@ -1,13 +1,13 @@
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useEffect, useMemo, useState } from 'react';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 
 import { deleteDestination, destinationsQuery } from '@/db/destinations';
 import { getDestinationToken } from '@/db/secure-token';
 import { useNow } from '@/hooks/use-now';
 
 import {
-  EXPIRY_CHECK_INTERVAL_MS,
   expiresAtMs,
+  EXPIRY_CHECK_INTERVAL_MS,
   formatExpiry,
   isTokenExpired,
 } from './capability-token';

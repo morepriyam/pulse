@@ -77,6 +77,10 @@ export type RecorderPrefs = {
 // reject corrupt/legacy stored values without a runtime import from the recorder module.
 const STABILIZATION_VALUES: readonly StabilizationMode[] = ['off', 'standard', 'cinematic', 'auto'];
 
+function isStabilizationMode(value: string | null): value is StabilizationMode {
+  return value !== null && (STABILIZATION_VALUES as readonly string[]).includes(value);
+}
+
 /** Read the persisted recorder preferences, falling back to defaults for missing/unexpected values. */
 export async function getRecorderPrefs(): Promise<RecorderPrefs> {
   const [facing, stabilization, muted] = await Promise.all([
@@ -86,9 +90,7 @@ export async function getRecorderPrefs(): Promise<RecorderPrefs> {
   ]);
   return {
     facing: facing === 'front' ? 'front' : 'back',
-    stabilization: STABILIZATION_VALUES.includes(stabilization as StabilizationMode)
-      ? (stabilization as StabilizationMode)
-      : 'off',
+    stabilization: isStabilizationMode(stabilization) ? stabilization : 'off',
     muted: muted === 'true',
   };
 }

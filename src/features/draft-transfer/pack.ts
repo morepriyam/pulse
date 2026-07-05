@@ -3,13 +3,14 @@ import { strToU8, zipSync } from 'fflate';
 
 import { getDraftForExport } from '@/db/drafts';
 import { readRelBytes } from '@/utils/file-store';
+
 import {
+  type BundleDraft,
+  type BundleSegment,
   MANIFEST_NAME,
   MEDIA_DIR,
   PULSE_FORMAT,
   PULSE_VERSION,
-  type BundleDraft,
-  type BundleSegment,
   type PulseManifest,
 } from './manifest';
 

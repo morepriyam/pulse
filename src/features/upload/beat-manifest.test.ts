@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import type { Segment } from '@/db/schema';
+
 import { buildBeatManifest } from './beat-manifest';
 
 // Minimal Segment factory — beat-manifest only reads id + effective duration.
