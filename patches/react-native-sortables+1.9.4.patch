@@ -1,0 +1,60 @@
+diff --git a/node_modules/react-native-sortables/dist/module/components/shared/CustomHandle.js b/node_modules/react-native-sortables/dist/module/components/shared/CustomHandle.js
+index 7e89929..12cbaca 100644
+--- a/node_modules/react-native-sortables/dist/module/components/shared/CustomHandle.js
++++ b/node_modules/react-native-sortables/dist/module/components/shared/CustomHandle.js
+@@ -67,7 +67,9 @@ function CustomHandleComponent({
+       collapsable: false,
+       ref: handleRef,
+       style: style,
+-      onLayout: runOnUI(onLayout),
++      onLayout: () => {
++        runOnUI(onLayout)();
++      },
+       children: children
+     })
+   });
+diff --git a/node_modules/react-native-sortables/dist/module/providers/shared/PortalOutletProvider.js b/node_modules/react-native-sortables/dist/module/providers/shared/PortalOutletProvider.js
+index 935d332..bdd1b79 100644
+--- a/node_modules/react-native-sortables/dist/module/providers/shared/PortalOutletProvider.js
++++ b/node_modules/react-native-sortables/dist/module/providers/shared/PortalOutletProvider.js
+@@ -19,7 +19,9 @@ const {
+     collapsable: false,
+     ref: portalOutletRef,
+     style: styles.container,
+-    onLayout: runOnUI(measurePortalOutlet),
++    onLayout: () => {
++      runOnUI(measurePortalOutlet)();
++    },
+     children: children
+   }),
+   value: true
+diff --git a/node_modules/react-native-sortables/src/components/shared/CustomHandle.tsx b/node_modules/react-native-sortables/src/components/shared/CustomHandle.tsx
+index 25e4cf1..9ca03e4 100644
+--- a/node_modules/react-native-sortables/src/components/shared/CustomHandle.tsx
++++ b/node_modules/react-native-sortables/src/components/shared/CustomHandle.tsx
+@@ -79,7 +79,9 @@ function CustomHandleComponent({
+         collapsable={false}
+         ref={handleRef}
+         style={style}
+-        onLayout={runOnUI(onLayout)}>
++        onLayout={() => {
++          runOnUI(onLayout)();
++        }}>
+         {children}
+       </View>
+     </GestureDetector>
+diff --git a/node_modules/react-native-sortables/src/providers/shared/PortalOutletProvider.tsx b/node_modules/react-native-sortables/src/providers/shared/PortalOutletProvider.tsx
+index 7dc3857..d64ccc1 100644
+--- a/node_modules/react-native-sortables/src/providers/shared/PortalOutletProvider.tsx
++++ b/node_modules/react-native-sortables/src/providers/shared/PortalOutletProvider.tsx
+@@ -20,7 +20,9 @@ const { PortalOutletProvider, usePortalOutletContext } = createProvider(
+         collapsable={false}
+         ref={portalOutletRef}
+         style={styles.container}
+-        onLayout={runOnUI(measurePortalOutlet)}>
++        onLayout={() => {
++          runOnUI(measurePortalOutlet)();
++        }}>
+         {children}
+       </View>
+     ),
