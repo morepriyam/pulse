@@ -17,7 +17,7 @@ export type DestinationOption = {
   id: string;
   server: string;
   artifactId: string;
-  uploadUnit: 'beat' | 'merged';
+  uploadUnit: 'segment' | 'merged';
   token: string | null;
   /** Millisecond `exp` for a decodable token, else `null` (tokenless = no known expiry). */
   expiresAtMs: number | null;

@@ -9,17 +9,21 @@ import {
   setCaptionsUploadStatus,
   setUploadDestination,
   setUploadProgress,
+  type UploadArtifactKey,
   upsertUploadArtifact,
 } from '@/db/drafts';
 import { deleteDestination } from '@/db/destinations';
 import { getDraftToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
+import { getDraftTranscriptRow } from '@/db/transcripts';
 import { useNow } from '@/hooks/use-now';
-import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
-import { linesToVtt, mergedLines } from '@/features/transcription/vtt';
-import { absolutize } from '@/utils/file-store';
+import { linesToVtt } from '@/features/transcription/vtt';
+import { parseTranscriptLines } from '@/features/transcription/whisper';
+import { absolutize, toFileUri } from '@/utils/file-store';
 import { effFile } from '@/utils/segment-window';
+import { generateThumbnailFile } from '@/utils/video';
 
+import { buildBeatManifest } from './beat-manifest';
 import { waitUntilAppForeground } from './app-state-gate';
 import { EXPIRY_CHECK_INTERVAL_MS, isTokenExpired } from './capability-token';
 import { type DestinationOption, useDestinations } from './use-destinations';
@@ -52,8 +56,14 @@ type Destination = {
   server: string;
   token: string | null;
   artifactId: string;
-  uploadUnit: 'beat' | 'merged';
+  uploadUnit: 'segment' | 'merged';
   resourceUrl: string | null;
+};
+
+/** Segmented-mode ordering manifest (`${draftId}-segments.pulse`) — the clip artifactIds in play order. */
+type SegmentManifest = {
+  version: 1;
+  segments: { artifactId: string; order: number }[];
 };
 
 /** One artifact to hand to `uploadOne` — a session anchor (video/manifest) or a related sub-artifact (captions). */
@@ -107,16 +117,17 @@ function describeError(err: unknown): ErrorDescription {
 
 /**
  * Drives uploading a draft to its paired server. Branches on the destination's
- * stored `uploadUnit`: `"merged"` uploads the single merged export video plus
- * one merged-VTT captions artifact (same session); `"beat"` uploads each
- * segment's effective file individually under its own existing id, plus a
- * small ordering manifest and per-beat captions — no merge/re-encode pass at
- * all in that branch. Every secondary artifact in a session declares
- * `relatedTo` pointing at the session anchor (`destination.artifactId`) so the
- * one capability token issued for that anchor authorizes the whole session.
+ * stored `uploadUnit`: `"merged"` uploads the single merged export video plus a
+ * merged-VTT captions artifact, a beat manifest (per-segment timecodes on the
+ * merged timeline) and a thumbnail (all one session); `"segment"` uploads each
+ * segment's effective file individually under its own existing id, plus a small
+ * ordering manifest — no captions, no thumbnail, no merge/re-encode pass at all
+ * in that branch. Every secondary artifact in a session declares `relatedTo`
+ * pointing at the session anchor (`destination.artifactId`) so the one
+ * capability token issued for that anchor authorizes the whole session.
  *
  * Every secondary artifact's identity (and, once known, its resource URL) is
- * persisted in `upload_artifacts` keyed by a stable local key (e.g. a beat's
+ * persisted in `upload_artifacts` keyed by a stable local key (e.g. a segment's
  * `${segmentId}:video`) — a retry looks up the existing entry and resumes it
  * via `tus-client`'s normal HEAD-then-PATCH resume path instead of minting a
  * fresh artifactId and re-uploading a duplicate from byte 0.
@@ -138,7 +149,6 @@ export function useUpload(
   // The device-wide pool of paired-but-unconsumed destinations (non-expired only). Any draft can
   // select one to upload to; several servers can be paired at once (§ destination pool).
   const { destinations } = useDestinations();
-  const transcripts = useDraftTranscripts(draftId);
   // Transient state for an *active* run (uploading/error this session); when
   // idle, the displayed status instead derives directly from the DB below —
   // an already-uploaded draft shows "done" without a redundant effect+setState
@@ -151,7 +161,7 @@ export function useUpload(
   // running, making the first uncancellable.
   const runningRef = useRef(false);
   // The sub-artifact actually being uploaded right now — not necessarily the session anchor
-  // (e.g. mid-captions-upload in merged mode, or a beat segment) — so `cancel()` can DELETE
+  // (e.g. mid-captions-upload in merged mode, or a segment clip) — so `cancel()` can DELETE
   // the resource that's really in flight instead of always targeting the anchor.
   const currentUploadRef = useRef<{ artifactId: string; resourceUrl: string | null } | null>(null);
   // The pool destination id this draft was claimed from, so a *finished* upload can remove it
@@ -243,7 +253,7 @@ export function useUpload(
       onProgress?: TusUploadOptions['onProgress'],
     ) => {
       // Checked before every single artifact (not just once at the start of a run) — a
-      // beat-mode session uploads many small files in sequence, and a token that was fine at
+      // segmented session uploads many small files in sequence, and a token that was fine at
       // the start can go stale partway through. Stopping here with a clear, non-retryable
       // reason beats letting the loop run into a confusing wall of 403s.
       if (isTokenExpired(destination.token, Date.now())) throw new ExpiredPairingError();
@@ -286,6 +296,60 @@ export function useUpload(
     [],
   );
 
+  // Reserve → upload → persist a session-related artifact (captions / beat manifest / thumbnail).
+  // Owns the whole resumable-upload dance once: the artifactId is reserved BEFORE the upload and its
+  // resourceUrl persisted AFTER, so a retry looks up the stored id and resumes via HEAD-then-PATCH
+  // instead of minting a fresh UUID and re-uploading from byte 0. All three secondaries share it.
+  const uploadRelatedArtifact = useCallback(
+    async (
+      destination: Destination,
+      localKey: UploadArtifactKey,
+      spec: { filename: string; kind: ArtifactKind; file: File },
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const existing = await getUploadArtifact(draftId, localKey);
+      const artifactId = existing?.artifactId ?? Crypto.randomUUID();
+      if (!existing) await upsertUploadArtifact(draftId, localKey, { artifactId });
+      const result = await uploadOne(
+        destination,
+        {
+          artifactId,
+          filename: spec.filename,
+          kind: spec.kind,
+          relatedTo: destination.artifactId,
+          file: spec.file,
+        },
+        existing?.resourceUrl ?? null,
+        undefined,
+        signal,
+      );
+      await upsertUploadArtifact(draftId, localKey, {
+        artifactId,
+        resourceUrl: result.resourceUrl,
+      });
+    },
+    [draftId, uploadOne],
+  );
+
+  // The draft's cover for a merged upload: the first clip's persisted jpeg, or a frame extracted
+  // from the merged output if that clip has none (legacy rows). `null` if neither is available.
+  const resolveThumbnailFile = useCallback(
+    async (mergedPath: string): Promise<File | null> => {
+      const firstThumb = segments[0]?.thumbnail;
+      if (firstThumb) {
+        const persisted = new File(absolutize(firstThumb));
+        if (persisted.exists) return persisted;
+      }
+      const dir = new Directory(Paths.cache, 'uploads');
+      dir.create({ intermediates: true, idempotent: true });
+      const out = new File(dir, `${draftId}.jpg`);
+      if (out.exists) out.delete();
+      const ok = await generateThumbnailFile(toFileUri(mergedPath), out.uri);
+      return ok && out.exists ? out : null;
+    },
+    [draftId, segments],
+  );
+
   const uploadMerged = useCallback(
     async (destination: Destination, signal: AbortSignal) => {
       const merged = mergedRef.current;
@@ -304,45 +368,60 @@ export function useUpload(
             progress: totalBytes ? bytesSent / totalBytes : 0,
           }),
       );
-      await setUploadProgress(draftId, { status: 'uploaded', resourceUrl: result.resourceUrl });
+      // Persist the video's resource URL now (so a crash mid-session resumes the video via HEAD),
+      // but keep the draft status 'uploading' — it isn't marked 'uploaded' until every related
+      // artifact below has landed, so an interrupted session never records as done-but-incomplete.
+      await setUploadProgress(draftId, { status: 'uploading', resourceUrl: result.resourceUrl });
 
-      const lines = mergedLines(segments, transcripts);
+      // Captions: the draft's single MERGED transcript (hand-edit if present, else auto). Produced
+      // once at export time — already on the merged timeline, so no per-clip stitching.
+      const row = await getDraftTranscriptRow(draftId);
+      const lines = parseTranscriptLines(row?.editedLines ?? row?.lines);
       if (lines.length > 0) {
         await setCaptionsUploadStatus(draftId, 'uploading');
         // VTT rather than SRT: WebVTT carries whisper's word-level timing as inline cue
         // timestamps, so web viewers can karaoke-highlight exactly like the in-app overlay.
         const vttFile = writeTempTextFile(`${draftId}.vtt`, linesToVtt(lines));
-        // Reuse a previously-reserved captions artifact so a retry after a captions-PATCH
-        // failure resumes it instead of minting a new UUID and uploading a duplicate.
-        const existing = await getUploadArtifact(draftId, 'captions');
-        const captionsArtifactId = existing?.artifactId ?? Crypto.randomUUID();
-        if (!existing)
-          await upsertUploadArtifact(draftId, 'captions', { artifactId: captionsArtifactId });
-        const captionsResult = await uploadOne(
+        await uploadRelatedArtifact(
           destination,
-          {
-            artifactId: captionsArtifactId,
-            filename: `${draftId}.vtt`,
-            kind: 'captions',
-            relatedTo: destination.artifactId,
-            file: vttFile,
-          },
-          existing?.resourceUrl ?? null,
-          undefined,
+          'captions',
+          { filename: `${draftId}.vtt`, kind: 'captions', file: vttFile },
           signal,
         );
-        await upsertUploadArtifact(draftId, 'captions', {
-          artifactId: captionsArtifactId,
-          resourceUrl: captionsResult.resourceUrl,
-        });
         await setCaptionsUploadStatus(draftId, 'uploaded');
       }
+
+      // Beat manifest: precise per-segment timecodes on the merged timeline (groundwork for HLS).
+      const manifestFile = writeTempTextFile(
+        `${draftId}-beats.pulse`,
+        JSON.stringify(buildBeatManifest(segments, merged.durationMs)),
+      );
+      await uploadRelatedArtifact(
+        destination,
+        'manifest',
+        { filename: `${draftId}-beats.pulse`, kind: 'project', file: manifestFile },
+        signal,
+      );
+
+      // Thumbnail (poster frame).
+      const thumbFile = await resolveThumbnailFile(merged.path);
+      if (thumbFile) {
+        await uploadRelatedArtifact(
+          destination,
+          'thumbnail',
+          { filename: `${draftId}.jpg`, kind: 'thumbnail', file: thumbFile },
+          signal,
+        );
+      }
+
+      // Everything landed — only now is the merged session truly complete.
+      await setUploadProgress(draftId, { status: 'uploaded', resourceUrl: result.resourceUrl });
       return result.resourceUrl;
     },
-    [draftId, mergedRef, segments, transcripts, uploadOne],
+    [draftId, mergedRef, segments, uploadOne, uploadRelatedArtifact, resolveThumbnailFile],
   );
 
-  const uploadBeats = useCallback(
+  const uploadSegments = useCallback(
     async (destination: Destination, signal: AbortSignal) => {
       const totalBytes = segments.length;
       let completed = 0;
@@ -354,10 +433,10 @@ export function useUpload(
         const checksum = await sha256Checksum(file);
 
         // The wire protocol requires a UUID `artifactId` (see PROTOCOL.md §4.1); this app's
-        // local segment ids are `${draftId}-${timestamp}` strings, not UUIDs, so each beat
+        // local segment ids are `${draftId}-${timestamp}` strings, not UUIDs, so each segment
         // gets a freshly minted UUID the first time it's uploaded. Persisted in
         // `upload_artifacts` so a retry resumes the SAME artifact instead of minting another.
-        const videoKey = `${segment.id}:video`;
+        const videoKey = `${segment.id}:video` as const;
         const existingVideo = await getUploadArtifact(draftId, videoKey);
         const videoArtifactId = existingVideo?.artifactId ?? Crypto.randomUUID();
         if (!existingVideo)
@@ -380,34 +459,6 @@ export function useUpload(
           resourceUrl: videoResult.resourceUrl,
         });
 
-        const lines = transcripts.get(segment.id)?.lines ?? [];
-        if (lines.length > 0) {
-          const captionsKey = `${segment.id}:captions`;
-          const existingCaptions = await getUploadArtifact(draftId, captionsKey);
-          const captionsArtifactId = existingCaptions?.artifactId ?? Crypto.randomUUID();
-          if (!existingCaptions) {
-            await upsertUploadArtifact(draftId, captionsKey, { artifactId: captionsArtifactId });
-          }
-          const vttFile = writeTempTextFile(`${segment.id}.vtt`, linesToVtt(lines));
-          const captionsResult = await uploadOne(
-            destination,
-            {
-              artifactId: captionsArtifactId,
-              filename: `${segment.id}.vtt`,
-              kind: 'captions',
-              relatedTo: destination.artifactId,
-              file: vttFile,
-            },
-            existingCaptions?.resourceUrl ?? null,
-            undefined,
-            signal,
-          );
-          await upsertUploadArtifact(draftId, captionsKey, {
-            artifactId: captionsArtifactId,
-            resourceUrl: captionsResult.resourceUrl,
-          });
-        }
-
         completed += 1;
         reportProgress();
       }
@@ -415,23 +466,30 @@ export function useUpload(
       // Ordering manifest, named `.pulse` so it passes pulsevault's default
       // `allowedExtensions.project` allowlist (it doesn't actually mandate the
       // zip format that extension is documented with elsewhere — it's purely
-      // an allowlist check — and `uploadUnit: "beat"` is the default, so this
-      // has to work without requiring the operator to reconfigure anything).
-      const beatArtifactIds = new Map<string, string>();
+      // an allowlist check). Segmented uploads carry ONLY the clip mp4s plus this
+      // ordering manifest — no captions, no thumbnail (those are merged-mode only).
+      const segmentArtifactIds = new Map<string, string>();
       for (const segment of segments) {
-        const row = await getUploadArtifact(draftId, `${segment.id}:video`);
-        if (row) beatArtifactIds.set(segment.id, row.artifactId);
+        const row = await getUploadArtifact(draftId, `${segment.id}:video` as const);
+        if (row) segmentArtifactIds.set(segment.id, row.artifactId);
       }
-      const manifest = JSON.stringify({
+      const manifest: SegmentManifest = {
         version: 1,
-        beats: segments.map((s, i) => ({ artifactId: beatArtifactIds.get(s.id), order: i })),
-      });
-      const manifestFile = writeTempTextFile(`${draftId}-manifest.pulse`, manifest);
+        segments: segments.map((s, i) => {
+          const artifactId = segmentArtifactIds.get(s.id);
+          // Every clip's video was reserved+uploaded in the loop above, so this is always present.
+          // Assert rather than let `JSON.stringify` silently drop an `undefined` key and emit an
+          // entry with no `artifactId` — an unresumable, malformed manifest.
+          if (!artifactId) throw new Error(`No uploaded video artifact for segment ${s.id}`);
+          return { artifactId, order: i };
+        }),
+      };
+      const manifestFile = writeTempTextFile(`${draftId}-segments.pulse`, JSON.stringify(manifest));
       const result = await uploadOne(
         destination,
         {
           artifactId: destination.artifactId,
-          filename: `${draftId}-manifest.pulse`,
+          filename: `${draftId}-segments.pulse`,
           kind: 'project',
           file: manifestFile,
         },
@@ -441,7 +499,7 @@ export function useUpload(
       );
       return result.resourceUrl;
     },
-    [draftId, segments, transcripts, uploadOne],
+    [draftId, segments, uploadOne],
   );
 
   // Accepts an explicit destination so `claim()` can kick off the very first upload in the same
@@ -471,7 +529,7 @@ export function useUpload(
         const resourceUrl =
           dest.uploadUnit === 'merged'
             ? await uploadMerged(dest, controller.signal)
-            : await uploadBeats(dest, controller.signal);
+            : await uploadSegments(dest, controller.signal);
         setActiveState({ status: 'done', resourceUrl });
         // Upload finished — remove the consumed destination from the pool so it stops showing in
         // the selector/home float (its single-use artifactId is spent). No-op if this draft's
@@ -489,7 +547,7 @@ export function useUpload(
         currentUploadRef.current = null;
       }
     },
-    [destination, draftId, uploadMerged, uploadBeats],
+    [destination, draftId, uploadMerged, uploadSegments],
   );
 
   // Commits this draft to a chosen pool destination and starts uploading in the same tap. The
@@ -526,7 +584,7 @@ export function useUpload(
 
   const cancel = useCallback(async () => {
     controllerRef.current?.abort();
-    // Target whatever's actually in flight right now — a beat/captions sub-artifact may not
+    // Target whatever's actually in flight right now — a segment/captions sub-artifact may not
     // be the session anchor (`destination.resourceUrl`) at all — falling back to the anchor
     // only if nothing had started uploading yet.
     const target = currentUploadRef.current?.resourceUrl ?? destination?.resourceUrl ?? null;

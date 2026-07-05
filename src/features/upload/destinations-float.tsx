@@ -21,7 +21,7 @@ function hostOf(url: string): string {
 /**
  * A floating pill on the home screen surfacing the device-wide pool of paired upload destinations
  * (§ destination pool). Tapping it opens a sheet to *view and delete* every non-expired
- * destination — its host, beat/merged mode, and expiry. View/delete only; picking *which* one to
+ * destination — its host, segment/merged mode, and expiry. View/delete only; picking *which* one to
  * upload to happens later, on the export screen. Renders nothing when the pool is empty, so it
  * only appears once at least one server is paired, and disappears as destinations are consumed by
  * finished uploads, deleted here, or expire.

@@ -72,9 +72,9 @@ export const getModel = (id: string | null | undefined): WhisperModel | null =>
 
 /**
  * Ids of models retired from the catalog, mapped to the id users should migrate to (`null` to just
- * clear the selection). Add an entry here whenever a model is removed from MODELS. The engine
- * rewrites a stored retired selection on launch, which then flows through the normal switch path:
- * old weights deleted, replacement downloaded, auto captions regenerated.
+ * clear the selection). Add an entry here whenever a model is removed from MODELS. A stored retired
+ * selection is resolved to its replacement wherever the persisted selection is read
+ * (`resolveSelectedModel`); the replacement's weights are then downloaded lazily at export time.
  */
 export const RETIRED_MODELS: Record<string, string | null> = {
   'tiny.en': 'base.en',
@@ -86,5 +86,13 @@ export const RETIRED_MODELS: Record<string, string | null> = {
  */
 export const migrateStaleModelId = (id: string): WhisperModel | null =>
   getModel(RETIRED_MODELS[id]);
+
+/**
+ * Resolve a persisted (possibly retired) selected-model id to a live model. Use this — not bare
+ * `getModel` — everywhere the *stored* selection is read, so a user whose selected model was
+ * renamed/retired keeps a working selection instead of silently falling back to "no model".
+ */
+export const resolveSelectedModel = (id: string | null | undefined): WhisperModel | null =>
+  getModel(id) ?? (id ? migrateStaleModelId(id) : null);
 
 export const modelUrl = (m: WhisperModel): string => BASE_URL + m.filename;

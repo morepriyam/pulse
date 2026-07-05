@@ -69,14 +69,6 @@ export function projectQuery(draftId: string) {
 }
 
 /** Every segment in the library — drives the global background transcription engine. */
-export const allSegmentsQuery = db.select().from(segments);
-
-/** Load one segment row by id (e.g. for the subtitle editor's video preview). */
-export async function getSegment(segmentId: string) {
-  const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
-  return seg ?? null;
-}
-
 // Mutations — each is a single-row write that autosaves the draft (§3).
 
 export async function createDraft(): Promise<string> {
@@ -213,8 +205,8 @@ export async function setUploadDestination(
     })
     .where(eq(projects.id, draftId));
   await setDraftToken(draftId, destination.token);
-  // A new destination invalidates any sub-artifacts (beat videos/captions, merged
-  // captions) uploaded to the old one — they'd resume against the wrong server otherwise.
+  // A new destination invalidates any sub-artifacts (segment videos, merged captions/
+  // manifest/thumbnail) uploaded to the old one — they'd resume against the wrong server otherwise.
   await db.delete(uploadArtifacts).where(eq(uploadArtifacts.projectId, draftId));
 }
 
@@ -244,12 +236,19 @@ export async function setCaptionsUploadStatus(
     .where(eq(projects.id, draftId));
 }
 
-// Upload sub-artifacts (beat/captions resume identity) --------------------------------------
+// Upload sub-artifacts (segment/captions/manifest/thumbnail resume identity) ----------------
+
+/**
+ * Stable local key for an upload session's sub-artifacts (§ `upload_artifacts`). A closed union so
+ * a typo can't silently reserve a distinct row that never matches on resume. Merged mode:
+ * `"captions"` | `"manifest"` (beat manifest) | `"thumbnail"`. Segmented mode: one `:video` per clip.
+ */
+export type UploadArtifactKey = 'captions' | 'manifest' | 'thumbnail' | `${string}:video`;
 
 /** A sub-artifact's identity/progress, or `null` if this `localKey` hasn't been reserved yet. */
 export async function getUploadArtifact(
   draftId: string,
-  localKey: string,
+  localKey: UploadArtifactKey,
 ): Promise<{ artifactId: string; resourceUrl: string | null } | null> {
   const [row] = await db
     .select({ artifactId: uploadArtifacts.artifactId, resourceUrl: uploadArtifacts.resourceUrl })
@@ -262,7 +261,7 @@ export async function getUploadArtifact(
  * minting a fresh artifactId and re-uploading from scratch. */
 export async function upsertUploadArtifact(
   draftId: string,
-  localKey: string,
+  localKey: UploadArtifactKey,
   data: { artifactId: string; resourceUrl?: string | null },
 ): Promise<void> {
   const id = `${draftId}:${localKey}`;

@@ -10,6 +10,7 @@ import m0005 from './0005_abandoned_blue_marvel.sql';
 import m0006 from './0006_glossy_king_cobra.sql';
 import m0007 from './0007_clear_doctor_faustus.sql';
 import m0008 from './0008_spooky_sentinels.sql';
+import m0009 from './0009_merged_transcripts.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0004,
 m0005,
 m0006,
 m0007,
-m0008
+m0008,
+m0009
     }
   }
   
