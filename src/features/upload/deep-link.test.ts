@@ -100,7 +100,7 @@ describe('parseUploadDeepLink', () => {
   });
 
   it('accepts an explicit uploadUnit override, either value', () => {
-    for (const uploadUnit of ['beat', 'merged']) {
+    for (const uploadUnit of ['segment', 'merged']) {
       const result = parseUploadDeepLink(
         `pulsecam://?v=1&artifactId=${ARTIFACT_ID}&server=https%3A%2F%2Fvault.example.org&uploadUnit=${uploadUnit}`,
       );

@@ -3,7 +3,7 @@ import VideoTrim, { merge, type Spec } from 'react-native-video-trim';
 
 import type { Segment } from '@/db/schema';
 import { absolutize } from '@/utils/file-store';
-import { effFile, effMs } from '@/utils/segment-window';
+import { effFile, effMs, segmentSignature } from '@/utils/segment-window';
 
 const Native = VideoTrim as Spec;
 
@@ -21,7 +21,7 @@ export type ExportState =
  * when the clip set actually changes (keyed on a file signature, not array identity) or on `run`.
  *
  * `options.auto` (default `true`) controls whether the merge starts on mount. Pass `false` for a
- * beat-mode upload destination — `uploadBeats` never touches the merged file, so merging eagerly
+ * segmented upload destination — `uploadSegments` never touches the merged file, so merging eagerly
  * would just be wasted CPU/battery blocking the screen for no reason. The hook stays `idle` until
  * something (Share, Save, Preview) calls `run()` on demand.
  */
@@ -42,7 +42,7 @@ export function useExport(segments: Segment[], options?: { auto?: boolean }) {
   // Stable across re-renders that don't change the actual clips, so the live query re-emitting
   // the same data doesn't kick off a second merge.
   const files = segments.map(effFile);
-  const signature = files.join('|');
+  const signature = segmentSignature(segments);
 
   useEffect(() => {
     if (segments.length === 0 || !shouldRun) return;

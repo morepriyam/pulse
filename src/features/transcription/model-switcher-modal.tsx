@@ -15,9 +15,9 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
-import { isModelReady } from './model';
+import { applyModelSelection, isModelReady } from './model-manager';
 import { getModel, LARGE_MODEL_BYTES, MODELS } from './models';
-import { useTranscriptionStatus } from './transcription-provider';
+import { useTranscriptionStatus } from './transcription-status';
 
 const sizeMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 
@@ -31,7 +31,7 @@ function statusLine(status: ReturnType<typeof useTranscriptionStatus>): string |
       return `Downloading model… ${pct}%`;
     }
     case 'transcribing':
-      return `Generating captions… ${status.done}/${status.total}`;
+      return 'Generating captions…';
     default:
       return null;
   }
@@ -40,9 +40,9 @@ function statusLine(status: ReturnType<typeof useTranscriptionStatus>): string |
 /**
  * The on-device AI panel. Today it holds a single section — Captions — but it's structured so
  * future on-device features can slot in as additional sections. Selecting a model persists the
- * choice, which the global background engine picks up (delete-old → download-new → regenerate
- * captions across the library). The panel only records intent and shows live progress; closing
- * without selecting downloads nothing. The active model can be removed here to free disk.
+ * choice and frees the previous model's weights/contexts (`applyModelSelection`); the new model
+ * is downloaded lazily the next time a draft is exported, not here — so selecting records intent
+ * without blocking on a download. The active model can be removed here to free disk.
  */
 export function ModelSwitcherModal({
   visible,
@@ -60,6 +60,9 @@ export function ModelSwitcherModal({
 
   const select = (id: string) => {
     void setSelectedModel(id);
+    // Free the previous model's contexts + delete other weights now; the new model itself is
+    // downloaded lazily at export time (no background loop pulls it here anymore).
+    void applyModelSelection(getModel(id));
     onClose();
   };
 
@@ -125,7 +128,8 @@ export function ModelSwitcherModal({
             <View style={styles.sectionText}>
               <ThemedText type="smallBold">Captions</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Auto-transcribe clips with a speech model. Only the selected model is kept on disk.
+                Transcribe your video with a speech model when you export. Only the selected model
+                is kept on disk.
               </ThemedText>
             </View>
           </View>
@@ -165,6 +169,7 @@ export function ModelSwitcherModal({
             <Pressable
               onPress={() => {
                 void setSelectedModel(null);
+                void applyModelSelection(null);
                 onClose();
               }}
               hitSlop={8}

@@ -10,19 +10,19 @@ const DEBOUNCE_MS = 700;
  * Optimistic persistence for the caption editor: debounce-saves `lines` whenever they change,
  * and flushes any pending save on unmount (close / swipe-back), so there is no Save button.
  *
- * Gate that matters: `saveEditedTranscript` sets `editedLines`, which locks the row against
- * auto re-transcription and model-switch regeneration. A transcript the user never touched
- * (`savedJson == null` and never dirty) must therefore never be persisted.
+ * Gate that matters: `saveEditedTranscript` sets `editedLines`, which (while the segment-set
+ * `signature` still matches) makes the hand-edit the effective transcript. A transcript the user
+ * never touched (`savedJson == null` and never dirty) must therefore never be persisted.
  */
 export function useAutosaveTranscript({
-  segmentId,
-  sourceFile,
+  projectId,
+  signature,
   lines,
   dirty,
   savedJson,
 }: {
-  segmentId: string;
-  sourceFile: string;
+  projectId: string;
+  signature: string;
   /** Current editor lines — memoize at the call site so identity only changes on real edits. */
   lines: TranscriptLine[];
   dirty: boolean;
@@ -44,10 +44,10 @@ export function useAutosaveTranscript({
     const json = JSON.stringify(pending);
     if (json === lastSavedRef.current) return;
     lastSavedRef.current = json;
-    saveEditedTranscript(segmentId, sourceFile, pending, Date.now()).catch((err) =>
+    saveEditedTranscript(projectId, signature, pending, Date.now()).catch((err) =>
       console.warn('[autosave] failed to persist captions', err),
     );
-  }, [segmentId, sourceFile]);
+  }, [projectId, signature]);
   const commitRef = useRef(commit);
   useEffect(() => {
     commitRef.current = commit;

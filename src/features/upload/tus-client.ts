@@ -4,7 +4,7 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 500;
 const TUS_VERSION = '1.0.0';
 
-export type ArtifactKind = 'video' | 'project' | 'captions';
+export type ArtifactKind = 'video' | 'project' | 'captions' | 'thumbnail';
 
 export type TusUploadProgress = { bytesSent: number; totalBytes: number };
 

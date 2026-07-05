@@ -20,7 +20,7 @@ export type UploadDeepLink = {
    * /capabilities` (PROTOCOL.md §3, §8). `null` means the link didn't carry
    * one — fall back to `/capabilities` exactly as before this field existed.
    */
-  uploadUnit: 'beat' | 'merged' | null;
+  uploadUnit: 'segment' | 'merged' | null;
 };
 
 export type DeepLinkResult =
@@ -92,7 +92,7 @@ export function parseUploadDeepLink(url: string): DeepLinkResult {
   // Optional — absent on a link from an operator/server predating this field. Present but not
   // one of the two known values means a corrupt/forged link, same treatment as a bad artifactId.
   const rawUploadUnit = param('uploadUnit');
-  if (rawUploadUnit !== null && rawUploadUnit !== 'beat' && rawUploadUnit !== 'merged') {
+  if (rawUploadUnit !== null && rawUploadUnit !== 'segment' && rawUploadUnit !== 'merged') {
     return { ok: false, reason: 'invalid-link' };
   }
 
