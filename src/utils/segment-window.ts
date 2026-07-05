@@ -14,6 +14,14 @@ export const outMs = (s: Segment) => s.editedDurationMs ?? s.durationMs;
 /** What the clip contributes to the draft's timeline. */
 export const effMs = (s: Segment) => Math.max(0, outMs(s) - inMs(s));
 
+/**
+ * Stable signature of a segment set's effective files, in order. Changes on add/remove/reorder
+ * and on any destructive edit (which swaps `effFile`). Used as the merge cache key (`useExport`)
+ * and the merged-transcript staleness key (`draft_transcripts.signature`) so both invalidate in
+ * lockstep when the merged timeline moves.
+ */
+export const segmentSignature = (segments: Segment[]): string => segments.map(effFile).join('|');
+
 /** Draft-global prefix sums: `offsets[i]` = total effective ms before clip `i`. */
 export function segmentOffsets(segments: Segment[]): number[] {
   const offsets: number[] = [];

@@ -20,34 +20,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
-import { getSegment } from '@/db/drafts';
-import type { Segment } from '@/db/schema';
-import { clearEditedTranscript, getTranscriptRow } from '@/db/transcripts';
+import { segmentsForDraft } from '@/db/drafts';
+import { clearEditedTranscript, getDraftTranscriptRow } from '@/db/transcripts';
 import { CloseButton } from '@/features/recorder/close-button';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { CueRow } from '@/features/transcription/cue-row';
 import { CueToolbar } from '@/features/transcription/cue-toolbar';
 import { useAutosaveTranscript } from '@/features/transcription/use-autosave-transcript';
 import { useSubtitleEditor, type Cue } from '@/features/transcription/use-subtitle-editor';
-import type { TranscriptLine } from '@/features/transcription/whisper';
+import { parseTranscriptLines, type TranscriptLine } from '@/features/transcription/whisper';
 import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { useTheme } from '@/hooks/use-theme';
-import { absolutize } from '@/utils/file-store';
-import { effFile } from '@/utils/segment-window';
-
-function parseTranscriptLines(json: string | null): TranscriptLine[] {
-  if (!json) return [];
-  try {
-    return JSON.parse(json) as TranscriptLine[];
-  } catch {
-    return [];
-  }
-}
+import { toFileUri } from '@/utils/file-store';
+import { effMs, segmentSignature } from '@/utils/segment-window';
 
 export default function SubtitlesScreen() {
-  const { segmentId } = useLocalSearchParams<{ segmentId?: string; draftId?: string }>();
+  // Edits the MERGED video's captions. `videoUri` is the merged export output, passed from the
+  // export screen; `draftId` anchors the single draft transcript row that edits persist to.
+  const { draftId, videoUri } = useLocalSearchParams<{ draftId?: string; videoUri?: string }>();
   const [data, setData] = useState<{
-    segment: Segment;
+    signature: string;
     initial: TranscriptLine[];
     autoLines: TranscriptLine[];
     savedJson: string | null;
@@ -57,24 +49,27 @@ export default function SubtitlesScreen() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!segmentId) return setMissing(true);
-      const segment = await getSegment(segmentId);
-      if (!segment) return alive && setMissing(true);
-      const row = await getTranscriptRow(segmentId);
+      if (!draftId || !videoUri) return setMissing(true);
+      // Signature snapshot of the current segment set — the same key export/transcription use, so
+      // an autosave here is tied to exactly the timeline the shown merged video was cut from.
+      const segments = await segmentsForDraft(draftId);
+      const clips = segments.filter((s) => effMs(s) > 0);
+      const signature = segmentSignature(clips);
+      const row = await getDraftTranscriptRow(draftId);
       const autoLines = parseTranscriptLines(row?.lines ?? null);
       const savedJson = row?.editedLines ?? null;
       const initial = savedJson ? parseTranscriptLines(savedJson) : autoLines;
-      if (alive) setData({ segment, initial, autoLines, savedJson });
+      if (alive) setData({ signature, initial, autoLines, savedJson });
     })();
     return () => {
       alive = false;
     };
-  }, [segmentId]);
+  }, [draftId, videoUri]);
 
   if (missing) {
     return (
       <ThemedView style={[styles.fill, styles.centerAll]}>
-        <ThemedText>Captions unavailable for this clip.</ThemedText>
+        <ThemedText>Captions unavailable — export the video first.</ThemedText>
         <Pressable onPress={() => router.back()} style={styles.linkBtn}>
           <ThemedText style={{ color: Accent }}>Go back</ThemedText>
         </Pressable>
@@ -92,9 +87,10 @@ export default function SubtitlesScreen() {
 
   return (
     <Editor
-      key={segmentId}
-      segmentId={segmentId!}
-      segment={data.segment}
+      key={videoUri}
+      draftId={draftId!}
+      signature={data.signature}
+      videoUri={videoUri!}
       initial={data.initial}
       autoLines={data.autoLines}
       savedJson={data.savedJson}
@@ -114,14 +110,16 @@ export default function SubtitlesScreen() {
  * row (see CueRow).
  */
 function Editor({
-  segmentId,
-  segment,
+  draftId,
+  signature,
+  videoUri,
   initial,
   autoLines,
   savedJson,
 }: {
-  segmentId: string;
-  segment: Segment;
+  draftId: string;
+  signature: string;
+  videoUri: string;
   initial: TranscriptLine[];
   autoLines: TranscriptLine[];
   savedJson: string | null;
@@ -130,8 +128,7 @@ function Editor({
   const theme = useTheme();
   const editor = useSubtitleEditor(initial);
 
-  const uri = absolutize(effFile(segment));
-  const player = useVideoPlayer(uri, (p) => {
+  const player = useVideoPlayer(toFileUri(videoUri), (p) => {
     p.timeUpdateEventInterval = 0.1;
     p.loop = false;
   });
@@ -142,8 +139,8 @@ function Editor({
   const { toLines } = editor;
   const lines = useMemo(() => toLines(), [toLines]);
   const { markCleared } = useAutosaveTranscript({
-    segmentId,
-    sourceFile: effFile(segment),
+    projectId: draftId,
+    signature,
     lines,
     dirty: editor.dirty,
     savedJson,
@@ -256,7 +253,7 @@ function Editor({
         style: 'destructive',
         onPress: async () => {
           clearSelection();
-          await clearEditedTranscript(segmentId);
+          await clearEditedTranscript(draftId);
           markCleared();
           editor.reset(autoLines);
           setRowEdited(false);

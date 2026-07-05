@@ -9,7 +9,7 @@ export type Capabilities = {
   protocolVersion: number;
   minSupportedVersion: number;
   maxSupportedVersion: number;
-  uploadUnit: 'beat' | 'merged';
+  uploadUnit: 'segment' | 'merged';
 };
 
 type CapabilitiesRejectionReason = 'unreachable' | 'version-too-old' | 'version-too-new';
@@ -27,7 +27,7 @@ async function fetchCapabilities(server: string): Promise<Capabilities> {
   if (
     typeof body.minSupportedVersion !== 'number' ||
     typeof body.maxSupportedVersion !== 'number' ||
-    (body.uploadUnit !== 'beat' && body.uploadUnit !== 'merged')
+    (body.uploadUnit !== 'segment' && body.uploadUnit !== 'merged')
   ) {
     throw new Error('Server returned an unexpected /capabilities response');
   }

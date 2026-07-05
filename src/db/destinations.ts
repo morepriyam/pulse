@@ -20,7 +20,7 @@ export type PairedDestination = {
   server: string;
   token: string | null;
   artifactId: string;
-  uploadUnit: 'beat' | 'merged';
+  uploadUnit: 'segment' | 'merged';
 };
 
 /** The non-secret portion, persisted in the `upload_destinations` table. The token (a live

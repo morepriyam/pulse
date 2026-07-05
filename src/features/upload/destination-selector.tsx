@@ -15,8 +15,8 @@ function hostOf(url: string): string {
   }
 }
 
-/** A small beat/merged pill so the upload strategy is legible at a glance on each chip/row. */
-export function ModeBadge({ uploadUnit }: { uploadUnit: 'beat' | 'merged' }) {
+/** A small segment/merged pill so the upload strategy is legible at a glance on each chip/row. */
+export function ModeBadge({ uploadUnit }: { uploadUnit: 'segment' | 'merged' }) {
   const theme = useTheme();
   return (
     <View style={[styles.badge, { backgroundColor: theme.background }]}>
@@ -30,7 +30,7 @@ export function ModeBadge({ uploadUnit }: { uploadUnit: 'beat' | 'merged' }) {
 /**
  * Horizontal, scrollable picker of paired upload destinations (§ destination pool). Shown on the
  * export screen so the user can change their mind about *where* to send a pulse right up to the
- * moment they tap Upload. Each chip names the host, its beat/merged mode, and its expiry; the
+ * moment they tap Upload. Each chip names the host, its segment/merged mode, and its expiry; the
  * selected one is outlined in the accent color. Selection is presentational only — nothing is
  * committed until the Upload button claims the selected destination.
  */

@@ -1,46 +1,42 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
 
-import { transcriptsForDraft } from '@/db/transcripts';
-import type { TranscriptLine } from './whisper';
+import { draftTranscriptQuery } from '@/db/transcripts';
+import { parseTranscriptLines, type TranscriptLine } from './whisper';
 
-/** Parsed transcript for one segment, ready for display. */
-export type SegmentTranscript = {
+/** Parsed merged transcript for a draft, ready for display/export. */
+export type DraftTranscript = {
   status: 'processing' | 'done' | 'error';
   text: string | null;
-  /** Effective captions for display/export: the user's edit if present, else the auto lines. */
+  /** Effective captions on the merged timeline: the user's edit if present, else the auto lines. */
   lines: TranscriptLine[];
-  /** True when the user has hand-edited this segment's captions. */
+  /** The segment-set signature this transcript was cut against (for staleness checks). */
+  signature: string;
+  /** True merged duration (ms) the transcript was produced against, or null. */
+  durationMs: number | null;
+  /** True when the user has hand-edited the merged captions. */
   edited: boolean;
 };
 
-function parseLines(json: string | null): TranscriptLine[] {
-  if (!json) return [];
-  try {
-    return JSON.parse(json) as TranscriptLine[];
-  } catch {
-    return [];
-  }
-}
-
 /**
- * Read-only: the transcripts for a draft's segments, keyed by segment id, for rendering captions.
+ * Read-only: a draft's single MERGED transcript, for rendering captions over the merged video.
  * `lines` is the EFFECTIVE transcript (the hand-edit when present, else the auto lines). Writes are
- * owned by the global background engine (`useLibraryTranscription`) and the subtitle editor.
+ * owned by the export transcription orchestration (`useMergedTranscription`) and the subtitle editor.
+ * Returns `null` until a transcript row exists for the draft.
  */
-export function useDraftTranscripts(draftId: string | null): Map<string, SegmentTranscript> {
-  const { data } = useLiveQuery(transcriptsForDraft(draftId ?? ''), [draftId]);
+export function useDraftTranscript(draftId: string | null): DraftTranscript | null {
+  const { data } = useLiveQuery(draftTranscriptQuery(draftId ?? ''), [draftId]);
   return useMemo(() => {
-    const map = new Map<string, SegmentTranscript>();
-    for (const row of data) {
-      const edited = row.editedLines != null;
-      map.set(row.segmentId, {
-        status: row.status,
-        text: row.text,
-        lines: edited ? parseLines(row.editedLines) : parseLines(row.lines),
-        edited,
-      });
-    }
-    return map;
+    const row = data[0];
+    if (!row) return null;
+    const edited = row.editedLines != null;
+    return {
+      status: row.status,
+      text: row.text,
+      lines: edited ? parseTranscriptLines(row.editedLines) : parseTranscriptLines(row.lines),
+      signature: row.signature,
+      durationMs: row.durationMs,
+      edited,
+    };
   }, [data]);
 }

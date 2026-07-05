@@ -2,10 +2,9 @@ import { File } from 'expo-file-system';
 import { createVideoPlayer, VideoThumbnail } from 'expo-video';
 import { getFrameAt, isValidFile } from 'react-native-video-trim';
 
-type Player = ReturnType<typeof createVideoPlayer>;
+import { toFileUri } from './file-store';
 
-// getFrameAt / the camera return bare fs paths; expo's File wants a file:// URI.
-const toFileUri = (path: string) => (path.startsWith('/') ? `file://${path}` : path);
+type Player = ReturnType<typeof createVideoPlayer>;
 
 /** Resolves once the player is ready to read metadata / frames (or errors / times out). */
 function whenReady(player: Player): Promise<void> {

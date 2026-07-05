@@ -1,6 +1,3 @@
-import type { Segment } from '@/db/schema';
-import { effMs } from '@/utils/segment-window';
-import type { SegmentTranscript } from './use-draft-transcripts';
 import type { TranscriptLine } from './whisper';
 
 // Our `TranscriptLine` times are centiseconds (1/100 s); WebVTT timestamps are milliseconds.
@@ -35,36 +32,4 @@ export function linesToVtt(lines: TranscriptLine[]): string {
     return `${timing}\n${text}`;
   });
   return `WEBVTT\n\n${cues.join('\n\n')}\n`;
-}
-
-/** Offset a line (and its words) by `offsetCs` centiseconds — used to stitch clips into one timeline. */
-function shiftLine(line: TranscriptLine, offsetCs: number): TranscriptLine {
-  return {
-    text: line.text,
-    t0: line.t0 + offsetCs,
-    t1: line.t1 + offsetCs,
-    words: line.words?.map((w) => ({ text: w.text, t0: w.t0 + offsetCs, t1: w.t1 + offsetCs })),
-  };
-}
-
-/**
- * Build a single draft-wide caption timeline from per-segment transcripts: each clip's effective
- * lines are offset by the cumulative effective duration of the clips before it (matching how the
- * merged export video concatenates them). Times stay in centiseconds.
- */
-export function mergedLines(
-  segments: Segment[],
-  transcripts: Map<string, SegmentTranscript>,
-): TranscriptLine[] {
-  const out: TranscriptLine[] = [];
-  let offsetMs = 0;
-  for (const segment of segments) {
-    const transcript = transcripts.get(segment.id);
-    if (transcript?.lines.length) {
-      const offsetCs = offsetMs / 10;
-      for (const line of transcript.lines) out.push(shiftLine(line, offsetCs));
-    }
-    offsetMs += effMs(segment);
-  }
-  return out;
 }
