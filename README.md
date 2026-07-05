@@ -62,7 +62,7 @@ Pulse is a React Native (Expo) app for capturing institutional knowledge as shor
 
 - Pair with a server by scanning a QR / opening a `pulsecam://` deep link — trust-on-first-use confirmation, capability negotiation against the server's `/capabilities` endpoint
 - TUS v1 resumable uploads with exponential backoff; interrupted uploads resume from the server's true byte offset, even after an app relaunch
-- Two upload strategies, negotiated per server: **merged** (one video + captions) or **beat** (per-segment artifacts)
+- Two upload strategies, negotiated per server: **merged** (one video + captions + beat-timecode manifest + thumbnail) or **segment** (per-segment clips + an ordering manifest)
 - Bearer tokens stored in the secure keychain, never in the database
 
 ## How it works

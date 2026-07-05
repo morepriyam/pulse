@@ -4,8 +4,8 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 const now = sql`(unixepoch('subsec') * 1000)`;
 
 /** Which artifact a draft's `uploadArtifactId` anchors: the merged export video itself, or the
- * session that every beat/manifest/captions artifact declares via `relatedTo`. */
-type UploadUnit = 'beat' | 'merged';
+ * session that every segment/manifest/captions artifact declares via `relatedTo`. */
+type UploadUnit = 'segment' | 'merged';
 
 /** Lifecycle of a single upload (video or captions), tracked independently per artifact. */
 type UploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
@@ -21,13 +21,13 @@ export const projects = sqliteTable('projects', {
   thumbnail: text('thumbnail'),
   // Per-draft upload destination (§4). `uploadArtifactId` is the session-anchor artifact id
   // from the pairing deep link, used as the TUS artifactId directly (merged) or as `relatedTo`
-  // (beat). `uploadUnit` is resolved once from the server's `/capabilities` at pairing time and
+  // (segment). `uploadUnit` is resolved once from the server's `/capabilities` at pairing time and
   // cached here so later upload runs don't re-fetch it.
   uploadServer: text('upload_server'),
   // The bearer token itself is NOT stored here — it's a live capability credential, kept in
   // expo-secure-store instead (`db/secure-token.ts`), not in this plaintext-at-rest table.
   uploadArtifactId: text('upload_artifact_id'),
-  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] }).$type<UploadUnit>(),
+  uploadUnit: text('upload_unit', { enum: ['segment', 'merged'] }).$type<UploadUnit>(),
   // The TUS resource URL (the `Location` from the initial create) for the
   // merged-video upload, persisted so a relaunch can `HEAD` it to learn the
   // true offset and resume rather than restarting from byte 0.
@@ -70,20 +70,25 @@ export const segments = sqliteTable('segments', {
 });
 
 /**
- * On-device speech-to-text for a clip's audio (whisper.rn). One row per segment, keyed by the
- * EFFECTIVE file it was produced from (`sourceFile`); a destructive edit changes the effective
- * file, which invalidates the stored transcript and triggers a re-run. `lines` is JSON of
- * `Array<{ text, t0, t1, words? }>` where t0/t1 are centiseconds relative to the clip's audio
- * start. `editedLines` holds the user's hand-edited captions (same JSON shape); when present it
- * is the effective transcript and locks the row against auto re-transcription / model-switch wipes.
+ * On-device speech-to-text for a draft's MERGED video (whisper.rn). One row per draft (project),
+ * produced once at export time from the concatenated timeline — NOT per segment. `signature`
+ * is the effective-file signature of the segment set the transcript was cut against
+ * (`segments.map(effFile).join('|')`, the same string `useExport` keys its merge on); when the
+ * clip set changes the merged timeline moves, so a mismatching signature marks BOTH `lines` and
+ * `editedLines` stale and triggers a re-transcribe on the next export. `lines` is JSON of
+ * `Array<{ text, t0, t1, words? }>` with t0/t1 in centiseconds on the merged timeline (0-based,
+ * no stitching). `editedLines` holds the user's hand-edited captions (same JSON shape); when
+ * present AND same-signature it is the effective transcript. `durationMs` is the true merged
+ * duration this transcript was cut against (used to reconcile the beat manifest timecodes).
  */
-export const transcripts = sqliteTable('transcripts', {
-  segmentId: text('segment_id')
+export const draftTranscripts = sqliteTable('draft_transcripts', {
+  projectId: text('project_id')
     .primaryKey()
-    .references(() => segments.id, { onDelete: 'cascade' }),
-  sourceFile: text('source_file').notNull(),
-  // The Whisper model id that produced (or is producing) this transcript. When the user switches
-  // models, rows whose `model` no longer matches the selection are re-transcribed.
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  // Effective-file signature of the segment set this transcript was produced from. A change
+  // (add/remove/reorder/destructive-edit) invalidates the merged transcript incl. hand-edits.
+  signature: text('signature').notNull(),
+  // The Whisper model id that produced (or is producing) this transcript.
   model: text('model'),
   status: text('status', { enum: ['processing', 'done', 'error'] })
     .notNull()
@@ -91,10 +96,12 @@ export const transcripts = sqliteTable('transcripts', {
   language: text('language'),
   text: text('text'),
   lines: text('lines'),
-  // User-edited captions (JSON, same shape as `lines`). Null = no manual edit. Tied to the
-  // current `sourceFile`; a destructive re-edit of the clip clears it (timings would be stale).
+  // User-edited captions (JSON, same shape as `lines`). Null = no manual edit. Effective only
+  // while `signature` still matches the current segment set; a change clears it (timings stale).
   editedLines: text('edited_lines'),
   editedAt: integer('edited_at'),
+  // True merged duration (ms) this transcript was cut against — from the native MergeResult.
+  durationMs: integer('duration_ms'),
   createdAt: integer('created_at').notNull().default(now),
 });
 
@@ -105,11 +112,10 @@ export const settings = sqliteTable('settings', {
 });
 
 /**
- * A sub-artifact within an upload session (a beat-mode segment's video/captions, or the
- * merged-mode session's captions), keyed so a retry can look up and resume the SAME
+ * A sub-artifact within an upload session, keyed so a retry can look up and resume the SAME
  * server-side artifact instead of minting a fresh UUID and re-uploading from scratch.
- * `localKey` is `"captions"` for the merged-mode session's SRT, or
- * `` `${segmentId}:video` ``/`` `${segmentId}:captions` `` for beat mode.
+ * `localKey` is one of the merged-mode session's `"captions"`, `"manifest"` (beat manifest) or
+ * `"thumbnail"`, or `` `${segmentId}:video` `` for a segmented-mode clip.
  */
 export const uploadArtifacts = sqliteTable('upload_artifacts', {
   id: text('id').primaryKey(), // `${projectId}:${localKey}`
@@ -135,7 +141,7 @@ export const uploadDestinations = sqliteTable('upload_destinations', {
   id: text('id').primaryKey(), // local uuid (Crypto.randomUUID), also the secure-store token key
   server: text('server').notNull(),
   artifactId: text('artifact_id').notNull(),
-  uploadUnit: text('upload_unit', { enum: ['beat', 'merged'] })
+  uploadUnit: text('upload_unit', { enum: ['segment', 'merged'] })
     .$type<UploadUnit>()
     .notNull(),
   createdAt: integer('created_at').notNull().default(now),
@@ -143,6 +149,6 @@ export const uploadDestinations = sqliteTable('upload_destinations', {
 
 export type Project = typeof projects.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
-export type Transcript = typeof transcripts.$inferSelect;
+export type DraftTranscript = typeof draftTranscripts.$inferSelect;
 export type UploadArtifact = typeof uploadArtifacts.$inferSelect;
 export type UploadDestination = typeof uploadDestinations.$inferSelect;

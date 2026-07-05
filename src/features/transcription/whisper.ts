@@ -25,6 +25,16 @@ export type TranscriptResult = {
   lines: TranscriptLine[];
 };
 
+/** Parse a persisted `lines`/`editedLines` JSON column to `TranscriptLine[]`; `[]` on null/malformed. */
+export function parseTranscriptLines(json: string | null | undefined): TranscriptLine[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as TranscriptLine[];
+  } catch {
+    return [];
+  }
+}
+
 /** A clip with no detected speech: a settled, empty transcript (no captions, never re-run). */
 const EMPTY_TRANSCRIPT: TranscriptResult = { language: '', text: '', lines: [] };
 
@@ -112,8 +122,9 @@ async function loadContext(model: WhisperModel): Promise<WhisperContext> {
 export async function transcribeVideo(
   videoUri: string,
   model: WhisperModel,
-  onProgress?: (progress: number) => void,
+  options?: { onProgress?: (progress: number) => void; signal?: AbortSignal },
 ): Promise<TranscriptResult> {
+  const { onProgress, signal } = options ?? {};
   const { outputPath: wavPath } = await extractAudio(videoUri, { outputExt: 'wav' });
   try {
     // Pre-gate on voice activity: silent/noise-only clips make Whisper hallucinate (the
@@ -132,7 +143,7 @@ export async function transcribeVideo(
     //   safe.
     // - `beamSize: 1` + `bestOf: 1`: greedy, single-candidate decoding. Beam search / multi-candidate
     //   sampling is the slow default; the quality delta on clear speech is negligible for captions.
-    const { promise } = ctx.transcribe(wavPath, {
+    const { stop, promise } = ctx.transcribe(wavPath, {
       language: model.lang,
       maxLen: WORD_PER_SEGMENT,
       tokenTimestamps: true,
@@ -141,12 +152,21 @@ export async function transcribeVideo(
       bestOf: 1,
       onProgress,
     });
-    const result = await promise;
-    return {
-      language: result.language,
-      text: result.result.trim(),
-      lines: groupWordsIntoLines(result.segments),
-    };
+    // Cancellation (export screen left, or the run superseded by a clip change): stop the native
+    // inference so it stops contending with a new recording/transcription AND so a later
+    // `releaseWhisper()` (model switch/delete) can't free the context out from under a live call.
+    const onAbort = () => void stop().catch(() => {});
+    signal?.addEventListener('abort', onAbort);
+    try {
+      const result = await promise;
+      return {
+        language: result.language,
+        text: result.result.trim(),
+        lines: groupWordsIntoLines(result.segments),
+      };
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
   } finally {
     await deleteFile(wavPath).catch(() => {});
   }

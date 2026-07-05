@@ -34,9 +34,6 @@ import { useRecorderGestures } from '@/features/recorder/use-recorder-gestures';
 import { useRecorderPermissions } from '@/features/recorder/use-recorder-permissions';
 import { useRecordingTimer } from '@/features/recorder/use-recording-timer';
 import { useVideoTrim } from '@/features/recorder/use-video-trim';
-import { setActiveDraft } from '@/features/transcription/active-draft';
-import { setRecordingActive } from '@/features/transcription/recording-signal';
-import { useDraftTranscripts } from '@/features/transcription/use-draft-transcripts';
 import { formatDurationPadded } from '@/utils/format';
 import { closeToHome } from '@/utils/navigation';
 
@@ -89,21 +86,6 @@ export default function RecorderScreen() {
   if (previewId != null && segments.length === 0) setPreviewId(null);
   const preview = usePreview(segments, previewId);
   const previewing = previewId != null;
-
-  // Captions for this draft (read-only) — generation happens in the global background engine
-  // (TranscriptionProvider). Mirror the recording state into the engine's signal so Whisper yields
-  // while the camera is capturing.
-  const transcripts = useDraftTranscripts(draftId);
-  useEffect(() => {
-    setRecordingActive(isRecording);
-  }, [isRecording]);
-  useEffect(() => () => setRecordingActive(false), []);
-
-  // Tell the engine which draft is on screen so its clips are captioned first.
-  useEffect(() => {
-    setActiveDraft(draftId);
-    return () => setActiveDraft(null);
-  }, [draftId]);
 
   // Top running timer: always the live draft total — saved clips plus wall-clock while
   // recording. During preview the playhead position is shown inside the preview card instead.
@@ -337,8 +319,6 @@ export default function RecorderScreen() {
               isPlaying={preview.isPlaying}
               positionMs={preview.globalMs}
               totalMs={preview.totalMs}
-              captionMs={preview.positionMs}
-              transcript={preview.activeId ? transcripts.get(preview.activeId) : undefined}
               onTogglePlay={preview.togglePlay}
               onClose={() => setPreviewId(null)}
               onTrim={() => {
@@ -352,11 +332,6 @@ export default function RecorderScreen() {
                 openTrim(seg);
               }}
               onDelete={() => preview.activeId && confirmDeleteSegment(preview.activeId)}
-              onEditCaptions={() => {
-                if (!preview.activeId || !draftId) return;
-                preview.pause();
-                router.push(`/subtitles?segmentId=${preview.activeId}&draftId=${draftId}`);
-              }}
             />
           </View>
         )}

@@ -15,7 +15,7 @@ import { useDraftTransfer } from '@/features/draft-transfer/use-draft-transfer';
 import { DraftCard } from '@/features/home/draft-card';
 import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redirect';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
-import { getModel } from '@/features/transcription/models';
+import { resolveSelectedModel } from '@/features/transcription/models';
 import { DestinationsFloat } from '@/features/upload/destinations-float';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -51,10 +51,10 @@ export default function HomeScreen() {
   const { busy, state: transferState, shareDrafts, importDrafts } = useDraftTransfer();
 
   // On-device AI: the globally-selected model (persisted) that powers captions today and more
-  // on-device features later. Download + library-wide work runs in the background engine
-  // (TranscriptionProvider); here we just open the panel and reflect whether a model is active.
+  // on-device features later. Weights download lazily at export time; here we just open the panel
+  // and reflect whether a model is active (migrating a retired stored id to its replacement).
   const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
-  const selectedModel = getModel(modelRow[0]?.value);
+  const selectedModel = resolveSelectedModel(modelRow[0]?.value);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Once the live query reflects the pending name, drop it so the DB value takes back over.
