@@ -101,6 +101,7 @@ export const uploadRemainderNative: UploadRemainder = async ({
     const result = await source.upload(resourceUrl, {
       httpMethod: 'PATCH',
       uploadType: UploadType.BINARY_CONTENT,
+      sessionType: 'background', //explicit
       headers,
       signal,
       onProgress: onProgress ? ({ bytesSent }) => onProgress(bytesSent) : undefined,

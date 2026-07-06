@@ -356,17 +356,26 @@ export function useUpload(
       if (!merged) throw new Error('Export is not ready yet');
       const file = new File(merged.path);
       const checksum = await sha256Checksum(file);
+      // Throttle progress to at most one setState / 200ms — the native task can tick
+      // hundreds of times a second, and a re-render per tick starves the upload. The
+      // final (EOF) tick always goes through so the bar still reaches 100%.
+      let lastTick = 0;
       const result = await uploadOne(
         destination,
         { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', file },
         destination.resourceUrl,
         checksum,
         signal,
-        ({ bytesSent, totalBytes }) =>
+        ({ bytesSent, totalBytes }) => {
+          const done = totalBytes > 0 && bytesSent >= totalBytes;
+          const now = Date.now();
+          if (!done && now - lastTick < 200) return;
+          lastTick = now;
           setActiveState({
             status: 'uploading',
             progress: totalBytes ? bytesSent / totalBytes : 0,
-          }),
+          });
+        },
       );
       // Persist the video's resource URL now (so a crash mid-session resumes the video via HEAD),
       // but keep the draft status 'uploading' — it isn't marked 'uploaded' until every related
