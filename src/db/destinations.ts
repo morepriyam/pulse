@@ -83,6 +83,20 @@ export async function getDestination(id: string): Promise<PairedDestination | nu
   return { ...row, token: await getDestinationToken(id) };
 }
 
+/**
+ * The pool id of the destination for a given server-minted `artifactId`, or `null`. The resume
+ * path uses it to re-link a killed upload to its single-use pool row (that linkage isn't persisted
+ * on the session) so completing the resumed run still removes it. Deduped by `artifactId`
+ * (server-unique in practice), so at most one row matches.
+ */
+export async function getDestinationIdByArtifactId(artifactId: string): Promise<string | null> {
+  const rows = await db
+    .select({ id: uploadDestinations.id })
+    .from(uploadDestinations)
+    .where(eq(uploadDestinations.artifactId, artifactId));
+  return rows[0]?.id ?? null;
+}
+
 /** Remove a destination from the pool (consumed by a finished upload, or deleted by the user). */
 export async function deleteDestination(id: string): Promise<void> {
   await db.delete(uploadDestinations).where(eq(uploadDestinations.id, id));

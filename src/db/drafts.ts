@@ -1,4 +1,4 @@
-import { asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import * as Crypto from 'expo-crypto';
 
 import {
@@ -39,6 +39,8 @@ export const draftListQuery = db
     id: projects.id,
     name: projects.name,
     lastModified: projects.lastModified,
+    // Persisted upload status, so a draft card can show its own upload state on the home screen.
+    uploadStatus: projects.uploadStatus,
     segmentCount: count(segments.id),
     // Effective duration = sum of each clip's edited duration (if edited) else its original.
     durationMs: sql<number>`coalesce(sum(coalesce(${segments.editedDurationMs}, ${segments.durationMs})), 0)`,
@@ -223,6 +225,36 @@ export async function setUploadProgress(
       lastModified: now,
     })
     .where(eq(projects.id, draftId));
+}
+
+/**
+ * Persist the merged export output (path + duration) the background upload manager uploads, so an
+ * upload interrupted by an app kill can be re-driven from launch without the export screen.
+ */
+export async function setUploadMerged(
+  draftId: string,
+  merged: { path: string; durationMs: number },
+): Promise<void> {
+  await db
+    .update(projects)
+    .set({
+      uploadMergedPath: merged.path,
+      uploadMergedDurationMs: merged.durationMs,
+      lastModified: now,
+    })
+    .where(eq(projects.id, draftId));
+}
+
+/**
+ * Drafts left mid-upload — status still `'uploading'` from before an interruption (nav away, app
+ * kill). The background manager re-drives exactly these on launch/foreground. Explicitly `'failed'`
+ * runs are excluded: they wait for a deliberate retry rather than auto-retrying every launch.
+ */
+export async function getResumableDrafts(): Promise<Project[]> {
+  return db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.mode, 'upload'), eq(projects.uploadStatus, 'uploading')));
 }
 
 /** Persist captions-upload progress independently of the video upload (so a captions-only retry doesn't redo the video). */

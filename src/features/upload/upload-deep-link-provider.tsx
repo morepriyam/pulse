@@ -1,7 +1,7 @@
 import { useLinkingURL } from 'expo-linking';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 
 import { addDestination } from '@/db/destinations';
 import { useToast } from '@/features/toast/toast-provider';
@@ -9,6 +9,8 @@ import { useToast } from '@/features/toast/toast-provider';
 import { CAPABILITIES_REJECTION_MESSAGE, checkCapabilities } from './capabilities';
 import { parseUploadDeepLink } from './deep-link';
 import { cleanupStaleUploadTempFiles } from './native-chunk-upload';
+import { registerUploadResumeTask } from './resume-task';
+import { uploads } from './upload-manager';
 
 const REJECTION_MESSAGE: Record<'unsupported-version' | 'invalid-link', string> = {
   'unsupported-version':
@@ -65,8 +67,17 @@ export function UploadDeepLinkProvider({ children }: { children: React.ReactNode
 
   // Best-effort sweep of orphaned tus-resume temp files from a previous
   // launch that was killed mid-upload — see `cleanupStaleUploadTempFiles`.
+  // Then poke the upload manager: on launch it re-drives anything still queued,
+  // and on every foreground it resumes a run that stalled while backgrounded
+  // (the JS drain loop is suspended, not the native URLSession transfer).
   useEffect(() => {
     cleanupStaleUploadTempFiles();
+    void registerUploadResumeTask();
+    void uploads.ensureRunning();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void uploads.ensureRunning();
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

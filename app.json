@@ -95,7 +95,11 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-background-task",
+      "expo-notifications",
+      "./plugins/with-ios-local-notifications-only",
+      "./plugins/with-upload-foreground-service"
     ],
     "experiments": {
       "typedRoutes": true,
