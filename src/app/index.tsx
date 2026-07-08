@@ -280,6 +280,8 @@ export default function HomeScreen() {
           ]}
           renderItem={({ item }) => (
             <DraftCard
+              id={item.id}
+              uploadStatus={item.uploadStatus}
               name={pendingRename?.id === item.id ? pendingRename.name : item.name}
               firstSegmentFilename={item.firstSegmentFilename}
               firstSegmentThumbnail={item.firstSegmentThumbnail}

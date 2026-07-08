@@ -2,10 +2,12 @@ import { Image } from 'expo-image';
 import { Icon } from '@/components/icon';
 import { useRef } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 import type { Anchor } from '@/components/action-menu';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useDraftUploadState } from '@/features/upload/use-uploads';
 import { useTheme } from '@/hooks/use-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThumbnail } from '@/hooks/use-thumbnail';
@@ -14,6 +16,9 @@ import { formatClipCount, formatDuration, formatRelativeDate } from '@/utils/for
 const NAME_MAX_LENGTH = 40;
 
 type Props = {
+  id: string;
+  /** Persisted upload status, so the card can show its own upload state on the cover. */
+  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed' | null;
   name: string | null;
   /** Relative path of the draft's first clip; the cover frame's legacy runtime fallback. */
   firstSegmentFilename?: string | null;
@@ -36,6 +41,8 @@ type Props = {
 };
 
 export function DraftCard({
+  id,
+  uploadStatus,
   name,
   firstSegmentFilename,
   firstSegmentThumbnail,
@@ -54,6 +61,31 @@ export function DraftCard({
   const isDark = useColorScheme() === 'dark';
   const thumbnail = useThumbnail(firstSegmentThumbnail, firstSegmentFilename);
   const moreRef = useRef<View>(null);
+
+  // Live upload state (this session) takes precedence; otherwise fall back to the persisted status
+  // so a finished/interrupted upload still reads correctly after a relaunch. The live union's
+  // transient 'done'/'error' are mapped onto the card's persisted vocabulary ('uploaded'/'failed')
+  // — otherwise a background upload that finishes/fails while sitting on Home would show no badge
+  // (the live 'done' masks the persisted 'uploaded' until the in-memory state is acknowledged).
+  const live = useDraftUploadState(id);
+  const liveMapped =
+    live.status === 'uploading'
+      ? 'uploading'
+      : live.status === 'done'
+        ? 'uploaded'
+        : live.status === 'error'
+          ? 'failed'
+          : null;
+  const upload =
+    liveMapped ??
+    (uploadStatus === 'uploaded'
+      ? 'uploaded'
+      : uploadStatus === 'failed'
+        ? 'failed'
+        : uploadStatus === 'uploading'
+          ? 'uploading'
+          : 'idle');
+  const uploadProgress = live.status === 'uploading' ? live.progress : 0;
 
   return (
     <Pressable
@@ -77,6 +109,20 @@ export function DraftCard({
           <Image source={thumbnail} style={styles.thumbImage} contentFit="cover" />
         ) : (
           <Icon name="video.fill" size={18} tintColor={theme.textSecondary} />
+        )}
+        {upload === 'uploading' && (
+          <View style={styles.uploadScrim} pointerEvents="none">
+            <UploadRing progress={uploadProgress} />
+          </View>
+        )}
+        {(upload === 'uploaded' || upload === 'failed') && (
+          <View style={styles.uploadBadge} pointerEvents="none">
+            <Icon
+              name={upload === 'uploaded' ? 'checkmark' : 'exclamationmark'}
+              size={11}
+              tintColor="#fff"
+            />
+          </View>
         )}
       </View>
 
@@ -137,7 +183,62 @@ export function DraftCard({
   );
 }
 
+const RING = 28;
+const RING_STROKE = 3;
+const RING_R = (RING - RING_STROKE) / 2;
+const RING_C = 2 * Math.PI * RING_R;
+
+/** A small determinate ring shown over a draft's cover while it uploads (white on a dark scrim). */
+function UploadRing({ progress }: { progress: number }) {
+  const clamped = Math.max(0.03, Math.min(1, progress));
+  return (
+    <Svg width={RING} height={RING}>
+      <Circle
+        cx={RING / 2}
+        cy={RING / 2}
+        r={RING_R}
+        stroke="rgba(255,255,255,0.3)"
+        strokeWidth={RING_STROKE}
+        fill="none"
+      />
+      <Circle
+        cx={RING / 2}
+        cy={RING / 2}
+        r={RING_R}
+        stroke="#fff"
+        strokeWidth={RING_STROKE}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={RING_C}
+        strokeDashoffset={RING_C * (1 - clamped)}
+        transform={`rotate(-90 ${RING / 2} ${RING / 2})`}
+      />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
+  uploadScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  uploadBadge: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
