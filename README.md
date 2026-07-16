@@ -20,6 +20,45 @@
 
 Pulse is a React Native (Expo) app for capturing institutional knowledge as short-form video. Everything happens on the device: segmented recording, trimming, merging, and even speech-to-text captioning run locally. When you're ready to publish, Pulse uploads to a [**PulseVault**](#pulsevault--self-hosted-uploads) server *you* run — your organization keeps the content on its own infrastructure and owns auth, retention, and quota decisions. No central Pulse service exists.
 
+## Anatomy of a Pulse
+
+Two words show up throughout Pulse — here's what they mean.
+
+### What is a Pulse?
+
+A **Pulse** is a single short-form video, assembled on-device from an ordered set of clips. Record a few, import a few, reorder them — on export they merge (losslessly where formats match) into one `.mp4`. Publishing a Pulse sends a small bundle: the merged video, its captions (WebVTT), a **beat manifest**, and a thumbnail. On-device each Pulse is a *draft* in your library; drafts move between devices as `.pulse` bundles.
+
+```mermaid
+flowchart LR
+    subgraph pulse["🫀 One Pulse — an ordered set of clips"]
+        direction LR
+        c0["Clip 0"] --> c1["Clip 1"] --> c2["Clip 2"]
+    end
+    pulse ==>|"merge on export"| merged["Merged .mp4"]
+    merged --> vtt["Captions · .vtt"]
+    merged --> man["Beat manifest"]
+    merged --> thumb["Thumbnail"]
+```
+
+### What is a Beat?
+
+A **Beat** is one clip's exact slot on the merged timeline — `{ segmentId, order, startMs, endMs }`. The **beat manifest** records every clip's start/end so any moment in the merged video can be traced back to the segment it came from (and later deep-linked — e.g. HLS chapter jumps). Beats are **contiguous** — each beat's `endMs` equals the next beat's `startMs` — and sum **exactly** to the Pulse's true duration.
+
+```mermaid
+flowchart TB
+    subgraph clips["Recorded clips, in order"]
+        direction LR
+        s0["Clip 0"] --> s1["Clip 1"] --> s2["Clip 2"]
+    end
+    subgraph tl["One merged timeline · 0 → durationMs"]
+        direction LR
+        b0["Beat 0<br/>0 – 4200 ms"] --- b1["Beat 1<br/>4200 – 9100 ms"] --- b2["Beat 2<br/>9100 – 15000 ms"]
+    end
+    s0 -.-> b0
+    s1 -.-> b1
+    s2 -.-> b2
+```
+
 ## Highlights
 
 - 🎬 **Segmented recording** — build a walkthrough from multiple clips, reorder them, re-record the ones you fumbled
