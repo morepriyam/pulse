@@ -10,6 +10,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
+      "supportsTablet": true,
       "bundleIdentifier": "com.mieweb.pulse",
       "appleTeamId": "X5873NL7XM",
       "infoPlist": {
