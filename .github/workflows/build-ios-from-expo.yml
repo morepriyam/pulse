@@ -91,7 +91,7 @@ jobs:
         uses: mieweb/actions/sign-archive-upload-ios@cf09c85fd27cbe235184539df1b421a5c50b0ec7 # v2.2.4
         with:
           signing_mode:            secrets
-          app_identifier:          com.mieweb.pulse.dev
+          app_identifier:          com.mieweb.pulse
           apple_team_id:           ${{ secrets.APPLE_TEAM_ID }}
           apple_api_key_id:        ${{ secrets.APPLE_API_KEY_ID }}
           apple_api_issuer_id:     ${{ secrets.APPLE_API_ISSUER_ID }}
