@@ -17,6 +17,7 @@ import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redi
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import { resolveSelectedModel } from '@/features/transcription/models';
 import { DestinationsFloat } from '@/features/upload/destinations-float';
+import { uploads } from '@/features/upload/upload-manager';
 import { useTheme } from '@/hooks/use-theme';
 
 // Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
@@ -129,6 +130,9 @@ export default function HomeScreen() {
   };
 
   // Built per-render from the open draft; new actions are added here.
+  const actionsDraftStatus = actionsDraft
+    ? drafts.find((d) => d.id === actionsDraft.id)?.uploadStatus
+    : null;
   const menuActions: MenuAction[] = actionsDraft
     ? [
         {
@@ -140,6 +144,22 @@ export default function HomeScreen() {
             setActionsDraft(null);
           },
         },
+        // Only for a draft whose upload failed (the ! badge) — re-drives it via the background
+        // manager (reusing/reconstructing the session) without reopening the export screen.
+        ...(actionsDraftStatus === 'failed'
+          ? [
+              {
+                key: 'retry-upload',
+                label: 'Retry upload',
+                icon: 'arrow.clockwise',
+                onPress: () => {
+                  const draftId = actionsDraft.id;
+                  setActionsDraft(null);
+                  void uploads.retry(draftId);
+                },
+              } satisfies MenuAction,
+            ]
+          : []),
         {
           key: 'delete',
           label: 'Delete',
