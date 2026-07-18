@@ -63,28 +63,16 @@ export function DraftCard({
   const moreRef = useRef<View>(null);
 
   // Live upload state (this session) takes precedence; otherwise fall back to the persisted status
-  // so a finished/interrupted upload still reads correctly after a relaunch. The live union's
-  // transient 'done'/'error' are mapped onto the card's persisted vocabulary ('uploaded'/'failed')
-  // — otherwise a background upload that finishes/fails while sitting on Home would show no badge
-  // (the live 'done' masks the persisted 'uploaded' until the in-memory state is acknowledged).
+  // so an interrupted upload still reads correctly after a relaunch. Only two states surface on the
+  // card: the in-progress ring and the failed (!) badge — a COMPLETED upload deliberately shows
+  // nothing (a persisted 'uploaded' tick would sit on the card forever with no way to dismiss it;
+  // completion is surfaced by the export-screen prompt and the background notification instead).
   const live = useDraftUploadState(id);
   const liveMapped =
-    live.status === 'uploading'
-      ? 'uploading'
-      : live.status === 'done'
-        ? 'uploaded'
-        : live.status === 'error'
-          ? 'failed'
-          : null;
+    live.status === 'uploading' ? 'uploading' : live.status === 'error' ? 'failed' : null;
   const upload =
     liveMapped ??
-    (uploadStatus === 'uploaded'
-      ? 'uploaded'
-      : uploadStatus === 'failed'
-        ? 'failed'
-        : uploadStatus === 'uploading'
-          ? 'uploading'
-          : 'idle');
+    (uploadStatus === 'failed' ? 'failed' : uploadStatus === 'uploading' ? 'uploading' : 'idle');
   const uploadProgress = live.status === 'uploading' ? live.progress : 0;
 
   return (
@@ -115,13 +103,9 @@ export function DraftCard({
             <UploadRing progress={uploadProgress} />
           </View>
         )}
-        {(upload === 'uploaded' || upload === 'failed') && (
+        {upload === 'failed' && (
           <View style={styles.uploadBadge} pointerEvents="none">
-            <Icon
-              name={upload === 'uploaded' ? 'checkmark' : 'exclamationmark'}
-              size={11}
-              tintColor="#fff"
-            />
+            <Icon name="exclamationmark" size={11} tintColor="#fff" />
           </View>
         )}
       </View>
