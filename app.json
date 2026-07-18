@@ -3,14 +3,15 @@
     "name": "Pulse",
     "slug": "pulse-dev",
     "owner": "mieweb",
-    "version": "1.0.1",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pulsecam",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.mieweb.pulse.dev",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mieweb.pulse",
       "appleTeamId": "X5873NL7XM",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -34,7 +35,7 @@
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
-      "package": "com.mieweb.pulse.dev"
+      "package": "com.mieweb.pulse"
     },
     "web": {
       "output": "static",
