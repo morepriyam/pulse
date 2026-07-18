@@ -55,15 +55,6 @@ export type TusUploadOptions = {
   fetchImpl?: typeof fetch;
   /** Performs the actual byte-carrying PATCH. Required — pass `uploadRemainderNative` from `./native-chunk-upload` at the real call site; tests inject a fake. */
   uploadRemainder: UploadRemainder;
-  /**
-   * Called before each network attempt; should resolve once it's safe to
-   * proceed. Defaults to always-proceed-immediately — this module has no
-   * `react-native` import of its own (keeps it testable under this
-   * project's pure-logic jest config), so pass `waitUntilAppForeground`
-   * from `./app-state-gate` at the call site for real background-pause
-   * behavior.
-   */
-  waitUntilForeground?: (signal?: AbortSignal) => Promise<void>;
 };
 
 export type TusUploadResult = { resourceUrl: string };
@@ -130,15 +121,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Retries `fn` with exponential backoff + jitter, but only for transient failures — a terminal `TusUploadError` is rethrown immediately. */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  signal: AbortSignal | undefined,
-  waitUntilForeground: (signal?: AbortSignal) => Promise<void>,
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   let attempt = 0;
   for (;;) {
     try {
-      await waitUntilForeground(signal);
       return await fn();
     } catch (err) {
       if (isAbortError(err)) throw err;
@@ -280,10 +266,8 @@ async function fetchOffset(
 export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const totalBytes = opts.file.size ?? 0;
-  const waitUntilForeground = opts.waitUntilForeground ?? (() => Promise.resolve());
 
-  const createFresh = () =>
-    withRetry(() => createUpload(opts, fetchImpl), opts.signal, waitUntilForeground);
+  const createFresh = () => withRetry(() => createUpload(opts, fetchImpl), opts.signal);
 
   // HEAD-then-upload-remainder is retried as ONE unit, not as two separately
   // retried steps — a retry after a transient failure MUST re-HEAD first to
@@ -322,7 +306,6 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
         }
       },
       opts.signal,
-      waitUntilForeground,
     );
 
   let resourceUrl = opts.resourceUrl ?? (await createFresh());
