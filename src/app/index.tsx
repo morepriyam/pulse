@@ -17,6 +17,7 @@ import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redi
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import { resolveSelectedModel } from '@/features/transcription/models';
 import { DestinationsFloat } from '@/features/upload/destinations-float';
+import { uploads } from '@/features/upload/upload-manager';
 import { useTheme } from '@/hooks/use-theme';
 
 // Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
@@ -114,14 +115,20 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: () => {
             setDeletingIds((prev) => new Set(prev).add(draft.id));
-            deleteDraft(draft.id).catch(() => {
-              setDeletingIds((prev) => {
-                const next = new Set(prev);
-                next.delete(draft.id);
-                return next;
+            // Stop any in-flight upload FIRST — deleting the row/files under a running session
+            // would otherwise let a deleted draft finish landing on the server (or die midway
+            // with a file-not-found), and strand its session in the manager.
+            uploads
+              .cancel(draft.id)
+              .then(() => deleteDraft(draft.id))
+              .catch(() => {
+                setDeletingIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(draft.id);
+                  return next;
+                });
+                Alert.alert('Delete failed', 'The draft could not be deleted.');
               });
-              Alert.alert('Delete failed', 'The draft could not be deleted.');
-            });
           },
         },
       ],
@@ -129,6 +136,9 @@ export default function HomeScreen() {
   };
 
   // Built per-render from the open draft; new actions are added here.
+  const actionsDraftStatus = actionsDraft
+    ? drafts.find((d) => d.id === actionsDraft.id)?.uploadStatus
+    : null;
   const menuActions: MenuAction[] = actionsDraft
     ? [
         {
@@ -140,6 +150,38 @@ export default function HomeScreen() {
             setActionsDraft(null);
           },
         },
+        // Only for a draft whose upload failed (the ! badge) — re-drives it via the background
+        // manager (reusing/reconstructing the session) without reopening the export screen.
+        ...(actionsDraftStatus === 'failed'
+          ? [
+              {
+                key: 'retry-upload',
+                label: 'Retry upload',
+                icon: 'arrow.clockwise',
+                onPress: () => {
+                  const draftId = actionsDraft.id;
+                  setActionsDraft(null);
+                  void uploads.retry(draftId);
+                },
+              } satisfies MenuAction,
+            ]
+          : []),
+        // Only while the upload is running (the progress ring) — aborts and resets to idle
+        // without reopening the export screen; the manager also server-cancels best-effort.
+        ...(actionsDraftStatus === 'uploading'
+          ? [
+              {
+                key: 'cancel-upload',
+                label: 'Cancel upload',
+                icon: 'xmark',
+                onPress: () => {
+                  const draftId = actionsDraft.id;
+                  setActionsDraft(null);
+                  void uploads.cancel(draftId);
+                },
+              } satisfies MenuAction,
+            ]
+          : []),
         {
           key: 'delete',
           label: 'Delete',
@@ -280,6 +322,8 @@ export default function HomeScreen() {
           ]}
           renderItem={({ item }) => (
             <DraftCard
+              id={item.id}
+              uploadStatus={item.uploadStatus}
               name={pendingRename?.id === item.id ? pendingRename.name : item.name}
               firstSegmentFilename={item.firstSegmentFilename}
               firstSegmentThumbnail={item.firstSegmentThumbnail}
