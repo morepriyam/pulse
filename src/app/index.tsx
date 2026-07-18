@@ -115,14 +115,20 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: () => {
             setDeletingIds((prev) => new Set(prev).add(draft.id));
-            deleteDraft(draft.id).catch(() => {
-              setDeletingIds((prev) => {
-                const next = new Set(prev);
-                next.delete(draft.id);
-                return next;
+            // Stop any in-flight upload FIRST — deleting the row/files under a running session
+            // would otherwise let a deleted draft finish landing on the server (or die midway
+            // with a file-not-found), and strand its session in the manager.
+            uploads
+              .cancel(draft.id)
+              .then(() => deleteDraft(draft.id))
+              .catch(() => {
+                setDeletingIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(draft.id);
+                  return next;
+                });
+                Alert.alert('Delete failed', 'The draft could not be deleted.');
               });
-              Alert.alert('Delete failed', 'The draft could not be deleted.');
-            });
           },
         },
       ],
@@ -156,6 +162,22 @@ export default function HomeScreen() {
                   const draftId = actionsDraft.id;
                   setActionsDraft(null);
                   void uploads.retry(draftId);
+                },
+              } satisfies MenuAction,
+            ]
+          : []),
+        // Only while the upload is running (the progress ring) — aborts and resets to idle
+        // without reopening the export screen; the manager also server-cancels best-effort.
+        ...(actionsDraftStatus === 'uploading'
+          ? [
+              {
+                key: 'cancel-upload',
+                label: 'Cancel upload',
+                icon: 'xmark',
+                onPress: () => {
+                  const draftId = actionsDraft.id;
+                  setActionsDraft(null);
+                  void uploads.cancel(draftId);
                 },
               } satisfies MenuAction,
             ]
