@@ -98,8 +98,8 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-background-task",
-      "expo-notifications",
       "./plugins/with-ios-local-notifications-only",
+      "expo-notifications",
       "./plugins/with-upload-foreground-service"
     ],
     "experiments": {
