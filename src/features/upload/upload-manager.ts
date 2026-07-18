@@ -333,8 +333,8 @@ class BackgroundUploadManager {
     const token = await getDraftToken(row.id);
     if (isTokenExpired(token, Date.now())) return { ok: false, reason: EXPIRED_PAIRING_MESSAGE };
     const merged =
-      row.uploadUnit === 'merged' && row.uploadMergedPath
-        ? { path: row.uploadMergedPath, durationMs: row.uploadMergedDurationMs ?? 0 }
+      row.uploadUnit === 'merged' && row.uploadMergedPath && row.uploadMergedDurationMs != null
+        ? { path: row.uploadMergedPath, durationMs: row.uploadMergedDurationMs }
         : null;
     if (row.uploadUnit === 'merged' && !merged) {
       return {

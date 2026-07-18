@@ -2,6 +2,8 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import BackgroundService, { type BackgroundTaskOptions } from 'react-native-background-actions';
 
 let active = false;
+/** Resolves the current service task body, letting the service wind down — set per `begin()`. */
+let releaseIdle: (() => void) | null = null;
 
 const OPTIONS: BackgroundTaskOptions = {
   taskName: 'PulseUploads',
@@ -17,15 +19,13 @@ const OPTIONS: BackgroundTaskOptions = {
 /**
  * The foreground-service task body. It exists only to hold the app process alive (and show the
  * required notification) while the manager's drain loop runs in the normal JS context — so a
- * backgrounded Android upload isn't frozen/killed under Doze. It idles until `end()` flips `active`.
+ * backgrounded Android upload isn't frozen/killed under Doze. It parks on a promise that `end()`
+ * resolves (no polling), so the service winds down the moment the queue drains.
  */
-async function idleUntilStopped(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      if (!active) resolve();
-      else setTimeout(tick, 1000);
-    };
-    tick();
+function idleUntilStopped(): Promise<void> {
+  if (!active) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    releaseIdle = resolve;
   });
 }
 
@@ -65,6 +65,8 @@ export const keepAlive = {
   async end(): Promise<void> {
     if (!active) return;
     active = false;
+    releaseIdle?.();
+    releaseIdle = null;
     try {
       await BackgroundService.stop();
     } catch {

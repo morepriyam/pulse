@@ -8,12 +8,12 @@ import type { UploadTransport } from '../types';
  * `uploadRemainderNative` (the native byte-carrying PATCH) — no protocol logic
  * lives here, and neither of those files is touched.
  *
- * Note the deliberate omission of `waitUntilForeground`: the old export-screen
- * hook passed an AppState gate that paused the retry loop whenever the app
+ * Historical note: the old export-screen hook passed `uploadViaTus` an AppState
+ * gate (`waitUntilForeground`) that paused the retry loop whenever the app
  * backgrounded. The background manager governs background execution now (a
  * foreground service on Android; the native URLSession carrying the in-flight
  * PATCH on iOS), and the JS loop simply pauses when the runtime is suspended and
- * resumes on the AppState-active trigger — so the gate is gone.
+ * resumes on the AppState-active trigger — so the gate was removed entirely.
  */
 export const tusServerTransport: UploadTransport = {
   run: ({ destination, artifact, signal, onProgress, onResourceCreated }) =>
