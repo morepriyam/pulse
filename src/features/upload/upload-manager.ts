@@ -38,6 +38,9 @@ import type {
 
 const EXPIRED_PAIRING_MESSAGE = 'Upload link expired — ask the operator for a new pairing link.';
 
+/** How long a finished run's one-shot `done` live state survives without being acknowledged. */
+const DONE_STATE_TTL_MS = 60_000;
+
 class ExpiredPairingError extends Error {
   readonly retryable = false;
   constructor() {
@@ -61,7 +64,10 @@ type ErrorDescription = { reason: string; retryable: boolean };
 function describeError(err: unknown): ErrorDescription {
   if (err && typeof err === 'object' && 'retryable' in err) {
     const retryableError = err as RetryableError;
-    return { reason: retryableError.message ?? 'Upload failed', retryable: retryableError.retryable };
+    return {
+      reason: retryableError.message ?? 'Upload failed',
+      retryable: retryableError.retryable,
+    };
   }
   if (err instanceof Error && err.name === 'AbortError') {
     return { reason: 'Cancelled', retryable: true };
@@ -123,7 +129,10 @@ class BackgroundUploadManager {
   private readonly live = new Map<string, LiveUploadState>();
   private readonly sessions = new Map<string, UploadSession>();
   private readonly controllers = new Map<string, AbortController>();
-  private readonly currentUpload = new Map<string, { artifactId: string; resourceUrl: string | null }>();
+  private readonly currentUpload = new Map<
+    string,
+    { artifactId: string; resourceUrl: string | null }
+  >();
   /** Drafts whose run failed — kept in `sessions` so `retry` can re-run them, but skipped by the drain. */
   private readonly failed = new Set<string>();
   private running = false;
@@ -391,6 +400,11 @@ class BackgroundUploadManager {
       // path re-drove it on every launch (and the home card showed a perpetual ring).
       await setUploadProgress(draftId, { status: 'uploaded', resourceUrl });
       this.setLive(draftId, { status: 'done', resourceUrl });
+      // `done` is a one-shot signal for the export screen's watch prompt; if no screen is around
+      // to `acknowledge` it (the run finished on Home / in the background), expire it so it
+      // doesn't sit in the live map forever and pop a stale prompt on a much-later screen visit.
+      // `acknowledge` no-ops unless the state is still `done`, so this can't clobber a new run.
+      setTimeout(() => this.acknowledge(draftId), DONE_STATE_TTL_MS);
       // Tell the user their pulse landed — only surfaces if the app is backgrounded / off-screen.
       void uploadNotify.complete();
       // Single-use: remove the consumed pool destination now the run finished.
@@ -455,7 +469,10 @@ class BackgroundUploadManager {
         persistResourceUrl?.(url);
       },
     });
-    this.currentUpload.set(draftId, { artifactId: artifact.artifactId, resourceUrl: result.resourceUrl });
+    this.currentUpload.set(draftId, {
+      artifactId: artifact.artifactId,
+      resourceUrl: result.resourceUrl,
+    });
     return result;
   }
 
@@ -517,7 +534,9 @@ class BackgroundUploadManager {
     // gap or an app kill) there's nothing to upload — surface a clear, actionable reason rather
     // than crashing in `bytes()`. Re-opening the draft re-exports and re-enqueues with a fresh path.
     if (!file.exists) {
-      throw new Error('The merged video is no longer available — reopen the draft to re-export, then upload.');
+      throw new Error(
+        'The merged video is no longer available — reopen the draft to re-export, then upload.',
+      );
     }
     const checksum = await sha256Checksum(file);
 
@@ -610,7 +629,8 @@ class BackgroundUploadManager {
       const videoKey = `${segment.id}:video` as const;
       const existingVideo = await getUploadArtifact(draftId, videoKey);
       const videoArtifactId = existingVideo?.artifactId ?? Crypto.randomUUID();
-      if (!existingVideo) await upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId });
+      if (!existingVideo)
+        await upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId });
       const videoResult = await this.uploadOne(
         draftId,
         destination,
@@ -627,7 +647,11 @@ class BackgroundUploadManager {
         undefined,
         // Persist each clip's resource URL at creation so a kill mid-clip resumes via HEAD (409 on
         // a re-create otherwise).
-        (url) => void upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId, resourceUrl: url }),
+        (url) =>
+          void upsertUploadArtifact(draftId, videoKey, {
+            artifactId: videoArtifactId,
+            resourceUrl: url,
+          }),
       );
       await upsertUploadArtifact(draftId, videoKey, {
         artifactId: videoArtifactId,
