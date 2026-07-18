@@ -540,34 +540,12 @@ class BackgroundUploadManager {
     }
     const checksum = await sha256Checksum(file);
 
-    // Throttle progress to at most one store update / 200ms — the native task ticks fast; the
-    // final (EOF) tick always goes through so the bar still reaches 100%.
-    let lastTick = 0;
-    const result = await this.uploadOne(
-      draftId,
-      destination,
-      { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', file },
-      destination.resourceUrl,
-      checksum,
-      signal,
-      ({ bytesSent, totalBytes }) => {
-        const done = totalBytes > 0 && bytesSent >= totalBytes;
-        const now = Date.now();
-        if (!done && now - lastTick < 200) return;
-        lastTick = now;
-        this.setLive(draftId, {
-          status: 'uploading',
-          progress: totalBytes ? bytesSent / totalBytes : 0,
-        });
-      },
-      // Persist the video's resource URL the moment it's created (the merged anchor lives on the
-      // project row) so an app kill DURING the video transfer resumes via HEAD+PATCH rather than
-      // re-creating the upload — which the server rejects as a duplicate reserve (409).
-      (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
-    );
-    // Re-persist after the video lands (same URL) and hold status 'uploading' until every related
-    // artifact below has uploaded too.
-    await setUploadProgress(draftId, { status: 'uploading', resourceUrl: result.resourceUrl });
+    // The small related artifacts go FIRST. The big video PATCH is the only network step that
+    // survives iOS backgrounding (native background URLSession) — JS-driven fetches freeze the
+    // moment the app leaves the foreground. With the video last, a backgrounded upload has only
+    // the verification HEAD + status write left when the OS wakes the app for the completed
+    // background transfer, instead of stalling at "100%" with captions/manifest/thumbnail
+    // (all a few KB each) still queued behind a suspended JS thread.
 
     // Captions: the draft's single MERGED transcript (hand-edit if present, else auto).
     const row = await getDraftTranscriptRow(draftId);
@@ -610,8 +588,35 @@ class BackgroundUploadManager {
       );
     }
 
-    // NOTE: the final 'uploaded' status write lives in `runSession` (shared by both units), not
-    // here — see the comment there. This method's job ends once every artifact has landed.
+    // The video itself — LAST, so it's the only thing still moving when backgrounded.
+    // Throttle progress to at most one store update / 200ms — the native task ticks fast; the
+    // final (EOF) tick always goes through so the bar still reaches 100%.
+    let lastTick = 0;
+    const result = await this.uploadOne(
+      draftId,
+      destination,
+      { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', file },
+      destination.resourceUrl,
+      checksum,
+      signal,
+      ({ bytesSent, totalBytes }) => {
+        const done = totalBytes > 0 && bytesSent >= totalBytes;
+        const now = Date.now();
+        if (!done && now - lastTick < 200) return;
+        lastTick = now;
+        this.setLive(draftId, {
+          status: 'uploading',
+          progress: totalBytes ? bytesSent / totalBytes : 0,
+        });
+      },
+      // Persist the video's resource URL the moment it's created (the merged anchor lives on the
+      // project row) so an app kill DURING the video transfer resumes via HEAD+PATCH rather than
+      // re-creating the upload — which the server rejects as a duplicate reserve (409).
+      (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
+    );
+    // Re-persist after the video lands (same URL); the final 'uploaded' status write lives in
+    // `runSession` (shared by both units), not here — see the comment there.
+    await setUploadProgress(draftId, { status: 'uploading', resourceUrl: result.resourceUrl });
     return result.resourceUrl;
   }
 
@@ -622,15 +627,54 @@ class BackgroundUploadManager {
     const reportProgress = () =>
       this.setLive(draftId, { status: 'uploading', progress: total ? completed / total : 0 });
 
+    // Reserve every clip's artifactId up front (idempotent — reuses persisted ids on resume) so
+    // the ordering manifest can be built and uploaded BEFORE the clips. Like the merged unit's
+    // related artifacts, the manifest is a tiny JS-driven fetch that would otherwise strand a
+    // backgrounded upload at "all clips sent" until the next foreground; the clips' native
+    // background transfers are what should run last.
+    const segmentArtifactIds = new Map<string, string>();
+    for (const segment of segments) {
+      const videoKey = `${segment.id}:video` as const;
+      const existing = await getUploadArtifact(draftId, videoKey);
+      const artifactId = existing?.artifactId ?? Crypto.randomUUID();
+      if (!existing) await upsertUploadArtifact(draftId, videoKey, { artifactId });
+      segmentArtifactIds.set(segment.id, artifactId);
+    }
+
+    const manifest: SegmentManifest = {
+      version: 1,
+      segments: segments.map((s, i) => {
+        const artifactId = segmentArtifactIds.get(s.id);
+        if (!artifactId) throw new Error(`No artifact id for segment ${s.id}`);
+        return { artifactId, order: i };
+      }),
+    };
+    const manifestFile = writeTempTextFile(`${draftId}-segments.pulse`, JSON.stringify(manifest));
+    const result = await this.uploadOne(
+      draftId,
+      destination,
+      {
+        artifactId: destination.artifactId,
+        filename: `${draftId}-segments.pulse`,
+        kind: 'project',
+        file: manifestFile,
+      },
+      destination.resourceUrl,
+      undefined,
+      signal,
+      undefined,
+      // The segment anchor is the ordering manifest; persist its URL on the project row at creation
+      // so a kill mid-manifest resumes via HEAD instead of a 409-ing re-create.
+      (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
+    );
+
     for (const segment of segments) {
       const file = new File(absolutize(effFile(segment)));
       const checksum = await sha256Checksum(file);
 
       const videoKey = `${segment.id}:video` as const;
+      const videoArtifactId = segmentArtifactIds.get(segment.id)!;
       const existingVideo = await getUploadArtifact(draftId, videoKey);
-      const videoArtifactId = existingVideo?.artifactId ?? Crypto.randomUUID();
-      if (!existingVideo)
-        await upsertUploadArtifact(draftId, videoKey, { artifactId: videoArtifactId });
       const videoResult = await this.uploadOne(
         draftId,
         destination,
@@ -662,37 +706,6 @@ class BackgroundUploadManager {
       reportProgress();
     }
 
-    const segmentArtifactIds = new Map<string, string>();
-    for (const segment of segments) {
-      const row = await getUploadArtifact(draftId, `${segment.id}:video` as const);
-      if (row) segmentArtifactIds.set(segment.id, row.artifactId);
-    }
-    const manifest: SegmentManifest = {
-      version: 1,
-      segments: segments.map((s, i) => {
-        const artifactId = segmentArtifactIds.get(s.id);
-        if (!artifactId) throw new Error(`No uploaded video artifact for segment ${s.id}`);
-        return { artifactId, order: i };
-      }),
-    };
-    const manifestFile = writeTempTextFile(`${draftId}-segments.pulse`, JSON.stringify(manifest));
-    const result = await this.uploadOne(
-      draftId,
-      destination,
-      {
-        artifactId: destination.artifactId,
-        filename: `${draftId}-segments.pulse`,
-        kind: 'project',
-        file: manifestFile,
-      },
-      destination.resourceUrl,
-      undefined,
-      signal,
-      undefined,
-      // The segment anchor is the ordering manifest; persist its URL on the project row at creation
-      // so a kill mid-manifest resumes via HEAD instead of a 409-ing re-create.
-      (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
-    );
     return result.resourceUrl;
   }
 }
