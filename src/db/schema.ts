@@ -38,6 +38,12 @@ export const projects = sqliteTable('projects', {
   captionsUploadStatus: text('captions_upload_status', {
     enum: ['idle', 'uploading', 'uploaded', 'failed'],
   }).$type<UploadStatus>(),
+  // The merged export output the background upload manager uploads. Persisted at enqueue so an
+  // upload interrupted by an app kill can be re-driven from launch without the export screen —
+  // the one piece of a merged run not otherwise recoverable from the DB (the path is a native
+  // merge output, the duration feeds the beat manifest). Null for segment-unit drafts.
+  uploadMergedPath: text('upload_merged_path'),
+  uploadMergedDurationMs: integer('upload_merged_duration_ms'),
   createdAt: integer('created_at').notNull().default(now),
   lastModified: integer('last_modified').notNull().default(now),
 });

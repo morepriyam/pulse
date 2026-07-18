@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Pulse",
-    "slug": "pulse-dev",
+    "slug": "pulse-camera",
     "owner": "mieweb",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -96,7 +96,11 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-background-task",
+      "./plugins/with-ios-local-notifications-only",
+      "expo-notifications",
+      "./plugins/with-upload-foreground-service"
     ],
     "experiments": {
       "typedRoutes": true,
