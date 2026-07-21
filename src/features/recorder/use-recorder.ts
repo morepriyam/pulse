@@ -3,7 +3,7 @@ import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking } from 'react-native';
-import { isValidFile } from 'react-native-video-trim';
+import { isValidFile, compress, deleteFile, probeVideo } from 'react-native-video-trim';
 import {
   type CameraRef,
   CommonResolutions,
@@ -27,6 +27,7 @@ import {
   setSetting,
 } from '@/db/settings';
 import { absolutize, copyIntoSegments, persistRecording, thumbRelPath } from '@/utils/file-store';
+import { decideImport } from '@/utils/import-normalization';
 import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 
 import CallDetector from '../../../modules/expo-call-detector/src/CallDetectorModule';
@@ -51,6 +52,7 @@ export function useRecorder(initialDraftId?: string) {
   // recordCallAtRef (which stays a ref for the MIN_RECORD_MS stop-guard); null when idle.
   const [recordStartedAt, setRecordStartedAt] = useState<number | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [facing, setFacing] = useState<CameraFacing>('back');
   const [torch, setTorch] = useState(false);
   const [stabilization, setStabilization] = useState<StabilizationMode>('off');
@@ -302,10 +304,13 @@ export function useRecorder(initialDraftId?: string) {
   }
 
   // Pick an existing device video (system picker — no permission prompt) and add it as a
-  // segment, following the same persist path as a recording. Imports keep their original
-  // format (Passthrough); format-mismatched clips are the merge engine's selective path.
+  // segment, following the same persist path as a recording. Merge-friendly imports keep
+  // their original bytes (Passthrough); hostile ones (HDR/10-bit, >1080p, >30fps, exotic
+  // codecs, non-AAC audio) are normalized to the recorder's bounds first — the policy
+  // lives in decideImport (§ imports). Format-mismatched-but-benign clips remain the
+  // merge engine's selective path.
   async function importClip() {
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current || isImporting) return;
     if (!libraryPermission?.granted) {
       if (libraryPermission && !libraryPermission.canAskAgain) {
         Alert.alert(
@@ -328,6 +333,7 @@ export function useRecorder(initialDraftId?: string) {
       });
       const picked = result.assets?.[0];
       if (result.canceled || !picked) return;
+      setIsImporting(true);
 
       // Reject corrupt / zero-length picks before they enter the draft (one native probe,
       // reused below for the duration). A thrown probe is non-fatal — fall through and let
@@ -338,16 +344,37 @@ export function useRecorder(initialDraftId?: string) {
         return;
       }
 
+      // Normalize hostile imports before they enter the draft. A failed probe or a failed
+      // re-encode falls back to importing the original bytes — the merge engine's legacy
+      // re-encode path still handles them, just slower.
+      let sourceUri = picked.uri;
+      let normalizedPath: string | null = null;
+      const probe = await probeVideo(picked.uri).catch(() => null);
+      if (probe) {
+        const decision = decideImport(probe);
+        if (decision.action === 'normalize') {
+          const normalized = await compress(picked.uri, decision.options).catch(() => null);
+          if (normalized) {
+            normalizedPath = normalized.outputPath;
+            sourceUri = normalized.outputPath;
+          }
+        }
+      }
+
       const id = await ensureDraft();
       const segmentId = `${id}-${Date.now()}`;
-      const originalFilename = await copyIntoSegments(picked.uri, id, segmentId);
+      const originalFilename = await copyIntoSegments(sourceUri, id, segmentId);
+      // The compress output lives in the OS-purgeable cache dir; drop it once copied.
+      if (normalizedPath) void deleteFile(normalizedPath).catch(() => {});
       const durationMs =
-        info && info.duration > 0
+        normalizedPath === null && info && info.duration > 0
           ? info.duration
           : await getDurationMs(absolutize(originalFilename));
       await persistSegment(id, segmentId, originalFilename, durationMs);
     } catch (e) {
       Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not import the video.');
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -420,6 +447,7 @@ export function useRecorder(initialDraftId?: string) {
     isRecording,
     recordStartedAt,
     cameraReady,
+    isImporting,
     prefsReady,
     facing,
     torch,
