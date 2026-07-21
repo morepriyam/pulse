@@ -109,9 +109,11 @@ export async function deleteSegment(segmentId: string): Promise<void> {
     .where(eq(segments.originalFilename, seg.originalFilename));
   if (stillReferenced === 0) deleteSegmentFile(seg.originalFilename);
   // The edited file and both thumbnails are per-segment (never shared) — delete with the row.
-  if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
+  if (seg.editedFilename) {
+    deleteSegmentFile(seg.editedFilename);
+    deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
+  }
   deleteSegmentFile(thumbRelPath(seg.projectId, segmentId));
-  deleteSegmentFile(editedThumbRelPath(seg.projectId, segmentId));
 
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
@@ -124,18 +126,21 @@ export async function setEdited(
 ): Promise<void> {
   const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
   if (!seg) return;
-  // Replacing a prior edit — drop the old file first (importTrimmedFile writes a fresh one).
-  if (seg.editedFilename && seg.editedFilename !== editedFilename) {
-    deleteSegmentFile(seg.editedFilename);
-  }
-  // Cover the edited file's first frame at the distinct edited-thumb path (the pristine thumb
+  // Cover the edited file's first frame at its revision-paired thumb path (the pristine thumb
   // stays on disk untouched, ready for a reset).
-  const thumbRel = editedThumbRelPath(seg.projectId, segmentId);
+  const thumbRel = editedThumbRelPath(editedFilename);
   const ok = await generateThumbnailFile(absolutize(editedFilename), absolutize(thumbRel));
   await db
     .update(segments)
     .set({ editedFilename, editedDurationMs, thumbnail: ok ? thumbRel : seg.thumbnail })
     .where(eq(segments.id, segmentId));
+  // Replacing a prior edit — drop its files only now that the row points at the new revision,
+  // so a failure above never leaves the segment referencing deleted files. Keep the old thumb
+  // as the cover fallback if the new one failed to generate.
+  if (seg.editedFilename && seg.editedFilename !== editedFilename) {
+    deleteSegmentFile(seg.editedFilename);
+    if (ok) deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
+  }
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
 
@@ -143,15 +148,18 @@ export async function setEdited(
 export async function resetEdit(segmentId: string): Promise<void> {
   const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
   if (!seg) return;
-  if (seg.editedFilename) deleteSegmentFile(seg.editedFilename);
-  // Revert the cover to the pristine original's thumbnail; drop the now-orphaned edited thumb.
-  deleteSegmentFile(editedThumbRelPath(seg.projectId, segmentId));
+  // Revert the cover to the pristine original's thumbnail.
   const thumbRel = thumbRelPath(seg.projectId, segmentId);
   const ok = await generateThumbnailFile(absolutize(seg.originalFilename), absolutize(thumbRel));
   await db
     .update(segments)
     .set({ editedFilename: null, editedDurationMs: null, thumbnail: ok ? thumbRel : null })
     .where(eq(segments.id, segmentId));
+  // Drop the now-orphaned edited file and thumb only after the row no longer references them.
+  if (seg.editedFilename) {
+    deleteSegmentFile(seg.editedFilename);
+    deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
+  }
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
 
