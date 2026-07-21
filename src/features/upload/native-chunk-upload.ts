@@ -1,6 +1,6 @@
 import { Directory, File, FileMode, Paths, UploadType } from 'expo-file-system';
 
-import type { UploadChunk } from './tus-client';
+import type { UploadRemainder } from './tus-client';
 
 function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -10,7 +10,7 @@ const TUS_RESUME_DIR_NAME = 'tus-resume';
 
 /**
  * Deletes any leftover files under the cache dir's `tus-resume/` scratch
- * space. `prepareChunkSource`'s temp copy is only cleaned up in a `finally`
+ * space. `prepareUploadSource`'s temp copy is only cleaned up in a `finally`
  * block, which never runs if the app process is killed outright (not just an
  * aborted upload) mid-resume — leaving a duplicate, unencrypted copy of
  * potentially sensitive video content sitting in app cache indefinitely.
@@ -31,23 +31,20 @@ export function cleanupStaleUploadTempFiles(): void {
 }
 
 /**
- * Stages the bytes for one chunk — `[offset, offset + chunkBytes)` — as a
- * file the native upload task can point at, via `FileHandle` (seek + bounded
- * read, never touching bytes outside the chunk). The one no-copy fast path:
- * a file that fits in a single chunk uploads `source` directly. Everything
- * else gets a bounded temp copy, which also caps the staging cost per PATCH
- * at the chunk size — the pre-chunking code read the *entire remainder* into
- * memory at once on every resume, unbounded by anything but the file size.
+ * When resuming a partial upload (`offset > 0`), streams just the remainder
+ * (from `offset` to EOF) into a temp file via `FileHandle` (seek + bounded
+ * read, never re-reading the bytes already uploaded) so the native upload
+ * task has a file to point at. When starting from byte 0 — the common case —
+ * uploads `source` directly with no copy at all.
  */
-function prepareChunkSource(
+function prepareUploadSource(
   source: File,
   offset: number,
-  chunkBytes: number,
   totalBytes: number,
 ): { file: File; cleanup: () => void } {
-  if (offset <= 0 && chunkBytes >= totalBytes) return { file: source, cleanup: () => {} };
+  if (offset <= 0) return { file: source, cleanup: () => {} };
 
-  const dir = new Directory(Paths.cache, TUS_RESUME_DIR_NAME);
+  const dir = new Directory(Paths.cache, 'tus-resume');
   dir.create({ intermediates: true, idempotent: true });
   const temp = new File(dir, `${randomId()}.bin`);
   if (temp.exists) temp.delete();
@@ -55,8 +52,8 @@ function prepareChunkSource(
   const reader = source.open(FileMode.ReadOnly);
   try {
     reader.offset = offset;
-    const chunk = reader.readBytes(chunkBytes);
-    temp.write(chunk);
+    const remainder = reader.readBytes(totalBytes - offset);
+    temp.write(remainder);
   } finally {
     reader.close();
   }
@@ -69,16 +66,15 @@ function prepareChunkSource(
 }
 
 /**
- * Real `UploadChunk` implementation for `tus-client.ts`: PATCHes one bounded
- * chunk. Uses `expo-file-system`'s native upload task (`File.upload`,
- * `httpMethod: "PATCH"`, `uploadType: BINARY_CONTENT`), which streams bytes
- * through the platform's own URLSession (iOS) / OkHttp (Android) upload
- * APIs — entirely bypassing React Native's `fetch`/`Blob` bridge, which
- * cannot carry a raw byte body here (confirmed: RN's `Blob` constructor
- * explicitly throws on `ArrayBuffer`/`TypedArray` parts, and
- * `expo-file-system`'s own `File.slice()` happens to construct exactly that
- * internally, so even the "use a Blob from slice()" approach doesn't avoid
- * this on React Native).
+ * Real `UploadRemainder` implementation for `tus-client.ts`. Uses
+ * `expo-file-system`'s native upload task (`File.upload`, `httpMethod:
+ * "PATCH"`, `uploadType: BINARY_CONTENT`), which streams bytes through the
+ * platform's own URLSession (iOS) / OkHttp (Android) upload APIs — entirely
+ * bypassing React Native's `fetch`/`Blob` bridge, which cannot carry a raw
+ * byte body here (confirmed: RN's `Blob` constructor explicitly throws on
+ * `ArrayBuffer`/`TypedArray` parts, and `expo-file-system`'s own
+ * `File.slice()` happens to construct exactly that internally, so even the
+ * "use a Blob from slice()" approach doesn't avoid this on React Native).
  *
  * KNOWN LIMITATION: unlike the `fetch`-based POST/HEAD/DELETE in
  * `tus-client.ts`, this PATCH has no `redirect: 'manual'` equivalent —
@@ -91,17 +87,16 @@ function prepareChunkSource(
  * this module. Accepted as a residual risk: it requires a compromised or
  * MITM'd paired server to trigger, matching the fetch layer before this fix.
  */
-export const uploadChunkNative: UploadChunk = async ({
+export const uploadRemainderNative: UploadRemainder = async ({
   resourceUrl,
   offset,
-  chunkBytes,
   totalBytes,
   file,
   headers,
   signal,
   onProgress,
 }) => {
-  const { file: source, cleanup } = prepareChunkSource(file, offset, chunkBytes, totalBytes);
+  const { file: source, cleanup } = prepareUploadSource(file, offset, totalBytes);
   try {
     const result = await source.upload(resourceUrl, {
       httpMethod: 'PATCH',
