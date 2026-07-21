@@ -82,13 +82,8 @@ export function useRecorder(initialDraftId?: string) {
   // output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Pinned to 1080p;
   // the HEVC codec is pinned per-recording via setOutputSettings (iOS) so every clip stays
   // format-uniform and exports on the merge engine's zero-re-encode fast path.
-  // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p (uploads shrink 2-5× vs the
-  // encoder's default, playback starts faster, rebuffers less) — and since export is
-  // passthrough, record-time bitrate IS upload bitrate. Set here at output creation, which is
-  // safe — unlike mutating a running session via setOutputSettings, which crashed the recorder.
   const videoOutput = useVideoOutput({
     targetResolution: CommonResolutions.FHD_16_9,
-    targetBitRate: 5_000_000,
     enableAudio: micEnabled,
     fileType: 'mov',
   });
