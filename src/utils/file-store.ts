@@ -3,8 +3,8 @@ import { Directory, File, Paths } from 'expo-file-system';
 // Clips live under the document directory (safe from system eviction). The DB stores
 // relative paths only; we absolutize at runtime so the sandbox container can change
 // between launches without invalidating references (§2.2).
-//   drafts/{draftId}/segments/{segmentId}.mp4         — pristine original
-//   drafts/{draftId}/segments/{segmentId}.edited.mp4  — re-encoded editor output
+//   drafts/{draftId}/segments/{segmentId}.mp4               — pristine original
+//   drafts/{draftId}/segments/{segmentId}.edited.{rev}.mp4  — re-encoded editor output
 
 /**
  * Normalize a bare filesystem path to a `file://` URI. `merge()` / `getFrameAt` / the camera hand
@@ -18,9 +18,14 @@ export function segmentRelPath(draftId: string, segmentId: string): string {
   return `drafts/${draftId}/segments/${segmentId}.mp4`;
 }
 
-/** The edited (RNVT output) file's relative path — coexists with the pristine original. */
-export function editedSegmentRelPath(draftId: string, segmentId: string): string {
-  return `drafts/${draftId}/segments/${segmentId}.edited.mp4`;
+/**
+ * The edited (RNVT output) file's relative path — coexists with the pristine original. Each
+ * edit gets a fresh revision stamp so the path (and thus every path-derived cache key: the
+ * segment signature, the expo-video source URI, the expo-image cover URI) changes whenever the
+ * content changes. Reusing one fixed path would leave those caches serving the previous edit.
+ */
+export function editedSegmentRelPath(draftId: string, segmentId: string, rev: number): string {
+  return `drafts/${draftId}/segments/${segmentId}.edited.${rev}.mp4`;
 }
 
 /** The pristine clip's persisted jpeg thumbnail (relative path). */
@@ -29,12 +34,14 @@ export function thumbRelPath(draftId: string, segmentId: string): string {
 }
 
 /**
- * The edited clip's persisted jpeg thumbnail (relative path). A *distinct* path from the
- * original's so the rendered URI changes when the cover changes — otherwise expo-image would
- * serve the stale pre-edit frame from its cache for an identical URI.
+ * The edited clip's persisted jpeg thumbnail (relative path), derived from the edited file's
+ * own path (`….mp4` → `….thumb.jpg`). Pairing the thumb to the exact edited revision keeps the
+ * rendered URI distinct across edits — otherwise expo-image would serve a stale frame from its
+ * cache for an identical URI. Deriving (instead of rebuilding from ids) also resolves the thumb
+ * for rows created before revision stamps existed.
  */
-export function editedThumbRelPath(draftId: string, segmentId: string): string {
-  return `drafts/${draftId}/segments/${segmentId}.edited.thumb.jpg`;
+export function editedThumbRelPath(editedRelPath: string): string {
+  return editedRelPath.replace(/\.mp4$/, '.thumb.jpg');
 }
 
 export function absolutize(relPath: string): string {
@@ -54,8 +61,8 @@ function segmentDest(draftId: string, segmentId: string): File {
 }
 
 /** The on-disk edited segment file for a draft, creating the segments dir if needed. */
-function editedSegmentDest(draftId: string, segmentId: string): File {
-  return new File(segmentsDir(draftId), `${segmentId}.edited.mp4`);
+function editedSegmentDest(draftId: string, segmentId: string, rev: number): File {
+  return new File(segmentsDir(draftId), `${segmentId}.edited.${rev}.mp4`);
 }
 
 /** Move a recorded clip out of the cache into the draft's segments dir; returns its relative path. */
@@ -84,18 +91,19 @@ export async function copyIntoSegments(
 }
 
 /**
- * Move an RNVT editor output (in app cache/files) into the draft's segments dir as the
- * segment's `.edited.mp4`, replacing any prior edit; returns its relative path (§ destructive trim).
+ * Move an RNVT editor output (in app cache/files) into the draft's segments dir as a fresh
+ * `.edited.{rev}.mp4` revision; returns its relative path (§ destructive trim). The prior
+ * edit (if any) stays on disk untouched — `setEdited` deletes it only after the segment row
+ * points at the new file, so a failed move never strands the row on a deleted file.
  */
 export async function importTrimmedFile(
   srcUri: string,
   draftId: string,
   segmentId: string,
 ): Promise<string> {
-  const dest = editedSegmentDest(draftId, segmentId);
-  if (dest.exists) dest.delete();
-  await new File(srcUri).move(dest);
-  return editedSegmentRelPath(draftId, segmentId);
+  const rev = Date.now();
+  await new File(srcUri).move(editedSegmentDest(draftId, segmentId, rev));
+  return editedSegmentRelPath(draftId, segmentId, rev);
 }
 
 /** Delete a clip file. Caller must ensure no other segment references it (splits can share a file). */
@@ -126,6 +134,7 @@ export function writeOriginalBytes(draftId: string, segmentId: string, bytes: Ui
 
 /** Write an imported clip's edited (re-encoded) bytes alongside its original; returns its rel path. */
 export function writeEditedBytes(draftId: string, segmentId: string, bytes: Uint8Array): string {
-  editedSegmentDest(draftId, segmentId).write(bytes);
-  return editedSegmentRelPath(draftId, segmentId);
+  const rev = Date.now();
+  editedSegmentDest(draftId, segmentId, rev).write(bytes);
+  return editedSegmentRelPath(draftId, segmentId, rev);
 }
