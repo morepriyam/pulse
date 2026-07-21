@@ -52,8 +52,14 @@ fi
 DUR=8
 
 # Progress bar + red playhead, drawn in display orientation (before any transpose).
+# NOTE: drawbox evaluates its w/x expressions ONCE at init (t is NaN there -> a static
+# full-width box), so the animation must come from the two-input `overlay` filter, whose
+# x/y are evaluated per frame (eval=frame is its default). A solid yellow strip slides in
+# from the left (fill = W*t/dur) and a red strip tracks the fill edge as the playhead.
+# The 4200 px strips cover every fixture geometry (up to 4K); `d=` bounds the color
+# sources so the graph reaches EOF with the video track.
 overlay() { # $1 duration
-  echo "drawbox=x=0:y=ih-18:w='iw*t/$1':h=18:color=yellow@0.85:thickness=fill,drawbox=x='iw*t/$1-2':y=0:w=4:h=ih:color=red@0.9:thickness=fill"
+  echo "null[__m];color=yellow@0.85:s=4200x18:d=$1[__bar];[__m][__bar]overlay=x='-w+W*t/$1':y=H-18:shortest=0[__m2];color=red@0.9:s=4x4200:d=$1[__ph];[__m2][__ph]overlay=x='W*t/$1-2':y=0:shortest=0"
 }
 
 # Cut+scale+overlay from the master. $1 start  $2 dur  $3 display-geometry filter
