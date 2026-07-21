@@ -114,6 +114,9 @@ export async function deleteSegment(segmentId: string): Promise<void> {
     deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
   }
   deleteSegmentFile(thumbRelPath(seg.projectId, segmentId));
+  // The row's cover may not match either derived path (e.g. a prior revision's thumb kept as a
+  // fallback after a failed regeneration) — delete whatever the row actually references too.
+  if (seg.thumbnail) deleteSegmentFile(seg.thumbnail);
 
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
@@ -160,6 +163,9 @@ export async function resetEdit(segmentId: string): Promise<void> {
     deleteSegmentFile(seg.editedFilename);
     deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
   }
+  // The prior cover may be from an older revision than `editedFilename` (kept as a fallback
+  // after a failed re-edit thumb generation) — drop it too, but never the fresh `thumbRel`.
+  if (seg.thumbnail && seg.thumbnail !== thumbRel) deleteSegmentFile(seg.thumbnail);
   await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
 }
 
