@@ -49,7 +49,6 @@ export type UploadChunk = (params: {
   file: File;
   headers: Record<string, string>;
   signal?: AbortSignal;
-  onProgress?: (bytesSentThisChunk: number) => void;
 }) => Promise<ChunkUploadResult>;
 
 export type TusUploadOptions = {
@@ -74,7 +73,7 @@ export type TusUploadOptions = {
   onResourceCreated?: (resourceUrl: string) => void;
   signal?: AbortSignal;
   onProgress?: (progress: TusUploadProgress) => void;
-  /** Size of each byte-carrying PATCH. Defaults to `DEFAULT_TUS_CHUNK_SIZE_BYTES` (32 MiB) — see its doc for why. A config knob, not a tuning surface: change it only when the deployment's edge changes how it handles request bodies. */
+  /** Size of each byte-carrying PATCH; must be a positive integer. Defaults to `DEFAULT_TUS_CHUNK_SIZE_BYTES` (32 MiB) — see its doc for why. A config knob, not a tuning surface: change it only when the deployment's edge changes how it handles request bodies. */
   chunkSizeBytes?: number;
   /** Dependency-injected for testing; defaults to the global `fetch`. Only used for the headers-only requests (create/HEAD/DELETE) — never for the byte-carrying PATCHes, see `uploadChunk`. */
   fetchImpl?: typeof fetch;
@@ -306,6 +305,13 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
   const fetchImpl = opts.fetchImpl ?? fetch;
   const totalBytes = opts.file.size ?? 0;
   const chunkSizeBytes = opts.chunkSizeBytes ?? DEFAULT_TUS_CHUNK_SIZE_BYTES;
+  // Fail fast on a nonsensical chunk size (0, negative, NaN, Infinity, fractional): it would
+  // produce a 0-byte or invalid PATCH and a loop that retries forever without advancing.
+  if (!Number.isSafeInteger(chunkSizeBytes) || chunkSizeBytes <= 0) {
+    throw new TusUploadError(`chunkSizeBytes must be a positive integer (got ${chunkSizeBytes})`, {
+      retryable: false,
+    });
+  }
 
   const createFresh = () => withRetry(() => createUpload(opts, fetchImpl), opts.signal);
 
@@ -320,13 +326,16 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
 
         while (offset < totalBytes) {
           const chunkBytes = Math.min(chunkSizeBytes, totalBytes - offset);
-          const chunkStart = offset;
           const headers = {
             'Tus-Resumable': TUS_VERSION,
             'Upload-Offset': String(offset),
             'Content-Type': 'application/offset+octet-stream',
             ...authHeaders(opts.token),
           };
+          // No in-flight per-chunk progress is forwarded: behind a body-buffering
+          // proxy, bytes "sent" are not bytes committed, and reporting them would
+          // over-state durable progress. Progress advances only on the 204's
+          // server-acknowledged Upload-Offset below.
           const result = await opts.uploadChunk({
             resourceUrl,
             offset,
@@ -335,11 +344,6 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
             file: opts.file,
             headers,
             signal: opts.signal,
-            onProgress: (sentThisChunk) =>
-              opts.onProgress?.({
-                bytesSent: Math.min(chunkStart + sentThisChunk, totalBytes),
-                totalBytes,
-              }),
           });
           if (result.status !== 204) {
             throw statusErrorFromChunk(result, `Upload failed (${result.status})`);

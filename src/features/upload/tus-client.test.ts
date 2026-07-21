@@ -212,6 +212,32 @@ describe('uploadViaTus', () => {
     expect(chunkCalls.map((c) => c.chunkBytes)).toEqual([DEFAULT_TUS_CHUNK_SIZE_BYTES, 1]);
   });
 
+  it.each([0, -1, 0.5, NaN, Infinity])(
+    'rejects an invalid chunkSizeBytes (%p) up front with a non-retryable error',
+    async (chunkSizeBytes) => {
+      const file = fakeFile(20);
+      const { fetchImpl, calls } = createFetchStub({});
+      const { uploadChunk, calls: chunkCalls } = createChunkStub([]);
+
+      await expect(
+        uploadViaTus({
+          server: SERVER,
+          token: null,
+          artifactId: ARTIFACT_ID,
+          filename: 'clip.mp4',
+          kind: 'video',
+          file: file as never,
+          chunkSizeBytes,
+          fetchImpl,
+          uploadChunk,
+        }),
+      ).rejects.toMatchObject({ name: 'TusUploadError', retryable: false });
+      // Fails fast: nothing was created and no bytes moved.
+      expect(calls).toHaveLength(0);
+      expect(chunkCalls).toHaveLength(0);
+    },
+  );
+
   it('treats a 204 without a usable Upload-Offset as transient: re-HEADs, then continues from the authoritative offset', async () => {
     const file = fakeFile(20);
     const { fetchImpl, calls } = createFetchStub({
