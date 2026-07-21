@@ -99,7 +99,6 @@ export const uploadChunkNative: UploadChunk = async ({
   file,
   headers,
   signal,
-  onProgress,
 }) => {
   const { file: source, cleanup } = prepareChunkSource(file, offset, chunkBytes, totalBytes);
   try {
@@ -109,7 +108,6 @@ export const uploadChunkNative: UploadChunk = async ({
       sessionType: 'background', //explicit
       headers,
       signal,
-      onProgress: onProgress ? ({ bytesSent }) => onProgress(bytesSent) : undefined,
     });
     return { status: result.status, headers: result.headers };
   } finally {
