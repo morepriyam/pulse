@@ -1,12 +1,12 @@
-import { uploadRemainderNative } from '../native-chunk-upload';
+import { uploadChunkNative } from '../native-chunk-upload';
 import { cancelTusUpload, uploadViaTus } from '../tus-client';
 import type { UploadTransport } from '../types';
 
 /**
  * The local-backend transport: uploads one artifact to a pulsevault-compatible
- * server over TUS. A thin adapter over the existing `uploadViaTus` (protocol) +
- * `uploadRemainderNative` (the native byte-carrying PATCH) — no protocol logic
- * lives here, and neither of those files is touched.
+ * server over TUS. A thin adapter over the existing `uploadViaTus` (protocol,
+ * always-chunked) + `uploadChunkNative` (the native byte-carrying PATCH) — no
+ * protocol logic lives here, and neither of those files is touched.
  *
  * Historical note: the old export-screen hook passed `uploadViaTus` an AppState
  * gate (`waitUntilForeground`) that paused the retry loop whenever the app
@@ -29,7 +29,7 @@ export const tusServerTransport: UploadTransport = {
       resourceUrl: artifact.resourceUrl,
       onResourceCreated,
       signal,
-      uploadRemainder: uploadRemainderNative,
+      uploadChunk: uploadChunkNative,
       onProgress,
     }),
 

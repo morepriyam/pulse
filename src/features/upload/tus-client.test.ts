@@ -1,18 +1,24 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
-import { cancelTusUpload, TusUploadError, type UploadRemainder, uploadViaTus } from './tus-client';
+import {
+  cancelTusUpload,
+  DEFAULT_TUS_CHUNK_SIZE_BYTES,
+  TusUploadError,
+  type UploadChunk,
+  uploadViaTus,
+} from './tus-client';
 
 const SERVER = 'https://vault.example.test/pulsevault';
 const ARTIFACT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-/** Minimal stand-in for an expo-file-system `File` — only `.size` is read by tus-client (the actual bytes never flow through this module; see `uploadRemainder`). */
+/** Minimal stand-in for an expo-file-system `File` — only `.size` is read by tus-client (the actual bytes never flow through this module; see `uploadChunk`). */
 function fakeFile(size: number) {
   return { size };
 }
 
 type FetchCall = { url: string; init?: RequestInit };
 
-/** Hand-rolled fetch stub: records calls, returns the next programmed response for each method. Only used for the headers-only requests (create/HEAD/DELETE) — the byte-carrying PATCH goes through `uploadRemainder` instead. */
+/** Hand-rolled fetch stub: records calls, returns the next programmed response for each method. Only used for the headers-only requests (create/HEAD/DELETE) — the byte-carrying PATCHes go through `uploadChunk` instead. */
 function createFetchStub(responses: Partial<Record<string, Response[]>>) {
   const calls: FetchCall[] = [];
   const queues = new Map(Object.entries(responses).map(([k, v]) => [k, [...(v ?? [])]]));
@@ -27,19 +33,29 @@ function createFetchStub(responses: Partial<Record<string, Response[]>>) {
   return { fetchImpl: fetchImpl as unknown as typeof fetch, calls };
 }
 
-type RemainderCall = { offset: number; totalBytes: number; headers: Record<string, string> };
+type ChunkCall = {
+  offset: number;
+  chunkBytes: number;
+  totalBytes: number;
+  headers: Record<string, string>;
+};
 
-/** Hand-rolled stand-in for the native upload task: records calls, returns the next programmed result. */
-function createRemainderStub(results: { status: number; headers?: Record<string, string> }[]) {
-  const calls: RemainderCall[] = [];
+/** Hand-rolled stand-in for the native per-chunk upload task: records calls, returns the next programmed result. */
+function createChunkStub(results: { status: number; headers?: Record<string, string> }[]) {
+  const calls: ChunkCall[] = [];
   const queue = [...results];
-  const uploadRemainder: UploadRemainder = async ({ offset, totalBytes, headers }) => {
-    calls.push({ offset, totalBytes, headers });
+  const uploadChunk: UploadChunk = async ({ offset, chunkBytes, totalBytes, headers }) => {
+    calls.push({ offset, chunkBytes, totalBytes, headers });
     const next = queue.shift();
-    if (!next) throw new Error('No stubbed remainder result');
+    if (!next) throw new Error('No stubbed chunk result');
     return { status: next.status, headers: next.headers ?? {} };
   };
-  return { uploadRemainder, calls };
+  return { uploadChunk, calls };
+}
+
+/** The 204 a TUS server returns for a successful PATCH: the new authoritative offset. */
+function chunkOk(newOffset: number) {
+  return { status: 204, headers: { 'Upload-Offset': String(newOffset) } };
 }
 
 const JSON_HEADERS: Record<string, string> = { 'content-type': 'application/json' };
@@ -89,16 +105,13 @@ function createRedirectFollowingFetchStub(
 }
 
 describe('uploadViaTus', () => {
-  it('creates, HEADs, uploads the remainder in one attempt, then confirms via a final HEAD', async () => {
+  it('creates, HEADs once, then uploads a small file as a single chunk', async () => {
     const file = fakeFile(20);
     const { fetchImpl, calls } = createFetchStub({
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
-      HEAD: [
-        new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
-        new Response(null, { status: 200, headers: { 'upload-offset': '20' } }),
-      ],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
     });
-    const { uploadRemainder, calls: remainderCalls } = createRemainderStub([{ status: 204 }]);
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([chunkOk(20)]);
 
     const progress: number[] = [];
     const result = await uploadViaTus({
@@ -109,12 +122,14 @@ describe('uploadViaTus', () => {
       kind: 'video',
       file: file as never,
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
       onProgress: ({ bytesSent }) => progress.push(bytesSent),
     });
 
     expect(result.resourceUrl).toBe('https://vault.example.test/pulsevault/upload/abc');
     expect(progress).toEqual([0, 20]);
+    // Exactly one HEAD: completion is known from the last 204's Upload-Offset.
+    expect(calls.filter((c) => c.init?.method === 'HEAD')).toHaveLength(1);
 
     const createCall = calls.find((c) => c.init?.method === 'POST');
     const headers = createCall?.init?.headers as Record<string, string>;
@@ -124,22 +139,120 @@ describe('uploadViaTus', () => {
     expect(headers['Upload-Metadata']).toContain(`artifactId ${btoa(ARTIFACT_ID)}`);
     expect(headers['Upload-Metadata']).toContain(`kind ${btoa('video')}`);
 
-    expect(remainderCalls).toHaveLength(1);
-    expect(remainderCalls[0].offset).toBe(0);
-    expect(remainderCalls[0].totalBytes).toBe(20);
-    expect(remainderCalls[0].headers['Upload-Offset']).toBe('0');
-    expect(remainderCalls[0].headers.Authorization).toBe('Bearer tok');
+    expect(chunkCalls).toHaveLength(1);
+    expect(chunkCalls[0].offset).toBe(0);
+    expect(chunkCalls[0].chunkBytes).toBe(20);
+    expect(chunkCalls[0].totalBytes).toBe(20);
+    expect(chunkCalls[0].headers['Upload-Offset']).toBe('0');
+    expect(chunkCalls[0].headers.Authorization).toBe('Bearer tok');
   });
 
-  it('resumes from a provided resourceUrl without creating a new upload, uploading only the remainder', async () => {
-    const file = fakeFile(10);
+  it('splits a file into sequential bounded chunks, advancing on each 204 Upload-Offset', async () => {
+    const file = fakeFile(25);
     const { fetchImpl, calls } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
+    });
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([
+      chunkOk(10),
+      chunkOk(20),
+      chunkOk(25),
+    ]);
+
+    const progress: number[] = [];
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      chunkSizeBytes: 10,
+      fetchImpl,
+      uploadChunk,
+      onProgress: ({ bytesSent }) => progress.push(bytesSent),
+    });
+
+    // Strictly sequential, bounded, offset-labelled per chunk.
+    expect(chunkCalls.map((c) => [c.offset, c.chunkBytes])).toEqual([
+      [0, 10],
+      [10, 10],
+      [20, 5],
+    ]);
+    expect(chunkCalls.map((c) => c.headers['Upload-Offset'])).toEqual(['0', '10', '20']);
+    // Displayed progress advances only on durable (server-acknowledged) offsets.
+    expect(progress).toEqual([0, 10, 20, 25]);
+    // Still exactly one HEAD — no per-chunk offset polling on the happy path.
+    expect(calls.filter((c) => c.init?.method === 'HEAD')).toHaveLength(1);
+  });
+
+  it('defaults the chunk size to 32 MiB', async () => {
+    expect(DEFAULT_TUS_CHUNK_SIZE_BYTES).toBe(32 * 1024 * 1024);
+    const file = fakeFile(DEFAULT_TUS_CHUNK_SIZE_BYTES + 1);
+    const { fetchImpl } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
+    });
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([
+      chunkOk(DEFAULT_TUS_CHUNK_SIZE_BYTES),
+      chunkOk(DEFAULT_TUS_CHUNK_SIZE_BYTES + 1),
+    ]);
+
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      fetchImpl,
+      uploadChunk,
+    });
+
+    expect(chunkCalls.map((c) => c.chunkBytes)).toEqual([DEFAULT_TUS_CHUNK_SIZE_BYTES, 1]);
+  });
+
+  it('treats a 204 without a usable Upload-Offset as transient: re-HEADs, then continues from the authoritative offset', async () => {
+    const file = fakeFile(20);
+    const { fetchImpl, calls } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [
-        new Response(null, { status: 200, headers: { 'upload-offset': '5' } }),
+        new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
+        // The re-HEAD: the anomalous 204's chunk actually landed server-side.
         new Response(null, { status: 200, headers: { 'upload-offset': '10' } }),
       ],
     });
-    const { uploadRemainder, calls: remainderCalls } = createRemainderStub([{ status: 204 }]);
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([
+      { status: 204 }, // no Upload-Offset header — position can't be trusted
+      chunkOk(20),
+    ]);
+
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      chunkSizeBytes: 10,
+      fetchImpl,
+      uploadChunk,
+    });
+
+    expect(calls.filter((c) => c.init?.method === 'HEAD')).toHaveLength(2);
+    // Second attempt resumed from the re-HEAD's offset, not a local guess.
+    expect(chunkCalls.map((c) => [c.offset, c.chunkBytes])).toEqual([
+      [0, 10],
+      [10, 10],
+    ]);
+  });
+
+  it('resumes from a provided resourceUrl without creating a new upload, sending only what is missing', async () => {
+    const file = fakeFile(10);
+    const { fetchImpl, calls } = createFetchStub({
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '5' } })],
+    });
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([chunkOk(10)]);
 
     const result = await uploadViaTus({
       server: SERVER,
@@ -150,14 +263,15 @@ describe('uploadViaTus', () => {
       file: file as never,
       resourceUrl: `${SERVER}/upload/abc`,
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
     });
 
     expect(result.resourceUrl).toBe(`${SERVER}/upload/abc`);
     expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
-    expect(remainderCalls).toHaveLength(1);
-    expect(remainderCalls[0].offset).toBe(5);
-    expect(remainderCalls[0].headers['Upload-Offset']).toBe('5');
+    expect(chunkCalls).toHaveLength(1);
+    expect(chunkCalls[0].offset).toBe(5);
+    expect(chunkCalls[0].chunkBytes).toBe(5);
+    expect(chunkCalls[0].headers['Upload-Offset']).toBe('5');
   });
 
   it('recreates the upload when a persisted resume URL is gone server-side (404)', async () => {
@@ -169,13 +283,12 @@ describe('uploadViaTus', () => {
         // surface a terminal "rejected".
         new Response(null, { status: 404 }),
         new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
-        new Response(null, { status: 200, headers: { 'upload-offset': '20' } }),
       ],
       POST: [
         new Response(null, { status: 201, headers: { location: '/pulsevault/upload/fresh' } }),
       ],
     });
-    const { uploadRemainder, calls: remainderCalls } = createRemainderStub([{ status: 204 }]);
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([chunkOk(20)]);
 
     const seen: string[] = [];
     const result = await uploadViaTus({
@@ -188,15 +301,15 @@ describe('uploadViaTus', () => {
       resourceUrl: `${SERVER}/upload/stale`,
       onResourceCreated: (url) => seen.push(url),
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
     });
 
     expect(result.resourceUrl).toBe(`${SERVER}/upload/fresh`);
     // Both URLs reported in order, so the caller's persisted mapping self-heals.
     expect(seen).toEqual([`${SERVER}/upload/stale`, `${SERVER}/upload/fresh`]);
     expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
-    expect(remainderCalls).toHaveLength(1);
-    expect(remainderCalls[0].offset).toBe(0);
+    expect(chunkCalls).toHaveLength(1);
+    expect(chunkCalls[0].offset).toBe(0);
   });
 
   it('does NOT recreate on a 404 for a URL the server handed out in this same run', async () => {
@@ -205,7 +318,7 @@ describe('uploadViaTus', () => {
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [new Response(null, { status: 404 })],
     });
-    const { uploadRemainder } = createRemainderStub([]);
+    const { uploadChunk } = createChunkStub([]);
 
     await expect(
       uploadViaTus({
@@ -216,25 +329,29 @@ describe('uploadViaTus', () => {
         kind: 'video',
         file: file as never,
         fetchImpl,
-        uploadRemainder,
+        uploadChunk,
       }),
     ).rejects.toMatchObject({ retryable: false, statusCode: 404 });
     expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
   });
 
-  it('retries a transient (5xx) failure by re-HEADing and re-attempting from the fresh offset', async () => {
-    const file = fakeFile(5);
-    const { fetchImpl } = createFetchStub({
+  it('retries a transient (5xx) chunk failure by re-HEADing and re-attempting from the fresh offset', async () => {
+    const file = fakeFile(30);
+    const { fetchImpl, calls } = createFetchStub({
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [
         new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
-        new Response(null, { status: 200, headers: { 'upload-offset': '0' } }),
-        new Response(null, { status: 200, headers: { 'upload-offset': '5' } }),
+        // Re-HEAD after the failed second chunk: the server kept a partial 17
+        // of it — the next chunk must start exactly there, not at a local
+        // chunk-boundary guess.
+        new Response(null, { status: 200, headers: { 'upload-offset': '17' } }),
       ],
     });
-    const { uploadRemainder, calls: remainderCalls } = createRemainderStub([
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([
+      chunkOk(10),
       { status: 503, headers: JSON_HEADERS },
-      { status: 204 },
+      chunkOk(27),
+      chunkOk(30),
     ]);
 
     const result = await uploadViaTus({
@@ -244,11 +361,18 @@ describe('uploadViaTus', () => {
       filename: 'clip.mp4',
       kind: 'video',
       file: file as never,
+      chunkSizeBytes: 10,
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
     });
     expect(result.resourceUrl).toBe('https://vault.example.test/pulsevault/upload/abc');
-    expect(remainderCalls).toHaveLength(2);
+    expect(calls.filter((c) => c.init?.method === 'HEAD')).toHaveLength(2);
+    expect(chunkCalls.map((c) => [c.offset, c.chunkBytes])).toEqual([
+      [0, 10],
+      [10, 10],
+      [17, 10],
+      [27, 3],
+    ]);
   });
 
   it('does not retry a terminal (4xx) failure', async () => {
@@ -257,7 +381,7 @@ describe('uploadViaTus', () => {
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
     });
-    const { uploadRemainder } = createRemainderStub([{ status: 422 }]);
+    const { uploadChunk } = createChunkStub([{ status: 422 }]);
 
     await expect(
       uploadViaTus({
@@ -268,7 +392,7 @@ describe('uploadViaTus', () => {
         kind: 'video',
         file: file as never,
         fetchImpl,
-        uploadRemainder,
+        uploadChunk,
       }),
     ).rejects.toMatchObject({ retryable: false, statusCode: 422 });
   });
@@ -279,7 +403,7 @@ describe('uploadViaTus', () => {
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '1' } })],
     });
-    const { uploadRemainder } = createRemainderStub([]);
+    const { uploadChunk } = createChunkStub([]);
 
     await uploadViaTus({
       server: SERVER,
@@ -291,7 +415,7 @@ describe('uploadViaTus', () => {
       checksum: 'sha256:deadbeef',
       file: file as never,
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
     });
 
     const createCall = calls.find((c) => c.init?.method === 'POST');
@@ -309,7 +433,7 @@ describe('uploadViaTus', () => {
     const { fetchImpl } = createFetchStub({
       POST: [new Response(null, { status: 201, headers: { location: 'https://evil.example/collect' } })],
     });
-    const { uploadRemainder } = createRemainderStub([]);
+    const { uploadChunk } = createChunkStub([]);
 
     await expect(
       uploadViaTus({
@@ -320,7 +444,7 @@ describe('uploadViaTus', () => {
         kind: 'video',
         file: file as never,
         fetchImpl,
-        uploadRemainder,
+        uploadChunk,
       }),
     ).rejects.toBeInstanceOf(TusUploadError);
   });
@@ -331,7 +455,7 @@ describe('uploadViaTus', () => {
       POST: [new Response(null, { status: 201, headers: { location: '/other-prefix/upload/abc' } })],
       HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '5' } })],
     });
-    const { uploadRemainder } = createRemainderStub([]);
+    const { uploadChunk } = createChunkStub([]);
 
     const result = await uploadViaTus({
       server: SERVER,
@@ -341,7 +465,7 @@ describe('uploadViaTus', () => {
       kind: 'video',
       file: file as never,
       fetchImpl,
-      uploadRemainder,
+      uploadChunk,
     });
     expect(result.resourceUrl).toBe('https://vault.example.test/other-prefix/upload/abc');
   });
@@ -364,7 +488,7 @@ describe('uploadViaTus', () => {
         },
         () => new Response(null, { status: 200, headers: { 'upload-offset': '20' } }),
       );
-      const { uploadRemainder } = createRemainderStub([]);
+      const { uploadChunk } = createChunkStub([]);
 
       await expect(
         uploadViaTus({
@@ -375,7 +499,7 @@ describe('uploadViaTus', () => {
           kind: 'video',
           file: file as never,
           fetchImpl,
-          uploadRemainder,
+          uploadChunk,
         }),
       ).rejects.toBeInstanceOf(TusUploadError);
 
