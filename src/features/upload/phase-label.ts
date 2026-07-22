@@ -17,10 +17,12 @@ export function uploadPhaseLabel(state: UploadingState): string {
       return 'Uploading manifest…';
     case 'thumbnail':
       return 'Uploading thumbnail…';
-    case 'video':
-      return `Uploading video… ${Math.round(state.progress * 100)}%`;
+    case 'video': {
+      const percent = Math.round(Math.min(1, Math.max(0, state.progress)) * 100);
+      return `Uploading video… ${percent}%`;
+    }
     case 'clip':
-      return state.current && state.total
+      return state.current != null && state.total != null
         ? `Uploading clip ${state.current} of ${state.total}…`
         : 'Uploading clips…';
   }

@@ -170,6 +170,8 @@ class BackgroundUploadManager {
     const live = this.live.get(draftId);
     if (live?.status !== 'uploading') return reason;
     switch (live.phase) {
+      case 'preparing':
+        return `Preparation failed: ${reason}`;
       case 'captions':
         return `Captions upload failed: ${reason}`;
       case 'manifest':
@@ -179,7 +181,7 @@ class BackgroundUploadManager {
       case 'video':
         return `Video upload failed: ${reason}`;
       case 'clip':
-        return live.current && live.total
+        return live.current != null && live.total != null
           ? `Clip ${live.current} of ${live.total} failed: ${reason}`
           : `Clip upload failed: ${reason}`;
       default:
