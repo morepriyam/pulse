@@ -68,6 +68,7 @@ export default function RecorderScreen() {
     toggleRecording,
     finalizeRecording,
     importClip,
+    isImporting,
     startHoldRecording,
     endHoldRecording,
     flipCamera,
@@ -364,7 +365,11 @@ export default function RecorderScreen() {
               />
               {/* Faded out with the record button during a drag so the trash has clear space. */}
               <View style={[styles.importWrap, { opacity: dragging ? 0 : 1 }]}>
-                <ImportButton onPress={importClip} disabled={isRecording || dragging} />
+                <ImportButton
+                  onPress={importClip}
+                  disabled={isRecording || dragging}
+                  busy={isImporting}
+                />
               </View>
             </View>
           )}
