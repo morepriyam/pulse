@@ -220,4 +220,18 @@ describe('decideImport edge cases beyond the corpus', () => {
   it('unknown bitrate (probe -1) does not trigger the bitrate rule', () => {
     expect(decideImport(probe({ bitrate: -1 }))).toEqual({ action: 'passthrough' });
   });
+
+  it('8-bit chroma-subsampling formats with "10" in the name are not treated as 10-bit', () => {
+    // yuv410p/yuv411p are 8-bit 4:1:0 / 4:1:1 — only a 10/10le/10be depth suffix means 10-bit.
+    expect(decideImport(probe({ pixelFormat: 'yuv410p' }))).toEqual({ action: 'passthrough' });
+    expect(decideImport(probe({ pixelFormat: 'yuv411p' }))).toEqual({ action: 'passthrough' });
+  });
+
+  it('10-bit depth suffixes are still caught (be as well as le, and biplanar p010)', () => {
+    for (const pixelFormat of ['yuv420p10le', 'yuv420p10be', 'p010le']) {
+      const d = decideImport(probe({ pixelFormat }));
+      expect(d.action).toBe('normalize');
+      if (d.action === 'normalize') expect(d.reasons).toContain(`10-bit pixel format ${pixelFormat}`);
+    }
+  });
 });
