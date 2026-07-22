@@ -97,7 +97,9 @@ bt2020 + HLG/PQ) rather than remastered HDR — which is exactly what trips AVFo
 
 ## Size / git (Git LFS)
 
-The clips (~25 MB + ~23 MB `import/`) are stored in **Git LFS** (`assets/dev/**/*.mp4`) and fetched
+The clips (~25 MB + ~23 MB `import/`) are stored in **Git LFS** (per-folder globs in
+[`.gitattributes`](../../.gitattributes): `assets/dev/*.mp4`, `assets/dev/speed/*.mp4`,
+`assets/dev/import/*.mp4` — new fixture subfolders need their own entry) and fetched
 on a normal clone, so `+ seed` works out of the box — just have `git lfs` installed. The regen master
 (`fixtures/bbb_master.mov`, ~400 MB) is **also** in LFS but **excluded from normal clones** via
 [`.lfsconfig`](../../.lfsconfig); fetch it only when regenerating:
