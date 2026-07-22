@@ -12,10 +12,13 @@ Foundation, CC-BY 3.0), a different scene per clip. Each has a burned-in **progr
 while trimming.
 
 **Portrait** is the primary surface (short-form — the recorder & iPhone Camera). iPhone stores
-portrait as a **coded-landscape buffer + 90° rotation matrix** in a **QuickTime** container, _not_
-baked-portrait pixels — these fixtures replicate that exactly (so the rotation/normalization path is
-actually tested). The **landscape** clips stand in for video added later from the Photos app that
-must be normalized into the portrait timeline.
+portrait as a **coded-landscape buffer + 90° rotation matrix**, _not_ baked-portrait pixels — these
+fixtures replicate that exactly (so the rotation/normalization path is actually tested). The
+recorder writes a true **MP4** container; the iPhone Camera app writes **QuickTime**, which reaches
+the app via Photos imports — the portrait fixtures keep QuickTime bytes under a `.mp4` name so that
+import surface stays covered (the container is not part of the merge signature). The **landscape**
+clips stand in for video added later from the Photos app that must be normalized into the portrait
+timeline.
 
 | file                             | display   | coded     | rot | fps | codec | container | len |
 | -------------------------------- | --------- | --------- | --- | --- | ----- | --------- | --- |
@@ -26,8 +29,9 @@ must be normalized into the portrait timeline.
 | `landscape-1080p-30fps-h264.mp4` | 1920×1080 | 1920×1080 | —   | 30  | H.264 | MP4       | 24s |
 | `landscape-4k-30fps-hevc.mp4`    | 3840×2160 | 3840×2160 | —   | 30  | HEVC  | QuickTime | 14s |
 
-The `portrait-1080p-30fps-h264` clip mirrors **this recorder's exact output** (H.264/AAC 1080p30
-portrait, QuickTime bytes named `.mp4`). All have AAC audio and are ~12–24s so there's room to trim.
+The `portrait-1080p-30fps-h264` clip mirrors **the recorder's stream format** (H.264/AAC 1080p30
+portrait; the recorder itself now writes a true MP4 container). All have AAC audio and are ~12–24s
+so there's room to trim.
 Regenerate with [`scripts/make-dev-fixtures.sh`](../../scripts/make-dev-fixtures.sh).
 
 ## How to add / change clips
@@ -65,10 +69,42 @@ Only one clip per distinct format is bundled (`portrait-h264`, `portrait-hevc`, 
 `portrait-4k`, `landscape-1080`, `landscape-4k`); the seed references them repeatedly and copies a
 fresh file per segment, so the bundle stays small (~7 MB) while each draft has 20 segments.
 
+## Wild-import clips (`import/`)
+
+[`import/`](import/) holds one clip per **hostile real-world import format** — the Photos-library
+inputs that break naive pipelines. Together with the recorder-adjacent clips above, this is the
+**acceptance corpus for import normalization, merge, and upload compression**: every clip must
+survive import → (normalize) → merge → upload with no manual intervention. Generate with
+[`scripts/make-import-fixtures.sh`](../../scripts/make-import-fixtures.sh); seed via **`+ s4`** on
+Home (`Dev sample 4 (wild imports)`, idempotent; `clear` resets it).
+
+Each clip maps to a documented real-world source:
+
+| file                                          | real-world source                              | stresses                                              |
+| --------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `hdr-hlg-portrait-1080p-30-hevc10.mp4`        | iPhone 12+ camera default (Dolby Vision 8.4 → HLG base layer) | 10-bit input to 8-bit hardware encoders; HDR tone-map |
+| `hdr-pq-landscape-4k-30-hevc10.mp4`           | HDR10 downloads/exports                        | second HDR transfer curve (PQ), 4K                    |
+| `slomo-portrait-1080p-120-h264.mp4`           | slo-mo export from Photos                      | fps far beyond the 30 fps pin                         |
+| `whatsapp-848x464-30-h264-baseline.mp4`       | WhatsApp/messaging re-encode                   | odd geometry, Baseline profile, 44.1 kHz low-bitrate audio |
+| `screenrec-portrait-886x1920-60-h264.mp4`     | iOS screen recording                           | baked portrait (NO rotation matrix), non-mod-16 width, 60 fps |
+| `vfr-portrait-1080p-h264.mp4`                 | screen recs / Android cameras                  | variable frame timing (`avg_frame_rate` ≠ `r_frame_rate`) |
+| `timelapse-landscape-1080p-30-hevc-noaudio.mp4` | iPhone timelapse / muted exports             | **no audio track** signature branch                   |
+| `opus-landscape-1080p-30-h264.mp4`            | yt-dlp-style downloads                         | Opus-in-mp4 audio → must transcode to AAC             |
+| `rot270-portrait-1080p-30-hevc.mp4`           | upside-down capture / Android sensor mounts    | rotation matrix 270° (only 90° elsewhere)             |
+| `square-720x720-30-h264.mp4`                  | Instagram-style 1:1                            | non-16:9 canvas                                       |
+| `ntsc-landscape-1080p-2997-h264.mp4`          | NTSC-fractional content (very common)          | 30000/1001 fps vs exact-30 signature matching         |
+| `mono44k-portrait-1080p-30-h264.mp4`          | voice-first apps / front camera                | mono 44.1 kHz audio outlier                           |
+
+The two HDR clips are **HDR-tagged 10-bit encodes** of the SDR master (VUI + `colr` atom carry
+bt2020 + HLG/PQ) rather than remastered HDR — which is exactly what trips AVFoundation's
+`.containsHDRVideo` and 10-bit encoder failures, i.e. what the corpus tests.
+
 ## Size / git (Git LFS)
 
-The clips (~25 MB) are stored in **Git LFS** (`assets/dev/*.mp4`) and fetched on a normal clone, so
-`+ seed` works out of the box — just have `git lfs` installed. The regen master
+The clips (~25 MB + ~23 MB `import/`) are stored in **Git LFS** (per-folder globs in
+[`.gitattributes`](../../.gitattributes): `assets/dev/*.mp4`, `assets/dev/speed/*.mp4`,
+`assets/dev/import/*.mp4` — new fixture subfolders need their own entry) and fetched
+on a normal clone, so `+ seed` works out of the box — just have `git lfs` installed. The regen master
 (`fixtures/bbb_master.mov`, ~400 MB) is **also** in LFS but **excluded from normal clones** via
 [`.lfsconfig`](../../.lfsconfig); fetch it only when regenerating:
 
