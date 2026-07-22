@@ -87,6 +87,12 @@ function parseFps(fraction: string | undefined): number {
   return num / den;
 }
 
+/** ffprobe reports unknown fields as the string "N/A"; coerce to a finite number or -1. */
+function num(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : -1;
+}
+
 /** Map desktop ffprobe output to the exact `probeVideo()` result shape the app consumes. */
 function probeLikeNative(file: string): VideoProbeResult {
   const j = ffprobeJson(file);
@@ -102,23 +108,25 @@ function probeLikeNative(file: string): VideoProbeResult {
     else if (v.tags?.rotate) rotation = ((Number(v.tags.rotate) % 360) + 360) % 360;
   }
 
+  const streamBitrate = num(v?.bit_rate);
+  const durationSec = num(j.format?.duration);
   return {
     hasVideo: !!v,
     videoCodec: v?.codec_name ?? '',
-    width: v ? Number(v.width) : -1,
-    height: v ? Number(v.height) : -1,
+    width: v ? num(v.width) : -1,
+    height: v ? num(v.height) : -1,
     rotation,
     nominalFps: parseFps(v?.r_frame_rate),
     averageFps: parseFps(v?.avg_frame_rate),
-    bitrate: v?.bit_rate ? Number(v.bit_rate) : j.format?.bit_rate ? Number(j.format.bit_rate) : -1,
+    bitrate: streamBitrate > 0 ? streamBitrate : num(j.format?.bit_rate),
     pixelFormat: v?.pix_fmt ?? '',
     colorTransfer: v?.color_transfer ?? '',
     hasAudio: !!a,
     audioCodec: a?.codec_name ?? '',
-    audioSampleRate: a?.sample_rate ? Number(a.sample_rate) : -1,
-    audioChannels: a?.channels ? Number(a.channels) : -1,
-    duration: j.format?.duration ? Math.round(Number(j.format.duration) * 1000) : -1,
-    fileSize: j.format?.size ? Number(j.format.size) : -1,
+    audioSampleRate: num(a?.sample_rate),
+    audioChannels: num(a?.channels),
+    duration: durationSec >= 0 ? Math.round(durationSec * 1000) : -1,
+    fileSize: num(j.format?.size),
   };
 }
 
