@@ -2,7 +2,13 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { clearDrafts, seedDraft, seedSpeedMixed, seedSpeedUniform } from '@/dev/seed';
+import {
+  clearDrafts,
+  seedDraft,
+  seedSpeedMixed,
+  seedSpeedUniform,
+  seedWildImports,
+} from '@/dev/seed';
 
 /**
  * Dev-only seeding controls for the home header. Lives in its own module so it can be loaded behind
@@ -25,6 +31,11 @@ export function DevSeedRow() {
       <Pressable onPress={() => void seedSpeedMixed()} hitSlop={8}>
         <ThemedText themeColor="accent" type="small">
           + s3
+        </ThemedText>
+      </Pressable>
+      <Pressable onPress={() => void seedWildImports()} hitSlop={8}>
+        <ThemedText themeColor="accent" type="small">
+          + s4
         </ThemedText>
       </Pressable>
       <Pressable onPress={() => void clearDrafts()} hitSlop={8}>
