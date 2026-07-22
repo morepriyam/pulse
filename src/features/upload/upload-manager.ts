@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 
 import { deleteDestination, getDestinationIdByArtifactId } from '@/db/destinations';
 import {
@@ -75,15 +76,26 @@ function describeError(err: unknown): ErrorDescription {
   return { reason: err instanceof Error ? err.message : 'Upload failed', retryable: true };
 }
 
-function bufferToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-async function sha256Checksum(file: File): Promise<string> {
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await file.bytes());
-  return `sha256:${bufferToHex(digest)}`;
+/**
+ * Integrity digest of a finished file as `md5:<hex>`, computed natively and off
+ * the JS thread by the legacy `getInfoAsync`. Two deliberate choices here:
+ *
+ * - MD5, not SHA-256: pulsevault's checksum hook is at-rest corruption/tampering
+ *   detection on the finished artifact (see `createChecksumValidator` server-side),
+ *   not a security boundary, and the server verifies `md5` alongside sha256/sha1.
+ *   The old SHA-256 path had to copy the ENTIRE file into JS memory (`file.bytes()`)
+ *   because expo-crypto has no streaming digest — seconds of dead time and a memory
+ *   spike proportional to the export before an upload could even start.
+ * - Legacy `getInfoAsync`, not the modern `File.md5` / `file.info({ md5 })`: the
+ *   modern accessors are synchronous native calls that would block the JS thread
+ *   for the whole hash of a large export. Revisit if the new API gains async md5.
+ */
+async function md5Checksum(file: File): Promise<string> {
+  const info = await getInfoAsync(file.uri, { md5: true });
+  if (!info.exists || !info.md5) {
+    throw new Error(`Could not read ${file.name} to compute its checksum`);
+  }
+  return `md5:${info.md5}`;
 }
 
 /** Writes text to a fresh temp file under the cache dir so it can be uploaded like any other File. */
@@ -571,7 +583,7 @@ class BackgroundUploadManager {
         'The merged video is no longer available — reopen the draft to re-export, then upload.',
       );
     }
-    const checksum = await sha256Checksum(file);
+    const checksum = await md5Checksum(file);
 
     // The small related artifacts go FIRST. The big video PATCH is the only network step that
     // survives iOS backgrounding (native background URLSession) — JS-driven fetches freeze the
@@ -717,7 +729,7 @@ class BackgroundUploadManager {
     for (const [index, segment] of segments.entries()) {
       reportClip(index + 1, index);
       const file = new File(absolutize(effFile(segment)));
-      const checksum = await sha256Checksum(file);
+      const checksum = await md5Checksum(file);
 
       const videoKey = `${segment.id}:video` as const;
       const videoArtifactId = segmentArtifactIds.get(segment.id)!;
