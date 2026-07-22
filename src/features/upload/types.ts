@@ -43,13 +43,30 @@ export type UploadSession = {
 export type UploadProgress = { bytesSent: number; totalBytes: number };
 
 /**
+ * What an in-flight upload is actually doing. A run spends real time before (and
+ * between) byte transfers — preparing the export and building/uploading the small
+ * related artifacts — and each of those used to render as an indistinguishable
+ * `Uploading… 0%`. Only `video` (merged unit) and `clip` (segment unit) carry
+ * meaningful byte/unit progress; the rest are label-only.
+ */
+export type UploadPhase = 'preparing' | 'captions' | 'manifest' | 'thumbnail' | 'video' | 'clip';
+
+/**
  * Live, per-draft upload state the UI subscribes to via `useSyncExternalStore`.
  * Held in-memory (progress ticks are high-frequency and never persisted); status
  * transitions are separately written to SQLite for resume/history.
  */
 export type LiveUploadState =
   | { status: 'idle' }
-  | { status: 'uploading'; progress: number }
+  | {
+      status: 'uploading';
+      phase: UploadPhase;
+      progress: number;
+      /** 1-based position of the clip in flight — present only for `phase: 'clip'`. */
+      current?: number;
+      /** Total clips in the run — present only for `phase: 'clip'`. */
+      total?: number;
+    }
   | { status: 'done'; resourceUrl: string }
   | { status: 'error'; reason: string; retryable: boolean };
 

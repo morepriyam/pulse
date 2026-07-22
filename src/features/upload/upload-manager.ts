@@ -160,6 +160,33 @@ class BackgroundUploadManager {
     this.emit();
   }
 
+  /**
+   * Prefix a failure reason with the phase in flight when it happened, so an
+   * error during captions vs the video no longer produces the same generic
+   * context. Reads the live state, so it must run BEFORE the
+   * error state overwrites it.
+   */
+  private failureReason(draftId: string, reason: string): string {
+    const live = this.live.get(draftId);
+    if (live?.status !== 'uploading') return reason;
+    switch (live.phase) {
+      case 'captions':
+        return `Captions upload failed: ${reason}`;
+      case 'manifest':
+        return `Manifest upload failed: ${reason}`;
+      case 'thumbnail':
+        return `Thumbnail upload failed: ${reason}`;
+      case 'video':
+        return `Video upload failed: ${reason}`;
+      case 'clip':
+        return live.current && live.total
+          ? `Clip ${live.current} of ${live.total} failed: ${reason}`
+          : `Clip upload failed: ${reason}`;
+      default:
+        return reason;
+    }
+  }
+
   // ---- public API ----
 
   /** Queue a draft's upload and start draining if not already. Ignored if the draft is already in flight. */
@@ -184,7 +211,7 @@ class BackgroundUploadManager {
     // Persist the merged output so an app kill mid-upload can be resumed from launch (see
     // `hydrateFromDb`). Everything else the run needs is already durable in the drizzle row.
     if (session.merged) void setUploadMerged(session.draftId, session.merged);
-    this.setLive(session.draftId, { status: 'uploading', progress: 0 });
+    this.setLive(session.draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     void setUploadProgress(session.draftId, { status: 'uploading' });
     void this.ensureRunning();
   }
@@ -212,7 +239,7 @@ class BackgroundUploadManager {
     this.failed.delete(draftId);
     this.sessions.set(draftId, session);
     if (session.merged) void setUploadMerged(draftId, session.merged);
-    this.setLive(draftId, { status: 'uploading', progress: 0 });
+    this.setLive(draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     void setUploadProgress(draftId, { status: 'uploading' });
     void this.ensureRunning();
   }
@@ -324,7 +351,7 @@ class BackgroundUploadManager {
         continue;
       }
       this.sessions.set(row.id, result.session);
-      this.setLive(row.id, { status: 'uploading', progress: 0 });
+      this.setLive(row.id, { status: 'uploading', phase: 'preparing', progress: 0 });
     }
   }
 
@@ -388,7 +415,7 @@ class BackgroundUploadManager {
     const { draftId, destination } = session;
     const controller = new AbortController();
     this.controllers.set(draftId, controller);
-    this.setLive(draftId, { status: 'uploading', progress: 0 });
+    this.setLive(draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     await setUploadProgress(draftId, { status: 'uploading' });
     try {
       const resourceUrl =
@@ -421,7 +448,11 @@ class BackgroundUploadManager {
         this.failed.delete(draftId);
       } else {
         const { reason, retryable } = describeError(err);
-        this.setLive(draftId, { status: 'error', reason, retryable });
+        this.setLive(draftId, {
+          status: 'error',
+          reason: this.failureReason(draftId, reason),
+          retryable,
+        });
         await setUploadProgress(draftId, { status: 'failed' });
         // Tell the user it failed — only surfaces if the app is backgrounded / off-screen.
         void uploadNotify.failed();
@@ -551,6 +582,7 @@ class BackgroundUploadManager {
     const row = await getDraftTranscriptRow(draftId);
     const lines = parseTranscriptLines(row?.editedLines ?? row?.lines);
     if (lines.length > 0) {
+      this.setLive(draftId, { status: 'uploading', phase: 'captions', progress: 0 });
       await setCaptionsUploadStatus(draftId, 'uploading');
       const vttFile = writeTempTextFile(`${draftId}.vtt`, linesToVtt(lines));
       await this.uploadRelatedArtifact(
@@ -564,6 +596,7 @@ class BackgroundUploadManager {
     }
 
     // Beat manifest: per-segment timecodes on the merged timeline (groundwork for HLS).
+    this.setLive(draftId, { status: 'uploading', phase: 'manifest', progress: 0 });
     const manifestFile = writeTempTextFile(
       `${draftId}-beats.pulse`,
       JSON.stringify(buildBeatManifest(segments, merged.durationMs)),
@@ -577,6 +610,7 @@ class BackgroundUploadManager {
     );
 
     // Thumbnail (poster frame).
+    this.setLive(draftId, { status: 'uploading', phase: 'thumbnail', progress: 0 });
     const thumbFile = await this.resolveThumbnailFile(session, merged.path);
     if (thumbFile) {
       await this.uploadRelatedArtifact(
@@ -591,6 +625,7 @@ class BackgroundUploadManager {
     // The video itself — LAST, so it's the only thing still moving when backgrounded.
     // Throttle progress to at most one store update / 200ms — the native task ticks fast; the
     // final (EOF) tick always goes through so the bar still reaches 100%.
+    this.setLive(draftId, { status: 'uploading', phase: 'video', progress: 0 });
     let lastTick = 0;
     const result = await this.uploadOne(
       draftId,
@@ -606,6 +641,7 @@ class BackgroundUploadManager {
         lastTick = now;
         this.setLive(draftId, {
           status: 'uploading',
+          phase: 'video',
           progress: totalBytes ? bytesSent / totalBytes : 0,
         });
       },
@@ -623,9 +659,16 @@ class BackgroundUploadManager {
   private async uploadSegments(session: UploadSession, signal: AbortSignal): Promise<string> {
     const { draftId, destination, segments } = session;
     const total = segments.length;
-    let completed = 0;
-    const reportProgress = () =>
-      this.setLive(draftId, { status: 'uploading', progress: total ? completed / total : 0 });
+    // Per-clip phase: `current` is the 1-based clip in flight; `progress` counts clips
+    // already landed, so the bar only advances on completions (no misleading 0%-per-clip).
+    const reportClip = (current: number, completed: number) =>
+      this.setLive(draftId, {
+        status: 'uploading',
+        phase: 'clip',
+        current,
+        total,
+        progress: total ? completed / total : 0,
+      });
 
     // Reserve every clip's artifactId up front (idempotent — reuses persisted ids on resume) so
     // the ordering manifest can be built and uploaded BEFORE the clips. Like the merged unit's
@@ -650,6 +693,7 @@ class BackgroundUploadManager {
       }),
     };
     const manifestFile = writeTempTextFile(`${draftId}-segments.pulse`, JSON.stringify(manifest));
+    this.setLive(draftId, { status: 'uploading', phase: 'manifest', progress: 0 });
     const result = await this.uploadOne(
       draftId,
       destination,
@@ -668,7 +712,8 @@ class BackgroundUploadManager {
       (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
     );
 
-    for (const segment of segments) {
+    for (const [index, segment] of segments.entries()) {
+      reportClip(index + 1, index);
       const file = new File(absolutize(effFile(segment)));
       const checksum = await sha256Checksum(file);
 
@@ -702,8 +747,7 @@ class BackgroundUploadManager {
         resourceUrl: videoResult.resourceUrl,
       });
 
-      completed += 1;
-      reportProgress();
+      reportClip(Math.min(index + 2, total), index + 1);
     }
 
     return result.resourceUrl;
