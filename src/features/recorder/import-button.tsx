@@ -21,7 +21,10 @@ export function ImportButton({
       accessibilityRole="button"
       accessibilityLabel="Import video"
       accessibilityState={{ busy }}
-      style={({ pressed }) => [styles.button, { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 }]}>
+      style={({ pressed }) => [
+        styles.button,
+        { opacity: disabled || busy ? 0.35 : pressed ? 0.7 : 1 },
+      ]}>
       {busy ? (
         <ActivityIndicator size="small" color="#000" />
       ) : (

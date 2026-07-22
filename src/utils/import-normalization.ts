@@ -44,9 +44,13 @@ export type ImportDecision =
   | { action: 'passthrough' }
   | { action: 'normalize'; options: Partial<CompressOptions>; reasons: string[] };
 
-/** True for 10-bit pixel formats (yuv420p10le, p010le, ...). */
+/**
+ * True for 10-bit pixel formats. FFmpeg names these with a `10`/`10le`/`10be` bit-depth
+ * suffix (yuv420p10le, p010le, ...) — matching the suffix rather than a bare `includes('10')`
+ * keeps 8-bit chroma-subsampling names like `yuv410p` from being misclassified.
+ */
 function is10Bit(pixelFormat: string): boolean {
-  return pixelFormat.includes('10');
+  return /10(le|be)?$/.test(pixelFormat);
 }
 
 /** Effective fps for the decision: average when known (catches VFR), else nominal. */
