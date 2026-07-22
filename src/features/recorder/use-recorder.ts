@@ -85,8 +85,13 @@ export function useRecorder(initialDraftId?: string) {
   // makes iOS write a true MP4 container (Android always does) — segments are persisted and
   // uploaded as `{segmentId}.mp4`, so the bytes now match the extension end to end instead of
   // QuickTime bytes under an .mp4 name.
+  // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p (uploads shrink 2-5× vs the
+  // encoder's default, playback starts faster, rebuffers less) — and since export is
+  // passthrough, record-time bitrate IS upload bitrate. Set here at output creation, which is
+  // safe — unlike mutating a running session via setOutputSettings, which crashed the recorder.
   const videoOutput = useVideoOutput({
     targetResolution: CommonResolutions.FHD_16_9,
+    targetBitRate: 5_000_000,
     enableAudio: micEnabled,
     fileType: 'mp4',
   });

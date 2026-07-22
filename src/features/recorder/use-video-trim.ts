@@ -14,8 +14,8 @@ const Native = VideoTrim as Spec;
  * Drives react-native-video-trim's full-screen editor (trim + crop/rotate/flip/mute/speed).
  * Tap a clip → `openTrim` opens the editor on the PRISTINE original; on save, RNVT's output
  * (passthrough copy for pure cuts, re-encode for transform edits) is moved into the draft as
- * the segment's `.edited.mp4` and recorded via `setEdited` (destructive model — originals
- * stay untouched, re-editing re-opens the original).
+ * a fresh `.edited.{rev}.mp4` revision and recorded via `setEdited` (destructive model —
+ * originals stay untouched, re-editing re-opens the original).
  */
 export function useVideoTrim(draftId: string | null) {
   // The editor is fire-and-forget (showEditor) and its events carry no correlation id, so we
