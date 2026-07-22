@@ -2,7 +2,6 @@ import { describe, expect, it, jest } from '@jest/globals';
 
 import {
   cancelTusUpload,
-  DEFAULT_TUS_CHUNK_SIZE_BYTES,
   TusUploadError,
   type UploadChunk,
   uploadViaTus,
@@ -40,14 +39,23 @@ type ChunkCall = {
   headers: Record<string, string>;
 };
 
-/** Hand-rolled stand-in for the native per-chunk upload task: records calls, returns the next programmed result. */
-function createChunkStub(results: { status: number; headers?: Record<string, string> }[]) {
+/** Hand-rolled stand-in for the native per-chunk upload task: records calls, returns the next programmed result. Each programmed result may carry `ticks` — in-flight byte counts to report through `onProgress` before resolving. */
+function createChunkStub(
+  results: { status: number; headers?: Record<string, string>; ticks?: number[] }[],
+) {
   const calls: ChunkCall[] = [];
   const queue = [...results];
-  const uploadChunk: UploadChunk = async ({ offset, chunkBytes, totalBytes, headers }) => {
+  const uploadChunk: UploadChunk = async ({
+    offset,
+    chunkBytes,
+    totalBytes,
+    headers,
+    onProgress,
+  }) => {
     calls.push({ offset, chunkBytes, totalBytes, headers });
     const next = queue.shift();
     if (!next) throw new Error('No stubbed chunk result');
+    for (const tick of next.ticks ?? []) onProgress?.(tick);
     return { status: next.status, headers: next.headers ?? {} };
   };
   return { uploadChunk, calls };
@@ -180,23 +188,23 @@ describe('uploadViaTus', () => {
       [20, 5],
     ]);
     expect(chunkCalls.map((c) => c.headers['Upload-Offset'])).toEqual(['0', '10', '20']);
-    // Displayed progress advances only on durable (server-acknowledged) offsets.
+    // No in-flight ticks programmed — progress here is the durable offsets only.
     expect(progress).toEqual([0, 10, 20, 25]);
     // Still exactly one HEAD — no per-chunk offset polling on the happy path.
     expect(calls.filter((c) => c.init?.method === 'HEAD')).toHaveLength(1);
   });
 
-  it('defaults the chunk size to 32 MiB', async () => {
-    expect(DEFAULT_TUS_CHUNK_SIZE_BYTES).toBe(32 * 1024 * 1024);
-    const file = fakeFile(DEFAULT_TUS_CHUNK_SIZE_BYTES + 1);
+  it('defaults to a single PATCH carrying the whole remainder (offset → EOF)', async () => {
+    // Standard TUS shape (tus-js-client defaults chunkSize to Infinity): a
+    // fresh 100 MB upload is ONE PATCH — one native background transfer, no
+    // per-chunk staging or dead time. Bounding requires opting in.
+    const size = 100 * 1024 * 1024;
+    const file = fakeFile(size);
     const { fetchImpl } = createFetchStub({
       POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
       HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
     });
-    const { uploadChunk, calls: chunkCalls } = createChunkStub([
-      chunkOk(DEFAULT_TUS_CHUNK_SIZE_BYTES),
-      chunkOk(DEFAULT_TUS_CHUNK_SIZE_BYTES + 1),
-    ]);
+    const { uploadChunk, calls: chunkCalls } = createChunkStub([chunkOk(size)]);
 
     await uploadViaTus({
       server: SERVER,
@@ -209,7 +217,58 @@ describe('uploadViaTus', () => {
       uploadChunk,
     });
 
-    expect(chunkCalls.map((c) => c.chunkBytes)).toEqual([DEFAULT_TUS_CHUNK_SIZE_BYTES, 1]);
+    expect(chunkCalls.map((c) => [c.offset, c.chunkBytes])).toEqual([[0, size]]);
+  });
+
+  it('forwards in-flight progress ticks, then re-anchors on the server-acknowledged offset', async () => {
+    const file = fakeFile(100);
+    const { fetchImpl } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '0' } })],
+    });
+    // Native ticks are relative to the PATCH body; the last tick may claim
+    // more than the wire has durably committed — the 204's offset re-anchors.
+    const { uploadChunk } = createChunkStub([{ ...chunkOk(100), ticks: [30, 70, 100] }]);
+
+    const progress: number[] = [];
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      fetchImpl,
+      uploadChunk,
+      onProgress: ({ bytesSent }) => progress.push(bytesSent),
+    });
+
+    expect(progress).toEqual([0, 30, 70, 100, 100]);
+  });
+
+  it('reports resumed in-flight progress as offset + bytes sent this attempt, clamped to the total', async () => {
+    const file = fakeFile(100);
+    const { fetchImpl } = createFetchStub({
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '40' } })],
+    });
+    // 70 sent on a 60-byte remainder would claim 110/100 — must clamp.
+    const { uploadChunk } = createChunkStub([{ ...chunkOk(100), ticks: [20, 70] }]);
+
+    const progress: number[] = [];
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      file: file as never,
+      resourceUrl: `${SERVER}/upload/abc`,
+      fetchImpl,
+      uploadChunk,
+      onProgress: ({ bytesSent }) => progress.push(bytesSent),
+    });
+
+    expect(progress).toEqual([40, 60, 100, 100]);
   });
 
   it.each([0, -1, 0.5, NaN, Infinity])(
