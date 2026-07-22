@@ -12,10 +12,13 @@ Foundation, CC-BY 3.0), a different scene per clip. Each has a burned-in **progr
 while trimming.
 
 **Portrait** is the primary surface (short-form — the recorder & iPhone Camera). iPhone stores
-portrait as a **coded-landscape buffer + 90° rotation matrix** in a **QuickTime** container, _not_
-baked-portrait pixels — these fixtures replicate that exactly (so the rotation/normalization path is
-actually tested). The **landscape** clips stand in for video added later from the Photos app that
-must be normalized into the portrait timeline.
+portrait as a **coded-landscape buffer + 90° rotation matrix**, _not_ baked-portrait pixels — these
+fixtures replicate that exactly (so the rotation/normalization path is actually tested). The
+recorder writes a true **MP4** container; the iPhone Camera app writes **QuickTime**, which reaches
+the app via Photos imports — the portrait fixtures keep QuickTime bytes under a `.mp4` name so that
+import surface stays covered (the container is not part of the merge signature). The **landscape**
+clips stand in for video added later from the Photos app that must be normalized into the portrait
+timeline.
 
 | file                             | display   | coded     | rot | fps | codec | container | len |
 | -------------------------------- | --------- | --------- | --- | --- | ----- | --------- | --- |
@@ -26,8 +29,9 @@ must be normalized into the portrait timeline.
 | `landscape-1080p-30fps-h264.mp4` | 1920×1080 | 1920×1080 | —   | 30  | H.264 | MP4       | 24s |
 | `landscape-4k-30fps-hevc.mp4`    | 3840×2160 | 3840×2160 | —   | 30  | HEVC  | QuickTime | 14s |
 
-The `portrait-1080p-30fps-h264` clip mirrors **this recorder's exact output** (H.264/AAC 1080p30
-portrait, QuickTime bytes named `.mp4`). All have AAC audio and are ~12–24s so there's room to trim.
+The `portrait-1080p-30fps-h264` clip mirrors **the recorder's stream format** (H.264/AAC 1080p30
+portrait; the recorder itself now writes a true MP4 container). All have AAC audio and are ~12–24s
+so there's room to trim.
 Regenerate with [`scripts/make-dev-fixtures.sh`](../../scripts/make-dev-fixtures.sh).
 
 ## How to add / change clips
