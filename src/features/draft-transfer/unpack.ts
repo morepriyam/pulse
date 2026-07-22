@@ -92,7 +92,7 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
         // effective clip, mirroring the original/edited thumb-path split the editor uses.
         const effective = editedFilename ?? originalFilename;
         const coverRel = editedFilename
-          ? editedThumbRelPath(draftId, segmentId)
+          ? editedThumbRelPath(editedFilename)
           : thumbRelPath(draftId, segmentId);
         const ok = await generateThumbnailFile(absolutize(effective), absolutize(coverRel));
 
