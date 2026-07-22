@@ -4,9 +4,11 @@ import type { UploadTransport } from '../types';
 
 /**
  * The local-backend transport: uploads one artifact to a pulsevault-compatible
- * server over TUS. A thin adapter over the existing `uploadViaTus` (protocol,
- * always-chunked) + `uploadChunkNative` (the native byte-carrying PATCH) — no
- * protocol logic lives here, and neither of those files is touched.
+ * server over TUS. A thin adapter over the existing `uploadViaTus` (protocol;
+ * single remainder PATCH by default, bounded chunks behind the
+ * `chunkSizeBytes` knob) + `uploadChunkNative` (the native byte-carrying
+ * PATCH) — no protocol logic lives here, and neither of those files is
+ * touched.
  *
  * Historical note: the old export-screen hook passed `uploadViaTus` an AppState
  * gate (`waitUntilForeground`) that paused the retry loop whenever the app
