@@ -31,13 +31,21 @@ export function cleanupStaleUploadTempFiles(): void {
 }
 
 /**
- * Stages the bytes for one chunk — `[offset, offset + chunkBytes)` — as a
- * file the native upload task can point at, via `FileHandle` (seek + bounded
- * read, never touching bytes outside the chunk). The one no-copy fast path:
- * a file that fits in a single chunk uploads `source` directly. Everything
- * else gets a bounded temp copy, which also caps the staging cost per PATCH
- * at the chunk size — the pre-chunking code read the *entire remainder* into
- * memory at once on every resume, unbounded by anything but the file size.
+ * Bound on each `FileHandle.readBytes` while staging a resume/chunk temp copy.
+ * Staging streams the range through this much memory at a time instead of
+ * materializing the whole remainder as one buffer — the pre-existing behavior
+ * this replaces read `totalBytes - offset` in ONE call, an allocation bounded
+ * only by file size (the OOM half of #92).
+ */
+const STAGING_READ_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Stages the bytes for one PATCH — `[offset, offset + chunkBytes)` — as a
+ * file the native upload task can point at. The common case (a fresh upload,
+ * offset 0, whole file in one PATCH) uploads `source` directly with no copy
+ * at all. A resume (offset > 0) or an explicitly bounded chunk gets a temp
+ * copy, streamed via `FileHandle` in `STAGING_READ_BYTES` reads so memory
+ * stays bounded no matter how large the staged range is.
  */
 function prepareChunkSource(
   source: File,
@@ -51,13 +59,23 @@ function prepareChunkSource(
   dir.create({ intermediates: true, idempotent: true });
   const temp = new File(dir, `${randomId()}.bin`);
   if (temp.exists) temp.delete();
+  // FileHandle open-for-writing requires an existing file on iOS
+  // (FileHandle(forWritingTo:) does not create) — create it empty first.
+  temp.create();
 
   const reader = source.open(FileMode.ReadOnly);
+  const writer = temp.open(FileMode.WriteOnly);
   try {
     reader.offset = offset;
-    const chunk = reader.readBytes(chunkBytes);
-    temp.write(chunk);
+    let remaining = chunkBytes;
+    while (remaining > 0) {
+      const bytes = reader.readBytes(Math.min(STAGING_READ_BYTES, remaining));
+      if (bytes.length === 0) break;
+      writer.writeBytes(bytes);
+      remaining -= bytes.length;
+    }
   } finally {
+    writer.close();
     reader.close();
   }
   return {
@@ -99,6 +117,7 @@ export const uploadChunkNative: UploadChunk = async ({
   file,
   headers,
   signal,
+  onProgress,
 }) => {
   const { file: source, cleanup } = prepareChunkSource(file, offset, chunkBytes, totalBytes);
   try {
@@ -108,6 +127,9 @@ export const uploadChunkNative: UploadChunk = async ({
       sessionType: 'background', //explicit
       headers,
       signal,
+      // Native task ticks (URLSession/OkHttp didSendBodyData) — relative to
+      // this PATCH's body, which is exactly the contract of the callback.
+      onProgress: onProgress ? ({ bytesSent }) => onProgress(bytesSent) : undefined,
     });
     return { status: result.status, headers: result.headers };
   } finally {

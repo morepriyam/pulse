@@ -4,27 +4,6 @@ const MAX_RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 500;
 const TUS_VERSION = '1.0.0';
 
-/**
- * Default size of each byte-carrying PATCH, in bytes (32 MiB). Uploads are
- * always sent as a sequence of bounded chunks rather than one PATCH for the
- * whole file — the standard TUS answer to any body-buffering middlebox (it's
- * why `tus-js-client` exposes `chunkSize`), and what makes resume actually
- * work through a proxy that spools entire request bodies: every completed
- * chunk is durably on the server, so a drop loses at most one chunk.
- *
- * 32 MiB specifically is the throughput-neutral point, measured against the
- * production edge (64 MB file, per-chunk figures include the proxy holding
- * each body until complete): single PATCH to EOF 20.4 MB/s; 32 MB chunks on
- * a kept-alive connection 20.5 MB/s; 16 MB 16.3 MB/s; 8 MB 10.1 MB/s; 8 MB
- * with a fresh TLS connection per chunk 5.1 MB/s. Below ~32 MB the fixed
- * per-chunk dead time (~0.4 s while the proxy spools) starts to dominate;
- * at 32 MB it is measurement noise. It also bounds what one drop can lose
- * and caps the per-chunk staging copy (`prepareChunkSource`) at 32 MiB of
- * memory. A config knob, not a tuning surface: drop it toward "remainder"
- * only when the deployment's edge is known to stream request bodies.
- */
-export const DEFAULT_TUS_CHUNK_SIZE_BYTES = 32 * 1024 * 1024;
-
 export type ArtifactKind = 'video' | 'project' | 'captions' | 'thumbnail';
 
 export type TusUploadProgress = { bytesSent: number; totalBytes: number };
@@ -49,6 +28,14 @@ export type UploadChunk = (params: {
   file: File;
   headers: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * In-flight progress for THIS attempt: bytes handed to the network so far,
+   * relative to `offset` (not an absolute file position). Bytes "sent" are not
+   * bytes committed — behind a body-buffering proxy the server may still hold
+   * everything — so callers treat this as display-only; durable position always
+   * comes from `Upload-Offset` (the 204 header, or a re-HEAD after a failure).
+   */
+  onProgress?: (bytesSentThisAttempt: number) => void;
 }) => Promise<ChunkUploadResult>;
 
 export type TusUploadOptions = {
@@ -73,7 +60,21 @@ export type TusUploadOptions = {
   onResourceCreated?: (resourceUrl: string) => void;
   signal?: AbortSignal;
   onProgress?: (progress: TusUploadProgress) => void;
-  /** Size of each byte-carrying PATCH; must be a positive integer. Defaults to `DEFAULT_TUS_CHUNK_SIZE_BYTES` (32 MiB) — see its doc for why. A config knob, not a tuning surface: change it only when the deployment's edge changes how it handles request bodies. */
+  /**
+   * Size of each byte-carrying PATCH; must be a positive integer if provided.
+   * UNSET by default — each PATCH then carries the whole remainder (offset →
+   * EOF), i.e. a fresh upload is ONE PATCH. That is standard TUS practice
+   * (`tus-js-client` defaults `chunkSize` to `Infinity`) and the fastest,
+   * smoothest path on device: one native background transfer that survives
+   * iOS lock/backgrounding, no per-chunk staging copy, no per-chunk dead time.
+   *
+   * Set a bound only for a deployment whose edge is known to spool entire
+   * request bodies before forwarding them (e.g. a ModSecurity-fronted proxy —
+   * mieweb/opensource-server#395): there, a bounded chunk caps how much an
+   * interruption can lose, at the cost of the above. Measured against that
+   * edge (64 MB file): single PATCH 20.4 MB/s; 32 MiB chunks kept-alive
+   * 20.5 MB/s; 16 MiB 16.3 MB/s; 8 MiB 10.1 MB/s — don't go below 32 MiB.
+   */
   chunkSizeBytes?: number;
   /** Dependency-injected for testing; defaults to the global `fetch`. Only used for the headers-only requests (create/HEAD/DELETE) — never for the byte-carrying PATCHes, see `uploadChunk`. */
   fetchImpl?: typeof fetch;
@@ -274,12 +275,13 @@ async function fetchOffset(
 }
 
 /**
- * Upload a file to a pulsevault-compatible server over TUS, always as a
- * sequence of bounded chunks (`chunkSizeBytes`, default 32 MiB — see
- * `DEFAULT_TUS_CHUNK_SIZE_BYTES` for the full rationale). One code path, no
- * "fall back to chunking on failure" heuristic: chunk boundaries are what
- * make progress durable through a body-buffering proxy, so they must exist
- * on the first attempt, not only after something already went wrong.
+ * Upload a file to a pulsevault-compatible server over TUS. By default each
+ * byte-carrying PATCH runs from the current offset to EOF — a fresh upload is
+ * ONE PATCH, the standard TUS shape — while `chunkSizeBytes` bounds it into a
+ * sequence of chunks for deployments behind a body-buffering edge (see its
+ * doc). Either way the transfer loop, retry and offset discipline below are
+ * identical; a bounded chunk size just adds boundaries at which progress is
+ * durable through a proxy that spools whole request bodies.
  *
  * The byte-carrying PATCHes are delegated to `opts.uploadChunk` rather than
  * sent via `fetch` with a JS-constructed body: React Native's `fetch`
@@ -292,10 +294,15 @@ async function fetchOffset(
  * native upload task, which streams bytes via the platform's
  * URLSession/OkHttp APIs and never goes through that bridge at all.
  *
+ * Progress: in-flight ticks from the native task are forwarded as they happen
+ * (`offset + bytesSentThisAttempt`) so the bar moves smoothly, and each 204's
+ * server-acknowledged `Upload-Offset` re-anchors it to durable truth. After a
+ * failure the re-HEAD's offset is reported as-is — the bar may step back to
+ * the last durable byte, which is honest.
+ *
  * Offset discipline — the server's offset is the only source of truth:
- * - Each successful chunk's 204 carries the new `Upload-Offset`; the loop
- *   (and the progress callback) advance on exactly that value, so displayed
- *   progress is always durable progress and no extra HEAD is paid per chunk.
+ * - Each successful PATCH's 204 carries the new `Upload-Offset`; the loop
+ *   advances on exactly that value, never on what was "sent".
  * - On ANY failure or retry, the next attempt re-`HEAD`s for the
  *   authoritative offset before sending more bytes — never trusting what the
  *   previous attempt assumed (it may have landed some bytes before failing;
@@ -304,10 +311,14 @@ async function fetchOffset(
 export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const totalBytes = opts.file.size ?? 0;
-  const chunkSizeBytes = opts.chunkSizeBytes ?? DEFAULT_TUS_CHUNK_SIZE_BYTES;
-  // Fail fast on a nonsensical chunk size (0, negative, NaN, Infinity, fractional): it would
-  // produce a 0-byte or invalid PATCH and a loop that retries forever without advancing.
-  if (!Number.isSafeInteger(chunkSizeBytes) || chunkSizeBytes <= 0) {
+  const chunkSizeBytes = opts.chunkSizeBytes;
+  // Fail fast on a nonsensical explicit chunk size (0, negative, NaN, Infinity, fractional): it
+  // would produce a 0-byte or invalid PATCH and a loop that retries forever without advancing.
+  // (Unset means "whole remainder per PATCH" — the default.)
+  if (
+    chunkSizeBytes !== undefined &&
+    (!Number.isSafeInteger(chunkSizeBytes) || chunkSizeBytes <= 0)
+  ) {
     throw new TusUploadError(`chunkSizeBytes must be a positive integer (got ${chunkSizeBytes})`, {
       retryable: false,
     });
@@ -325,17 +336,17 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
         opts.onProgress?.({ bytesSent: offset, totalBytes });
 
         while (offset < totalBytes) {
-          const chunkBytes = Math.min(chunkSizeBytes, totalBytes - offset);
+          const chunkBytes = Math.min(chunkSizeBytes ?? totalBytes - offset, totalBytes - offset);
           const headers = {
             'Tus-Resumable': TUS_VERSION,
             'Upload-Offset': String(offset),
             'Content-Type': 'application/offset+octet-stream',
             ...authHeaders(opts.token),
           };
-          // No in-flight per-chunk progress is forwarded: behind a body-buffering
-          // proxy, bytes "sent" are not bytes committed, and reporting them would
-          // over-state durable progress. Progress advances only on the 204's
-          // server-acknowledged Upload-Offset below.
+          // In-flight ticks make the bar move smoothly while bytes flow; the
+          // server-acknowledged Upload-Offset below re-anchors to durable
+          // truth on completion (and the re-HEAD does after any failure).
+          const patchStart = offset;
           const result = await opts.uploadChunk({
             resourceUrl,
             offset,
@@ -344,6 +355,11 @@ export async function uploadViaTus(opts: TusUploadOptions): Promise<TusUploadRes
             file: opts.file,
             headers,
             signal: opts.signal,
+            onProgress: (sentThisAttempt) =>
+              opts.onProgress?.({
+                bytesSent: Math.min(patchStart + sentThisAttempt, totalBytes),
+                totalBytes,
+              }),
           });
           if (result.status !== 204) {
             throw statusErrorFromChunk(result, `Upload failed (${result.status})`);
