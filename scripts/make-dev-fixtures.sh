@@ -6,9 +6,10 @@
 #
 #   - SHORT-FORM PORTRAIT is the primary surface (the recorder + iPhone Camera output).
 #     iPhone stores portrait as a CODED-LANDSCAPE buffer + a 90 rotation matrix (not baked
-#     portrait pixels), in a QuickTime (.mov) container. We replicate that exactly: the
-#     recorder writes .mov bytes and renames to .mp4, so portrait fixtures are mov-bytes /
-#     rotation-tagged / named .mp4.
+#     portrait pixels). The recorder writes a true MP4 container (fileType 'mp4'); the iPhone
+#     Camera app writes QuickTime (.mov), which reaches the app via Photos imports. Portrait
+#     fixtures keep QuickTime bytes under a .mp4 name so that import surface stays covered —
+#     the container is not part of the merge signature, only the streams are.
 #   - LANDSCAPE clips stand in for video added later from the Photos app (HEVC .mov from the
 #     camera, or a plain H.264 .mp4 shared/downloaded) that must be normalized into the
 #     portrait timeline.
