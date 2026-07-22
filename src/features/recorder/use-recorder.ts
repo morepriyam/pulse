@@ -82,12 +82,20 @@ export function useRecorder(initialDraftId?: string) {
 
   // VisionCamera records to a file via a per-recording `Recorder` created from this output. The
   // output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Pinned to 1080p;
-  // the HEVC codec is pinned per-recording via setOutputSettings (iOS) so every clip stays
-  // format-uniform and exports on the merge engine's zero-re-encode fast path.
+  // the codec stays on VisionCamera's default (HEVC on modern devices) so every clip is
+  // format-uniform and exports on the merge engine's zero-re-encode fast path. `fileType: 'mp4'`
+  // makes iOS write a true MP4 container (Android always does) — segments are persisted and
+  // uploaded as `{segmentId}.mp4`, so the bytes now match the extension end to end instead of
+  // QuickTime bytes under an .mp4 name.
+  // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p (uploads shrink 2-5× vs the
+  // encoder's default, playback starts faster, rebuffers less) — and since export is
+  // passthrough, record-time bitrate IS upload bitrate. Set here at output creation, which is
+  // safe — unlike mutating a running session via setOutputSettings, which crashed the recorder.
   const videoOutput = useVideoOutput({
     targetResolution: CommonResolutions.FHD_16_9,
+    targetBitRate: 5_000_000,
     enableAudio: micEnabled,
-    fileType: 'mov',
+    fileType: 'mp4',
   });
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
