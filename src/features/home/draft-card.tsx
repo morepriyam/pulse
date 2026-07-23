@@ -8,6 +8,7 @@ import type { Anchor } from '@/components/action-menu';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useDraftUploadState } from '@/features/upload/use-uploads';
+import { uploadPhaseLabel } from '@/features/upload/phase-label';
 import { useTheme } from '@/hooks/use-theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThumbnail } from '@/hooks/use-thumbnail';
@@ -99,7 +100,13 @@ export function DraftCard({
           <Icon name="video.fill" size={18} tintColor={theme.textSecondary} />
         )}
         {upload === 'uploading' && (
-          <View style={styles.uploadScrim} pointerEvents="none">
+          <View
+            style={styles.uploadScrim}
+            pointerEvents="none"
+            accessible
+            // The ring alone can't say WHAT is uploading; announce the phase so a
+            // backgrounded/resumed run is as legible here as on the export screen.
+            accessibilityLabel={live.status === 'uploading' ? uploadPhaseLabel(live) : 'Uploading'}>
             <UploadRing progress={uploadProgress} />
           </View>
         )}

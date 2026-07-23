@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
+import { getInfoAsync } from 'expo-file-system/legacy';
 
 import { deleteDestination, getDestinationIdByArtifactId } from '@/db/destinations';
 import {
@@ -75,15 +76,26 @@ function describeError(err: unknown): ErrorDescription {
   return { reason: err instanceof Error ? err.message : 'Upload failed', retryable: true };
 }
 
-function bufferToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-async function sha256Checksum(file: File): Promise<string> {
-  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, await file.bytes());
-  return `sha256:${bufferToHex(digest)}`;
+/**
+ * Integrity digest of a finished file as `md5:<hex>`, computed natively and off
+ * the JS thread by the legacy `getInfoAsync`. Two deliberate choices here:
+ *
+ * - MD5, not SHA-256: pulsevault's checksum hook is at-rest corruption/tampering
+ *   detection on the finished artifact (see `createChecksumValidator` server-side),
+ *   not a security boundary, and the server verifies `md5` alongside sha256/sha1.
+ *   The old SHA-256 path had to copy the ENTIRE file into JS memory (`file.bytes()`)
+ *   because expo-crypto has no streaming digest — seconds of dead time and a memory
+ *   spike proportional to the export before an upload could even start.
+ * - Legacy `getInfoAsync`, not the modern `File.md5` / `file.info({ md5 })`: the
+ *   modern accessors are synchronous native calls that would block the JS thread
+ *   for the whole hash of a large export. Revisit if the new API gains async md5.
+ */
+async function md5Checksum(file: File): Promise<string> {
+  const info = await getInfoAsync(file.uri, { md5: true });
+  if (!info.exists || !info.md5) {
+    throw new Error(`Could not read ${file.name} to compute its checksum`);
+  }
+  return `md5:${info.md5}`;
 }
 
 /** Writes text to a fresh temp file under the cache dir so it can be uploaded like any other File. */
@@ -160,6 +172,35 @@ class BackgroundUploadManager {
     this.emit();
   }
 
+  /**
+   * Prefix a failure reason with the phase in flight when it happened, so an
+   * error during captions vs the video no longer produces the same generic
+   * context. Reads the live state, so it must run BEFORE the
+   * error state overwrites it.
+   */
+  private failureReason(draftId: string, reason: string): string {
+    const live = this.live.get(draftId);
+    if (live?.status !== 'uploading') return reason;
+    switch (live.phase) {
+      case 'preparing':
+        return `Preparation failed: ${reason}`;
+      case 'captions':
+        return `Captions upload failed: ${reason}`;
+      case 'manifest':
+        return `Manifest upload failed: ${reason}`;
+      case 'thumbnail':
+        return `Thumbnail upload failed: ${reason}`;
+      case 'video':
+        return `Video upload failed: ${reason}`;
+      case 'clip':
+        return live.current != null && live.total != null
+          ? `Clip ${live.current} of ${live.total} failed: ${reason}`
+          : `Clip upload failed: ${reason}`;
+      default:
+        return reason;
+    }
+  }
+
   // ---- public API ----
 
   /** Queue a draft's upload and start draining if not already. Ignored if the draft is already in flight. */
@@ -184,7 +225,7 @@ class BackgroundUploadManager {
     // Persist the merged output so an app kill mid-upload can be resumed from launch (see
     // `hydrateFromDb`). Everything else the run needs is already durable in the drizzle row.
     if (session.merged) void setUploadMerged(session.draftId, session.merged);
-    this.setLive(session.draftId, { status: 'uploading', progress: 0 });
+    this.setLive(session.draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     void setUploadProgress(session.draftId, { status: 'uploading' });
     void this.ensureRunning();
   }
@@ -212,7 +253,7 @@ class BackgroundUploadManager {
     this.failed.delete(draftId);
     this.sessions.set(draftId, session);
     if (session.merged) void setUploadMerged(draftId, session.merged);
-    this.setLive(draftId, { status: 'uploading', progress: 0 });
+    this.setLive(draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     void setUploadProgress(draftId, { status: 'uploading' });
     void this.ensureRunning();
   }
@@ -324,7 +365,7 @@ class BackgroundUploadManager {
         continue;
       }
       this.sessions.set(row.id, result.session);
-      this.setLive(row.id, { status: 'uploading', progress: 0 });
+      this.setLive(row.id, { status: 'uploading', phase: 'preparing', progress: 0 });
     }
   }
 
@@ -388,7 +429,7 @@ class BackgroundUploadManager {
     const { draftId, destination } = session;
     const controller = new AbortController();
     this.controllers.set(draftId, controller);
-    this.setLive(draftId, { status: 'uploading', progress: 0 });
+    this.setLive(draftId, { status: 'uploading', phase: 'preparing', progress: 0 });
     await setUploadProgress(draftId, { status: 'uploading' });
     try {
       const resourceUrl =
@@ -421,7 +462,11 @@ class BackgroundUploadManager {
         this.failed.delete(draftId);
       } else {
         const { reason, retryable } = describeError(err);
-        this.setLive(draftId, { status: 'error', reason, retryable });
+        this.setLive(draftId, {
+          status: 'error',
+          reason: this.failureReason(draftId, reason),
+          retryable,
+        });
         await setUploadProgress(draftId, { status: 'failed' });
         // Tell the user it failed — only surfaces if the app is backgrounded / off-screen.
         void uploadNotify.failed();
@@ -538,7 +583,7 @@ class BackgroundUploadManager {
         'The merged video is no longer available — reopen the draft to re-export, then upload.',
       );
     }
-    const checksum = await sha256Checksum(file);
+    const checksum = await md5Checksum(file);
 
     // The small related artifacts go FIRST. The big video PATCH is the only network step that
     // survives iOS backgrounding (native background URLSession) — JS-driven fetches freeze the
@@ -551,6 +596,7 @@ class BackgroundUploadManager {
     const row = await getDraftTranscriptRow(draftId);
     const lines = parseTranscriptLines(row?.editedLines ?? row?.lines);
     if (lines.length > 0) {
+      this.setLive(draftId, { status: 'uploading', phase: 'captions', progress: 0 });
       await setCaptionsUploadStatus(draftId, 'uploading');
       const vttFile = writeTempTextFile(`${draftId}.vtt`, linesToVtt(lines));
       await this.uploadRelatedArtifact(
@@ -564,6 +610,7 @@ class BackgroundUploadManager {
     }
 
     // Beat manifest: per-segment timecodes on the merged timeline (groundwork for HLS).
+    this.setLive(draftId, { status: 'uploading', phase: 'manifest', progress: 0 });
     const manifestFile = writeTempTextFile(
       `${draftId}-beats.pulse`,
       JSON.stringify(buildBeatManifest(segments, merged.durationMs)),
@@ -577,6 +624,7 @@ class BackgroundUploadManager {
     );
 
     // Thumbnail (poster frame).
+    this.setLive(draftId, { status: 'uploading', phase: 'thumbnail', progress: 0 });
     const thumbFile = await this.resolveThumbnailFile(session, merged.path);
     if (thumbFile) {
       await this.uploadRelatedArtifact(
@@ -591,6 +639,7 @@ class BackgroundUploadManager {
     // The video itself — LAST, so it's the only thing still moving when backgrounded.
     // Throttle progress to at most one store update / 200ms — the native task ticks fast; the
     // final (EOF) tick always goes through so the bar still reaches 100%.
+    this.setLive(draftId, { status: 'uploading', phase: 'video', progress: 0 });
     let lastTick = 0;
     const result = await this.uploadOne(
       draftId,
@@ -606,6 +655,7 @@ class BackgroundUploadManager {
         lastTick = now;
         this.setLive(draftId, {
           status: 'uploading',
+          phase: 'video',
           progress: totalBytes ? bytesSent / totalBytes : 0,
         });
       },
@@ -623,9 +673,16 @@ class BackgroundUploadManager {
   private async uploadSegments(session: UploadSession, signal: AbortSignal): Promise<string> {
     const { draftId, destination, segments } = session;
     const total = segments.length;
-    let completed = 0;
-    const reportProgress = () =>
-      this.setLive(draftId, { status: 'uploading', progress: total ? completed / total : 0 });
+    // Per-clip phase: `current` is the 1-based clip in flight; `progress` counts clips
+    // already landed, so the bar only advances on completions (no misleading 0%-per-clip).
+    const reportClip = (current: number, completed: number) =>
+      this.setLive(draftId, {
+        status: 'uploading',
+        phase: 'clip',
+        current,
+        total,
+        progress: total ? completed / total : 0,
+      });
 
     // Reserve every clip's artifactId up front (idempotent — reuses persisted ids on resume) so
     // the ordering manifest can be built and uploaded BEFORE the clips. Like the merged unit's
@@ -650,6 +707,7 @@ class BackgroundUploadManager {
       }),
     };
     const manifestFile = writeTempTextFile(`${draftId}-segments.pulse`, JSON.stringify(manifest));
+    this.setLive(draftId, { status: 'uploading', phase: 'manifest', progress: 0 });
     const result = await this.uploadOne(
       draftId,
       destination,
@@ -668,9 +726,10 @@ class BackgroundUploadManager {
       (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
     );
 
-    for (const segment of segments) {
+    for (const [index, segment] of segments.entries()) {
+      reportClip(index + 1, index);
       const file = new File(absolutize(effFile(segment)));
-      const checksum = await sha256Checksum(file);
+      const checksum = await md5Checksum(file);
 
       const videoKey = `${segment.id}:video` as const;
       const videoArtifactId = segmentArtifactIds.get(segment.id)!;
@@ -702,8 +761,7 @@ class BackgroundUploadManager {
         resourceUrl: videoResult.resourceUrl,
       });
 
-      completed += 1;
-      reportProgress();
+      reportClip(Math.min(index + 2, total), index + 1);
     }
 
     return result.resourceUrl;
