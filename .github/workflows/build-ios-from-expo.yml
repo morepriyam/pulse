@@ -31,6 +31,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 jobs:
   ios:
     runs-on: macos-latest
