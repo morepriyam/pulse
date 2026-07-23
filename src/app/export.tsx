@@ -28,6 +28,7 @@ import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import type { TranscriptLine } from '@/features/transcription/whisper';
 import { DestinationSelector } from '@/features/upload/destination-selector';
+import { uploadPhaseLabel } from '@/features/upload/phase-label';
 import { useUpload } from '@/features/upload/use-upload';
 import { useParkedPlayback } from '@/hooks/use-parked-playback';
 import { toFileUri } from '@/utils/file-store';
@@ -392,7 +393,10 @@ export default function ExportScreen() {
             {uState.status === 'uploading' ? (
               <View style={[styles.button, { backgroundColor: theme.backgroundElement }]}>
                 <ActivityIndicator color={theme.text} />
-                <ThemedText>Uploading… {Math.round(uState.progress * 100)}%</ThemedText>
+                {/* Phase-aware label — names the step in flight (preparing, captions,
+                    manifest, thumbnail, video, clip x of y) instead of sitting at a
+                    generic "Uploading… 0%" through all the pre-video work. */}
+                <ThemedText>{uploadPhaseLabel(uState)}</ThemedText>
                 <Pressable
                   onPress={() => void upload.cancel()}
                   hitSlop={8}
