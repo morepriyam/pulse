@@ -14,6 +14,8 @@ expo-env.d.ts
 
 # Native
 .kotlin/
+.gradle/
+local.properties
 *.orig.*
 *.jks
 *.p8
