@@ -20,12 +20,17 @@ import { useCallback, useRef } from 'react';
  * Callers gate `acquire` on `!muted` (a muted clip has no audio track, so seizing the user's
  * playback would be pointless). Both calls are idempotent and never throw — an audio-session
  * failure must not break recording.
+ *
+ * `acquire` always re-applies the session config, even when focus is already held: expo-video's
+ * VideoManager forces the shared AVAudioSession to `.playback` (a category with NO mic input)
+ * whenever one of its players changes state — e.g. the in-recorder preview. If acquire
+ * short-circuited on "already held", nothing would ever restore `.playAndRecord`, and every
+ * clip recorded after a preview would silently capture an audio track of digital silence.
  */
 export function useAudioFocus() {
   const heldRef = useRef(false);
 
   const acquire = useCallback(async () => {
-    if (heldRef.current) return;
     heldRef.current = true;
     try {
       await setAudioModeAsync({

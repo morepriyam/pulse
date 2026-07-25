@@ -114,11 +114,15 @@ export default function RecorderScreen() {
   // mic being live — a muted clip has no audio track, so there's nothing to seize focus for.
   // Also released while a call is active: we must yield the audio session to telephony, not fight
   // it for focus. Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
+  // `previewing` is a dep so CLOSING the preview re-runs acquire: expo-video's preview player
+  // flips the shared AVAudioSession to `.playback` (no mic input) when it plays, which would
+  // otherwise leave every post-preview clip recording silence — acquire restores `.playAndRecord`.
   const audioFocus = useAudioFocus();
   useEffect(() => {
+    if (previewing) return; // preview owns the session; re-acquire runs on close
     if (focused && appActive && !muted && !callActive && prefsReady) void audioFocus.acquire();
     else void audioFocus.release();
-  }, [focused, appActive, muted, callActive, prefsReady, audioFocus]);
+  }, [focused, appActive, muted, callActive, prefsReady, previewing, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
 
   // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
@@ -191,10 +195,23 @@ export default function RecorderScreen() {
     isRecording,
   });
 
+  // Re-assert the recording session config right before capture starts — cheap insurance
+  // against anything else (another expo-video player, a system event) having flipped the
+  // session category since the last acquire. No-op when the config is already correct.
+  // Awaited so the session is `.playAndRecord` BEFORE the recorder attaches the mic input
+  // (acquire never throws and completes in single-digit ms, so stop-taps aren't delayed).
+  const reacquireThen = useCallback(
+    (action: () => void) => async () => {
+      if (!muted && !callActive) await audioFocus.acquire();
+      action();
+    },
+    [muted, callActive, audioFocus],
+  );
+
   const { zoomSv, holdActive, buttonGesture, screenGesture, resetZoom, setZoomTo } =
     useRecorderGestures({
-      onToggle: toggleRecording,
-      onHoldStart: startHoldRecording,
+      onToggle: reacquireThen(toggleRecording),
+      onHoldStart: reacquireThen(startHoldRecording),
       onHoldEnd: endHoldRecording,
       onFocus,
       enabled: cameraReady && !previewing && !dragging,
