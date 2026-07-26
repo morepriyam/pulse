@@ -7,6 +7,7 @@ import { MigrationGate } from '@/db/migrate';
 import { ToastProvider } from '@/features/toast/toast-provider';
 import { UploadDeepLinkProvider } from '@/features/upload/upload-deep-link-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemeProvider as AppThemeProvider } from '@/hooks/use-theme';
 
 export default function RootLayout() {
   const isDark = useColorScheme() === 'dark';
@@ -14,23 +15,25 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-          <MigrationGate>
-            <ToastProvider>
-              <UploadDeepLinkProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
-                  <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
-                  <Stack.Screen
-                    name="onboarding"
-                    options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
-                  />
-                </Stack>
-              </UploadDeepLinkProvider>
-            </ToastProvider>
-          </MigrationGate>
-          <StatusBar style="auto" />
-        </ThemeProvider>
+        <AppThemeProvider>
+          <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+            <MigrationGate>
+              <ToastProvider>
+                <UploadDeepLinkProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="recorder" options={{ presentation: 'fullScreenModal' }} />
+                    <Stack.Screen name="export" options={{ presentation: 'fullScreenModal' }} />
+                    <Stack.Screen
+                      name="onboarding"
+                      options={{ presentation: 'fullScreenModal', gestureEnabled: false }}
+                    />
+                  </Stack>
+                </UploadDeepLinkProvider>
+              </ToastProvider>
+            </MigrationGate>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </AppThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
