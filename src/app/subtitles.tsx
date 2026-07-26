@@ -290,6 +290,9 @@ function Editor({
             <HeaderBtn
               name="wand.and.stars"
               label="On-device AI model"
+              hint="Choose the model used for captions"
+              selected={!!selectedModel}
+              valueText={selectedModel ? selectedModel.label : 'Off'}
               disabled={false}
               onPress={() => setModelSheetVisible(true)}
               theme={theme}
@@ -421,6 +424,9 @@ function Editor({
 function HeaderBtn({
   name,
   label,
+  hint,
+  selected,
+  valueText,
   disabled,
   onPress,
   theme,
@@ -428,6 +434,12 @@ function HeaderBtn({
 }: {
   name: IconName;
   label: string;
+  /** Optional a11y hint (e.g. what picking the button leads to). */
+  hint?: string;
+  /** Optional a11y selection state (e.g. "a model is active"). */
+  selected?: boolean;
+  /** Optional a11y value announced after the label (e.g. the active model's name, or "Off"). */
+  valueText?: string;
   disabled: boolean;
   onPress: () => void;
   theme: ReturnType<typeof useTheme>;
@@ -440,7 +452,9 @@ function HeaderBtn({
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled, selected }}
+      accessibilityValue={valueText != null ? { text: valueText } : undefined}
       style={[
         styles.headerBtn,
         { backgroundColor: theme.backgroundElement },
