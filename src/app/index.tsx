@@ -10,15 +10,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { deleteDraft, draftListQuery, renameDraft } from '@/db/drafts';
-import { selectedModelQuery } from '@/db/settings';
 import { useDraftTransfer } from '@/features/draft-transfer/use-draft-transfer';
 import { DraftCard } from '@/features/home/draft-card';
 import { useOnboardingRedirect } from '@/features/onboarding/use-onboarding-redirect';
-import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
-import { resolveSelectedModel } from '@/features/transcription/models';
 import { DestinationsFloat } from '@/features/upload/destinations-float';
 import { uploads } from '@/features/upload/upload-manager';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useThemeToggle } from '@/hooks/use-theme';
 
 // Dev-only seeding controls, behind a `__DEV__`-guarded require so the component and `@/dev/seed`
 // (with its perf fixtures) are dead-code-eliminated from the production bundle, not just hidden.
@@ -51,12 +48,8 @@ export default function HomeScreen() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const { busy, state: transferState, shareDrafts, importDrafts } = useDraftTransfer();
 
-  // On-device AI: the globally-selected model (persisted) that powers captions today and more
-  // on-device features later. Weights download lazily at export time; here we just open the panel
-  // and reflect whether a model is active (migrating a retired stored id to its replacement).
-  const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
-  const selectedModel = resolveSelectedModel(modelRow[0]?.value);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Manual light/dark override, persisted so it survives restarts (see `useTheme`).
+  const { mode: themeMode, toggle: toggleTheme } = useThemeToggle();
 
   // Once the live query reflects the pending name, drop it so the DB value takes back over.
   if (
@@ -268,27 +261,23 @@ export default function HomeScreen() {
               </Pressable>
             )}
             <Pressable
-              onPress={() => setPickerOpen(true)}
+              onPress={toggleTheme}
               hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="On-device AI model"
-              accessibilityHint="Choose the model used for captions"
-              accessibilityState={{ selected: !!selectedModel }}
-              accessibilityValue={{ text: selectedModel ? selectedModel.label : 'Off' }}
+              accessibilityRole="switch"
+              accessibilityLabel="Dark mode"
+              accessibilityHint="Switch between light and dark appearance"
+              accessibilityState={{ checked: themeMode === 'dark' }}
               style={({ pressed }) => [
                 styles.headerButton,
                 pressed && { backgroundColor: theme.backgroundElement },
               ]}>
               <Icon
-                name="wand.and.stars"
+                name={themeMode === 'dark' ? 'moon.fill' : 'sun.max.fill'}
                 size={20}
-                tintColor={selectedModel ? theme.accent : theme.textSecondary}
+                tintColor={theme.text}
               />
-              <ThemedText
-                type="smallBold"
-                themeColor={selectedModel ? 'accent' : 'textSecondary'}
-                style={styles.headerButtonLabel}>
-                Model
+              <ThemedText type="smallBold" style={styles.headerButtonLabel}>
+                {themeMode === 'dark' ? 'Dark' : 'Light'}
               </ThemedText>
             </Pressable>
           </View>
@@ -398,8 +387,6 @@ export default function HomeScreen() {
       {/* Bottom-left float for the paired upload-destination pool (view/delete); clears the +
           FAB at bottom-right. Hidden during .pulse multi-select to avoid crowding that toolbar. */}
       {!selectionMode && <DestinationsFloat />}
-
-      <ModelSwitcherModal visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </ThemedView>
   );
 }
