@@ -117,20 +117,23 @@ export default function RecorderScreen() {
   // `previewing` is a dep so CLOSING the preview re-runs acquire: expo-video's preview player
   // flips the shared AVAudioSession to `.playback` (no mic input) when it plays, which would
   // otherwise leave every post-preview clip recording silence — acquire restores `.playAndRecord`.
-  const audioFocus = useAudioFocus();
+  // Destructured because useAudioFocus() returns a fresh object each render — depending on
+  // the stable acquire/release callbacks (not the object) keeps the effect from re-running
+  // (and re-applying the session config) on every render.
+  const { acquire: acquireFocus, release: releaseFocus } = useAudioFocus();
   useEffect(() => {
     const shouldHold = focused && appActive && !muted && !callActive && prefsReady;
     if (previewing) {
       // Preview owns the session config (expo-video forces `.playback`) — skip acquire so we
       // don't fight it; re-acquire runs on close. Still release, though: yielding focus on
       // blur/mute/a call becoming active must keep working even with a preview open.
-      if (!shouldHold) void audioFocus.release();
+      if (!shouldHold) void releaseFocus();
       return;
     }
-    if (shouldHold) void audioFocus.acquire();
-    else void audioFocus.release();
-  }, [focused, appActive, muted, callActive, prefsReady, previewing, audioFocus]);
-  useEffect(() => () => void audioFocus.release(), [audioFocus]);
+    if (shouldHold) void acquireFocus();
+    else void releaseFocus();
+  }, [focused, appActive, muted, callActive, prefsReady, previewing, acquireFocus, releaseFocus]);
+  useEffect(() => () => void releaseFocus(), [releaseFocus]);
 
   // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
   // can read stale, the mic attaches, and AVFoundation throws -11800 / '!pri' — which leaves the
@@ -209,10 +212,10 @@ export default function RecorderScreen() {
   // (acquire never throws and completes in single-digit ms, so stop-taps aren't delayed).
   const reacquireThen = useCallback(
     (action: () => void) => async () => {
-      if (!muted && !callActive) await audioFocus.acquire();
+      if (!muted && !callActive) await acquireFocus();
       action();
     },
-    [muted, callActive, audioFocus],
+    [muted, callActive, acquireFocus],
   );
 
   // Hold-to-record needs more than reacquireThen: acquire() is awaited, and the gesture's
@@ -224,9 +227,9 @@ export default function RecorderScreen() {
   const holdSeqRef = useRef(0);
   const onHoldStart = useCallback(async () => {
     const seq = ++holdSeqRef.current;
-    if (!muted && !callActive) await audioFocus.acquire();
+    if (!muted && !callActive) await acquireFocus();
     if (seq === holdSeqRef.current) startHoldRecording();
-  }, [muted, callActive, audioFocus, startHoldRecording]);
+  }, [muted, callActive, acquireFocus, startHoldRecording]);
   const onHoldEnd = useCallback(() => {
     holdSeqRef.current++;
     endHoldRecording();
