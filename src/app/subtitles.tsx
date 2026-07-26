@@ -453,7 +453,7 @@ function HeaderBtn({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={hint}
-      accessibilityState={{ disabled, selected }}
+      accessibilityState={selected != null ? { disabled, selected } : { disabled }}
       accessibilityValue={valueText != null ? { text: valueText } : undefined}
       style={[
         styles.headerBtn,
