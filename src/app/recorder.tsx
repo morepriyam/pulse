@@ -119,8 +119,15 @@ export default function RecorderScreen() {
   // otherwise leave every post-preview clip recording silence — acquire restores `.playAndRecord`.
   const audioFocus = useAudioFocus();
   useEffect(() => {
-    if (previewing) return; // preview owns the session; re-acquire runs on close
-    if (focused && appActive && !muted && !callActive && prefsReady) void audioFocus.acquire();
+    const shouldHold = focused && appActive && !muted && !callActive && prefsReady;
+    if (previewing) {
+      // Preview owns the session config (expo-video forces `.playback`) — skip acquire so we
+      // don't fight it; re-acquire runs on close. Still release, though: yielding focus on
+      // blur/mute/a call becoming active must keep working even with a preview open.
+      if (!shouldHold) void audioFocus.release();
+      return;
+    }
+    if (shouldHold) void audioFocus.acquire();
     else void audioFocus.release();
   }, [focused, appActive, muted, callActive, prefsReady, previewing, audioFocus]);
   useEffect(() => () => void audioFocus.release(), [audioFocus]);
