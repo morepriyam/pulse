@@ -215,11 +215,28 @@ export default function RecorderScreen() {
     [muted, callActive, audioFocus],
   );
 
+  // Hold-to-record needs more than reacquireThen: acquire() is awaited, and the gesture's
+  // release fires synchronously via runOnJS — a quick press-release could run onHoldEnd
+  // BEFORE the delayed startHoldRecording() (holdInitiatedRef still false, so nothing to
+  // stop), and the start would then fire AFTER the gesture ended, leaving an unheld
+  // in-progress recording. Every hold edge bumps a sequence number; the delayed start is
+  // dropped when its hold is no longer the live one.
+  const holdSeqRef = useRef(0);
+  const onHoldStart = useCallback(async () => {
+    const seq = ++holdSeqRef.current;
+    if (!muted && !callActive) await audioFocus.acquire();
+    if (seq === holdSeqRef.current) startHoldRecording();
+  }, [muted, callActive, audioFocus, startHoldRecording]);
+  const onHoldEnd = useCallback(() => {
+    holdSeqRef.current++;
+    endHoldRecording();
+  }, [endHoldRecording]);
+
   const { zoomSv, holdActive, buttonGesture, screenGesture, resetZoom, setZoomTo } =
     useRecorderGestures({
       onToggle: reacquireThen(toggleRecording),
-      onHoldStart: reacquireThen(startHoldRecording),
-      onHoldEnd: endHoldRecording,
+      onHoldStart,
+      onHoldEnd,
       onFocus,
       enabled: cameraReady && !previewing && !dragging,
       neutralZoom,
