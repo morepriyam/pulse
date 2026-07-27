@@ -20,12 +20,22 @@ import { useCallback, useRef } from 'react';
  * Callers gate `acquire` on `!muted` (a muted clip has no audio track, so seizing the user's
  * playback would be pointless). Both calls are idempotent and never throw — an audio-session
  * failure must not break recording.
+ *
+ * `acquire` always re-applies the session config, even when focus is already held: expo-video's
+ * VideoManager forces the shared AVAudioSession to `.playback` (a category with NO mic input)
+ * whenever one of its players changes state — e.g. the in-recorder preview. If acquire
+ * short-circuited on "already held", nothing would ever restore `.playAndRecord`, and every
+ * clip recorded after a preview would silently capture an audio track of digital silence.
+ *
+ * Because of that, an `acquire` can overlap a `release` (e.g. the effect releases on blur while
+ * a pre-record `acquire` is mid-await) — so both re-check `heldRef` after each await and bail
+ * when the other call flipped it meanwhile: the LAST requested state wins, and a slow stale
+ * continuation can't re-seize focus after a release (or tear down a fresh acquire's config).
  */
 export function useAudioFocus() {
   const heldRef = useRef(false);
 
   const acquire = useCallback(async () => {
-    if (heldRef.current) return;
     heldRef.current = true;
     try {
       await setAudioModeAsync({
@@ -33,6 +43,7 @@ export function useAudioFocus() {
         playsInSilentMode: true,
         interruptionMode: 'doNotMix',
       });
+      if (!heldRef.current) return; // release() won while we awaited — don't re-seize focus
       await setIsAudioActiveAsync(true);
     } catch {
       // session unavailable — recording continues, audio just mixes
@@ -44,6 +55,7 @@ export function useAudioFocus() {
     heldRef.current = false;
     try {
       await setIsAudioActiveAsync(false);
+      if (heldRef.current) return; // acquire() won while we awaited — leave its config alone
       await setAudioModeAsync({
         allowsRecording: false,
         interruptionMode: 'mixWithOthers',

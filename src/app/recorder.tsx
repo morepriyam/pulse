@@ -114,12 +114,26 @@ export default function RecorderScreen() {
   // mic being live — a muted clip has no audio track, so there's nothing to seize focus for.
   // Also released while a call is active: we must yield the audio session to telephony, not fight
   // it for focus. Tied to screen focus (not per segment) to avoid toggling the session mid-draft.
-  const audioFocus = useAudioFocus();
+  // `previewing` is a dep so CLOSING the preview re-runs acquire: expo-video's preview player
+  // flips the shared AVAudioSession to `.playback` (no mic input) when it plays, which would
+  // otherwise leave every post-preview clip recording silence — acquire restores `.playAndRecord`.
+  // Destructured because useAudioFocus() returns a fresh object each render — depending on
+  // the stable acquire/release callbacks (not the object) keeps the effect from re-running
+  // (and re-applying the session config) on every render.
+  const { acquire: acquireFocus, release: releaseFocus } = useAudioFocus();
   useEffect(() => {
-    if (focused && appActive && !muted && !callActive && prefsReady) void audioFocus.acquire();
-    else void audioFocus.release();
-  }, [focused, appActive, muted, callActive, prefsReady, audioFocus]);
-  useEffect(() => () => void audioFocus.release(), [audioFocus]);
+    const shouldHold = focused && appActive && !muted && !callActive && prefsReady;
+    if (previewing) {
+      // Preview owns the session config (expo-video forces `.playback`) — skip acquire so we
+      // don't fight it; re-acquire runs on close. Still release, though: yielding focus on
+      // blur/mute/a call becoming active must keep working even with a preview open.
+      if (!shouldHold) void releaseFocus();
+      return;
+    }
+    if (shouldHold) void acquireFocus();
+    else void releaseFocus();
+  }, [focused, appActive, muted, callActive, prefsReady, previewing, acquireFocus, releaseFocus]);
+  useEffect(() => () => void releaseFocus(), [releaseFocus]);
 
   // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
   // can read stale, the mic attaches, and AVFoundation throws -11800 / '!pri' — which leaves the
@@ -191,11 +205,41 @@ export default function RecorderScreen() {
     isRecording,
   });
 
+  // Re-assert the recording session config right before capture starts — cheap insurance
+  // against anything else (another expo-video player, a system event) having flipped the
+  // session category since the last acquire. No-op when the config is already correct.
+  // Awaited so the session is `.playAndRecord` BEFORE the recorder attaches the mic input
+  // (acquire never throws and completes in single-digit ms, so stop-taps aren't delayed).
+  const reacquireThen = useCallback(
+    (action: () => void) => async () => {
+      if (!muted && !callActive) await acquireFocus();
+      action();
+    },
+    [muted, callActive, acquireFocus],
+  );
+
+  // Hold-to-record needs more than reacquireThen: acquire() is awaited, and the gesture's
+  // release fires synchronously via runOnJS — a quick press-release could run onHoldEnd
+  // BEFORE the delayed startHoldRecording() (holdInitiatedRef still false, so nothing to
+  // stop), and the start would then fire AFTER the gesture ended, leaving an unheld
+  // in-progress recording. Every hold edge bumps a sequence number; the delayed start is
+  // dropped when its hold is no longer the live one.
+  const holdSeqRef = useRef(0);
+  const onHoldStart = useCallback(async () => {
+    const seq = ++holdSeqRef.current;
+    if (!muted && !callActive) await acquireFocus();
+    if (seq === holdSeqRef.current) startHoldRecording();
+  }, [muted, callActive, acquireFocus, startHoldRecording]);
+  const onHoldEnd = useCallback(() => {
+    holdSeqRef.current++;
+    endHoldRecording();
+  }, [endHoldRecording]);
+
   const { zoomSv, holdActive, buttonGesture, screenGesture, resetZoom, setZoomTo } =
     useRecorderGestures({
-      onToggle: toggleRecording,
-      onHoldStart: startHoldRecording,
-      onHoldEnd: endHoldRecording,
+      onToggle: reacquireThen(toggleRecording),
+      onHoldStart,
+      onHoldEnd,
       onFocus,
       enabled: cameraReady && !previewing && !dragging,
       neutralZoom,
