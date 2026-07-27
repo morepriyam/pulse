@@ -12,7 +12,6 @@ import Animated, {
   useAnimatedStyle,
   useScrollViewOffset,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
@@ -24,7 +23,6 @@ import { formatDurationPadded } from '@/utils/format';
 import { effMs } from '@/utils/segment-window';
 import { PlayheadCursor, type Cursor } from './playhead-cursor';
 import {
-  ACTIVE_SCALE,
   POP_LANE,
   RECORD_BAR_GAP,
   RECORD_BUTTON_SIZE,
@@ -41,6 +39,10 @@ import {
 const TRASH_SIZE = 56;
 // Nudge the trash below the record button's exact center so it clears the preview modal.
 const TRASH_DROP_OFFSET = 18;
+// Badge pill diameter — it doubles as the drag handle's visible affordance, so it's sized
+// generously. Half of it rides above the thumb's top edge; POP_LANE (the vertical breathing
+// room inside the scroll frame) must be at least BADGE_SIZE / 2.
+const BADGE_SIZE = 18;
 
 type Props = {
   segments: Segment[];
@@ -89,15 +91,16 @@ function Bar({
   // index-based (i * STEP), independent of viewport width, so widening mid-drag is reorder-safe.
   const [dragActive, setDragActive] = useState(false);
 
-  // Scroll the newest clip into view when one is added (record mode only — while previewing the
-  // playhead owns scrolling). A length increase is unique to add; reorder/delete never grow it.
-  // The actual scroll happens in onContentSizeChange so the new thumb has laid out first.
+  // Preserve the user's place when a clip is removed: a length DECREASE captures the current
+  // offset (the effect runs before the shrunken content re-lays out and snaps the scroll), and
+  // onContentSizeChange restores it clamped to the new content width. A length increase (new
+  // recording) deliberately does nothing — the bar never yanks away from where the user was.
   const prevCount = useRef(segments.length);
-  const stickToEnd = useRef(false);
+  const restoreOffset = useRef<number | null>(null);
   useEffect(() => {
-    if (segments.length > prevCount.current && !cursor) stickToEnd.current = true;
+    if (segments.length < prevCount.current) restoreOffset.current = scrollOffset.value;
     prevCount.current = segments.length;
-  }, [segments.length, cursor]);
+  }, [segments.length, scrollOffset]);
 
   // Drag-to-trash. The trash floats above the bar, shown only while dragging; dropping a clip
   // on it deletes that clip — otherwise the drag just reorders. Hit-testing is done from the
@@ -149,10 +152,11 @@ function Bar({
             contentContainerStyle={styles.content}
             onContentSizeChange={(w) => {
               contentW.value = w;
-              // Honor a pending scroll-to-newest now that the added thumb has been measured.
-              if (stickToEnd.current) {
-                stickToEnd.current = false;
-                scrollRef.current?.scrollToEnd({ animated: true });
+              // Restore the pre-delete offset now the remaining thumbs have laid out.
+              if (restoreOffset.current != null) {
+                const target = Math.min(restoreOffset.current, Math.max(0, w - viewportW.value));
+                restoreOffset.current = null;
+                scrollRef.current?.scrollTo({ x: target, animated: false });
               }
             }}>
             <Sortable.Grid
@@ -163,8 +167,13 @@ function Bar({
               keyExtractor={(s) => s.id}
               scrollableRef={scrollRef}
               autoScrollDirection="horizontal"
-              // Reorder only from the drag handle (≣) — frees a plain hold on the thumb to
-              // mean "edit" without colliding with the grid's long-press-to-drag.
+              // 'swap' keeps the row still during a drag — only the hovered thumb trades
+              // places with the dragged one. The default 'insert' reflowed every neighbor
+              // to open a gap, which made long bars feel like they scattered on pickup.
+              // Note the semantics: dropping 1 on 5 exchanges them (2–4 stay put).
+              strategy="swap"
+              // Reorder only from the numbered-pill handle — frees a plain hold on the thumb
+              // to mean "edit" without colliding with the grid's long-press-to-drag.
               customHandle
               onDragStart={({ key }) => {
                 draggedKey.current = key;
@@ -262,19 +271,13 @@ function SegmentThumb({
   // native read stores 0ms (the clip is skipped on playback) — show nothing rather than 00:00.
   const durationMs = effMs(segment);
 
-  // The clip under the playhead pops up as a whole (border included). Springs on activation so
-  // it reads as a lift rather than a jump; grows into POP_LANE so it isn't clipped.
-  const scale = useSharedValue(1);
-  useEffect(() => {
-    scale.value = withSpring(active ? ACTIVE_SCALE : 1, { damping: 18, stiffness: 400, mass: 0.5 });
-  }, [active, scale]);
-  const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
   return (
-    <Animated.View style={[styles.thumb, active && styles.thumbActive, popStyle]}>
-      {/* tap = preview · hold = open editor (onLongPress) · drag the ≣ handle = reorder (drop
-          on the trash to delete). Sortable.Touchable cooperates with the grid so a tap can't
-          fire after a drag. */}
+    // The clip under the playhead is marked by its border turning accent — no scale-up, so
+    // the row stays visually still while the playhead moves across it.
+    <View style={[styles.thumb, active && styles.thumbActive]}>
+      {/* tap = preview · hold = open editor (onLongPress) · drag the numbered pill = reorder
+          (drop on the trash to delete). Sortable.Touchable cooperates with the grid so a tap
+          can't fire after a drag. */}
       <Sortable.Touchable
         onTap={onSelect}
         onLongPress={onEdit}
@@ -299,12 +302,19 @@ function SegmentThumb({
       )}
 
       {/* Drag handle — the only reorder/drag activator (drag onto the trash to delete).
-          A full-width grab strip along the top: large enough to hold reliably on a 48pt-wide
-          thumb, styled like a sheet grabber so it reads as "drag me". */}
+          The visible affordance IS the clip's label: a pill straddling the thumb's top edge
+          (half out, half in), centered. The label is initialized to the clip's creation number
+          when it's recorded and never renumbered on reorder (deletes leave gaps), so "move 7
+          between 3 and 12" stays meaningful however the draft is shuffled. The handle's
+          touch area is the full-width top strip, not just the pill. */}
       <Sortable.Handle style={styles.handle}>
-        <View style={styles.handleGrabber} />
+        <View style={styles.badge}>
+          <Text style={styles.badgeText} numberOfLines={1}>
+            {segment.label || '≡'}
+          </Text>
+        </View>
       </Sortable.Handle>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -350,8 +360,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingLeft: SCRUB_INSET,
     paddingRight: Spacing.two,
-    // Symmetric top/bottom room inside the scroll frame so the active thumb's pop isn't clipped
-    // by the ScrollView. Symmetric → thumbs stay vertically centered, keeping export-button align.
+    // Symmetric top/bottom room inside the scroll frame so the badge pill's protruding half
+    // isn't clipped by the ScrollView. Symmetric → thumbs stay vertically centered, keeping
+    // the export-button alignment.
     paddingVertical: POP_LANE,
   },
   thumb: {
@@ -399,25 +410,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
+  // The drag handle: the pill is just the visible anchor — the actual grab area is this
+  // full-width strip reaching ~25pt into the thumb, comfortably bigger than the pill for
+  // less precise fingers. (No hitSlop prop on Sortable.Handle, and the pill half above the
+  // thumb's bounds is not hit-testable in RN, so the generosity has to live INSIDE the
+  // thumb.) The strip below the pill is invisible touch area; taps/holds on the thumb's
+  // lower two-thirds still reach the preview/edit touchable underneath.
   handle: {
     position: 'absolute',
-    top: 0,
+    top: -BADGE_SIZE / 2,
     left: 0,
     right: 0,
-    height: 20,
+    height: BADGE_SIZE / 2 + 25,
+    alignItems: 'center',
+  },
+  badge: {
+    height: BADGE_SIZE,
+    minWidth: BADGE_SIZE,
+    paddingHorizontal: 5,
+    borderRadius: BADGE_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  handleGrabber: {
-    width: 22,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    // Soft shadow keeps the bare grabber legible over bright thumbnails.
+    // Soft shadow keeps the pill legible over bright thumbnails (as the old grabber had).
     shadowColor: '#000',
     shadowOpacity: 0.4,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   next: {
     width: 48,

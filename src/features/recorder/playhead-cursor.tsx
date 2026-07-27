@@ -22,8 +22,8 @@ import Animated, {
 
 import { Accent } from '@/constants/theme';
 import type { Segment } from '@/db/schema';
-import { clamp } from '@/utils/math';
-import { effMs, indexAtGlobalMs, segmentOffsets } from '@/utils/segment-window';
+import { segmentOffsets } from '@/utils/segment-window';
+import { msToPx, pxToMs } from './track-mapping';
 import { KNOB, POP_LANE, SCRUB_INSET, STEP, THUMB_HEIGHT, THUMB_WIDTH } from './track-metrics';
 
 /** Max rate at which a knob drag issues player seeks (the knob itself moves every frame). */
@@ -257,23 +257,6 @@ export function PlayheadCursor({
   );
 }
 
-/** Draft-global ms → x in track-content coordinates. */
-function msToPx(globalMs: number, segments: Segment[], offsets: number[]): number {
-  const i = indexAtGlobalMs(segments, offsets, globalMs);
-  if (i < 0) return 0;
-  const eff = effMs(segments[i]);
-  const frac = eff > 0 ? clamp((globalMs - offsets[i]) / eff, 0, 1) : 0;
-  return i * STEP + frac * THUMB_WIDTH;
-}
-
-/** x in track-content coordinates → draft-global ms (gaps snap to the thumb's end). */
-function pxToMs(x: number, segments: Segment[], offsets: number[]): number {
-  const i = clamp(Math.floor(x / STEP), 0, segments.length - 1);
-  if (!segments[i]) return 0;
-  const local = clamp(x - i * STEP, 0, THUMB_WIDTH);
-  return offsets[i] + (local / THUMB_WIDTH) * effMs(segments[i]);
-}
-
 const styles = StyleSheet.create({
   cursor: {
     position: 'absolute',
@@ -284,11 +267,13 @@ const styles = StyleSheet.create({
   },
   cursorLine: {
     width: 2,
-    height: THUMB_HEIGHT,
+    // Runs the thumb's full height plus a short tail below it, so the knob riding the line's
+    // end hangs clear of the thumbnail (into SCRUB_LANE) instead of overlapping its bottom.
+    height: THUMB_HEIGHT + 5,
     borderRadius: 1,
     backgroundColor: '#fff',
-    // The thumbs sit POP_LANE below the scroll-frame top (the pop lane); match it so the line
-    // starts on the thumb's top edge.
+    // The thumbs sit POP_LANE below the scroll-frame top (the badge-pill lane); match it so
+    // the line starts on the thumb's top edge.
     marginTop: POP_LANE,
   },
   cursorKnob: {
