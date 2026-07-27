@@ -1,4 +1,5 @@
 import { useEvent } from 'expo';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Icon, type IconName } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -22,10 +23,13 @@ import { ThemedView } from '@/components/themed-view';
 import { Accent, Spacing } from '@/constants/theme';
 import { segmentsForDraft } from '@/db/drafts';
 import { clearEditedTranscript, getDraftTranscriptRow } from '@/db/transcripts';
+import { selectedModelQuery } from '@/db/settings';
 import { CloseButton } from '@/features/recorder/close-button';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { CueRow } from '@/features/transcription/cue-row';
 import { CueToolbar } from '@/features/transcription/cue-toolbar';
+import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
+import { resolveSelectedModel } from '@/features/transcription/models';
 import { useAutosaveTranscript } from '@/features/transcription/use-autosave-transcript';
 import { useSubtitleEditor, type Cue } from '@/features/transcription/use-subtitle-editor';
 import { parseTranscriptLines, type TranscriptLine } from '@/features/transcription/whisper';
@@ -127,6 +131,12 @@ function Editor({
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const editor = useSubtitleEditor(initial);
+
+  // On-device AI model in use for this draft's captions — surfaced here (not just at first pick)
+  // so the user can switch models without leaving the caption editor.
+  const { data: modelRow } = useLiveQuery(selectedModelQuery, []);
+  const selectedModel = resolveSelectedModel(modelRow[0]?.value);
+  const [modelSheetVisible, setModelSheetVisible] = useState(false);
 
   const player = useVideoPlayer(toFileUri(videoUri), (p) => {
     p.timeUpdateEventInterval = 0.1;
@@ -278,6 +288,17 @@ function Editor({
           <CloseButton onPress={() => router.back()} />
           <View style={styles.headerActions}>
             <HeaderBtn
+              name="wand.and.stars"
+              label="On-device AI model"
+              hint="Choose the model used for captions"
+              selected={!!selectedModel}
+              valueText={selectedModel ? selectedModel.label : 'Off'}
+              disabled={false}
+              onPress={() => setModelSheetVisible(true)}
+              theme={theme}
+              tintColor={selectedModel ? theme.accent : theme.text}
+            />
+            <HeaderBtn
               name="arrow.uturn.backward"
               label="Undo"
               disabled={!editor.canUndo}
@@ -391,6 +412,11 @@ function Editor({
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <ModelSwitcherModal
+        visible={modelSheetVisible}
+        onClose={() => setModelSheetVisible(false)}
+      />
     </ThemedView>
   );
 }
@@ -398,15 +424,26 @@ function Editor({
 function HeaderBtn({
   name,
   label,
+  hint,
+  selected,
+  valueText,
   disabled,
   onPress,
   theme,
+  tintColor,
 }: {
   name: IconName;
   label: string;
+  /** Optional a11y hint (e.g. what picking the button leads to). */
+  hint?: string;
+  /** Optional a11y selection state (e.g. "a model is active"). */
+  selected?: boolean;
+  /** Optional a11y value announced after the label (e.g. the active model's name, or "Off"). */
+  valueText?: string;
   disabled: boolean;
   onPress: () => void;
   theme: ReturnType<typeof useTheme>;
+  tintColor?: string;
 }) {
   return (
     <Pressable
@@ -415,13 +452,15 @@ function HeaderBtn({
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityHint={hint}
+      accessibilityState={selected != null ? { disabled, selected } : { disabled }}
+      accessibilityValue={valueText != null ? { text: valueText } : undefined}
       style={[
         styles.headerBtn,
         { backgroundColor: theme.backgroundElement },
         disabled && styles.headerBtnDisabled,
       ]}>
-      <Icon name={name} size={15} tintColor={theme.text} />
+      <Icon name={name} size={15} tintColor={tintColor ?? theme.text} />
     </Pressable>
   );
 }
