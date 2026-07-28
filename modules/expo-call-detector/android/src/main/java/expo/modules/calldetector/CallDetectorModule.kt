@@ -5,9 +5,27 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.RequiresApi
 import androidx.core.os.bundleOf
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.Executor
+
+/**
+ * Isolates the API 31+ [AudioManager.OnModeChangedListener] type so [CallDetectorModule] never
+ * references it directly — the interface (and the lambda class implementing it) only gets loaded
+ * on devices where it exists.
+ */
+@RequiresApi(Build.VERSION_CODES.S)
+private class ModeChangeObserver(onChange: () -> Unit) {
+  private val listener = AudioManager.OnModeChangedListener { onChange() }
+
+  fun register(audioManager: AudioManager, executor: Executor) =
+    audioManager.addOnModeChangedListener(executor, listener)
+
+  fun unregister(audioManager: AudioManager) =
+    audioManager.removeOnModeChangedListener(listener)
+}
 
 /**
  * Android counterpart of the iOS CallKit-based detector, built on `AudioManager.getMode()` —
@@ -28,7 +46,7 @@ class CallDetectorModule : Module() {
     get() = appContext.reactContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
   private val mainHandler = Handler(Looper.getMainLooper())
-  private var modeListener: AudioManager.OnModeChangedListener? = null
+  private var modeObserver: ModeChangeObserver? = null
   private var pollTick: Runnable? = null
   private var lastReported: Boolean? = null
 
@@ -64,10 +82,12 @@ class CallDetectorModule : Module() {
 
     OnStartObserving {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val listener = AudioManager.OnModeChangedListener { mainHandler.post { emitIfChanged() } }
         appContext.reactContext?.mainExecutor?.let { executor ->
-          audioManager?.addOnModeChangedListener(executor, listener)
-          modeListener = listener
+          audioManager?.let { am ->
+            val observer = ModeChangeObserver { mainHandler.post { emitIfChanged() } }
+            observer.register(am, executor)
+            modeObserver = observer
+          }
         }
       } else {
         val tick = object : Runnable {
@@ -86,9 +106,9 @@ class CallDetectorModule : Module() {
 
     OnStopObserving {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        modeListener?.let { audioManager?.removeOnModeChangedListener(it) }
+        modeObserver?.let { observer -> audioManager?.let(observer::unregister) }
       }
-      modeListener = null
+      modeObserver = null
       pollTick?.let(mainHandler::removeCallbacks)
       pollTick = null
       lastReported = null
