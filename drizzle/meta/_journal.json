@@ -78,6 +78,13 @@
       "when": 1783474384817,
       "tag": "0010_lumpy_captain_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785097440766,
+      "tag": "0011_clip_badges",
+      "breakpoints": true
     }
   ]
 }

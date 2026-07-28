@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as Crypto from 'expo-crypto';
 
 import {
@@ -80,20 +80,34 @@ export async function createDraft(): Promise<string> {
 }
 
 export async function addSegment(draftId: string, segment: NewSegment): Promise<void> {
-  const [{ value: order }] = await db
-    .select({ value: count() })
-    .from(segments)
-    .where(eq(segments.projectId, draftId));
+  // Everything is read-then-write, so it all runs inside one transaction: the badge number
+  // comes from the project's monotonic `lastClipNumber` counter (bump + read back atomically;
+  // never decremented, so deletes/renames can't cause reuse), and `order` is the next free
+  // slot (max + 1, race-safe and hole-tolerant after deletes — the unique (projectId, order)
+  // index backstops any regression).
+  await db.transaction(async (tx) => {
+    const [counter] = await tx
+      .update(projects)
+      .set({ lastClipNumber: sql`${projects.lastClipNumber} + 1`, lastModified: now })
+      .where(eq(projects.id, draftId))
+      .returning({ clipNumber: projects.lastClipNumber });
+    if (!counter) throw new Error(`addSegment: draft ${draftId} not found`);
 
-  await db.insert(segments).values({
-    id: segment.id,
-    projectId: draftId,
-    order,
-    originalFilename: segment.originalFilename,
-    durationMs: segment.durationMs,
-    thumbnail: segment.thumbnail ?? null,
+    const [{ maxOrder }] = await tx
+      .select({ maxOrder: sql<number | null>`max(${segments.order})` })
+      .from(segments)
+      .where(eq(segments.projectId, draftId));
+
+    await tx.insert(segments).values({
+      id: segment.id,
+      projectId: draftId,
+      order: (maxOrder ?? -1) + 1,
+      label: String(counter.clipNumber),
+      originalFilename: segment.originalFilename,
+      durationMs: segment.durationMs,
+      thumbnail: segment.thumbnail ?? null,
+    });
   });
-  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, draftId));
 }
 
 /** Delete a segment and its clip file, unless a sibling segment still references the file. */
@@ -173,9 +187,21 @@ export async function resetEdit(segmentId: string): Promise<void> {
 export async function reorderSegments(orderedIds: string[]): Promise<void> {
   if (orderedIds.length === 0) return;
   await db.transaction(async (tx) => {
-    for (let i = 0; i < orderedIds.length; i++) {
-      await tx.update(segments).set({ order: i }).where(eq(segments.id, orderedIds[i]));
-    }
+    // Two passes: SQLite checks UNIQUE per statement, so renumbering in place would collide
+    // with rows still holding their old slot. Park all rows on distinct negatives first,
+    // then assign final slots via one CASE update.
+    await tx
+      .update(segments)
+      .set({ order: sql`-${segments.order} - 1` })
+      .where(inArray(segments.id, orderedIds));
+    const finalOrder = sql`case ${sql.join(
+      orderedIds.map((id, i) => sql`when ${segments.id} = ${id} then ${i}`),
+      sql` `,
+    )} else ${segments.order} end`;
+    await tx
+      .update(segments)
+      .set({ order: finalOrder })
+      .where(inArray(segments.id, orderedIds));
     const [first] = await tx.select().from(segments).where(eq(segments.id, orderedIds[0]));
     if (first) {
       await tx.update(projects).set({ lastModified: now }).where(eq(projects.id, first.projectId));

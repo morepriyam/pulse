@@ -131,6 +131,8 @@ async function migrateDraft(draft: LegacyDraft): Promise<boolean> {
       id: draftId,
       name: draft.name?.trim() || null,
       mode: draft.mode === 'upload' ? 'upload' : 'camera',
+      // Seed the badge counter past the labels assigned below (1..n).
+      lastClipNumber: imported.length,
       createdAt,
       lastModified: parseTimestamp(draft.lastModified, createdAt),
     })
@@ -146,6 +148,7 @@ async function migrateDraft(draft: LegacyDraft): Promise<boolean> {
         id: clip.id,
         projectId: draftId,
         order: i,
+        label: String(i + 1),
         originalFilename: clip.relPath,
         durationMs: clip.durationMs,
         thumbnail: hasThumb ? thumbRel : null,

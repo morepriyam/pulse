@@ -18,7 +18,7 @@ import {
   segmentOffsets,
 } from '@/utils/segment-window';
 
-/** Tolerance for "playhead reached the clip's out-point" (ms). */
+/** Tolerance for "the playhead sits at the clip's end" (togglePlay's restart-from-end check). */
 const END_EPSILON_MS = 60;
 
 /** Index of the selected segment, falling back to the first clip when the selection is gone
@@ -82,8 +82,8 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
   // Opening a preview (anchor goes null → a tapped segment) auto-plays from that clip.
   // Arm the same intent the auto-advance uses; the load effect's begin()/statusChange
   // consumes it once the clip is ready. Declared before the load effect so it runs first
-  // on the opening commit. Tapping another thumb mid-preview (selectSegment) still lands
-  // paused — it clears this and doesn't change the anchor.
+  // on the opening commit. Tapping another thumb mid-preview (selectSegment) arms the
+  // same intent itself — a tap always means "play this clip".
   useEffect(() => {
     if (anchorId != null) wantPlayRef.current = true;
   }, [anchorId]);
@@ -146,9 +146,27 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     if (loadedFileRef.current === effFile(active)) {
       begin();
     } else {
-      loadedFileRef.current = effFile(active);
+      const file = effFile(active);
+      loadedFileRef.current = file;
       swapInFlightRef.current = true;
-      void player.replaceAsync(absolutize(effFile(active))).then(begin);
+      void player
+        .replaceAsync(absolutize(file))
+        .then(begin)
+        .catch(() => {
+          if (cancelled) return;
+          // Failed load (missing/corrupt file) — disarm so the session can't wedge with the
+          // guards stuck armed. statusChange('error') covers the player side; this covers
+          // the rejected promise itself. Also clear loadedFileRef/pendingSeek and unload the
+          // player so the failed file can't masquerade as loaded — otherwise seekToGlobalMs
+          // (or a later reselect of this clip) would see loadedFileRef matching this segment
+          // and seek/begin() in place on a player that never actually loaded it.
+          swapInFlightRef.current = false;
+          advancingRef.current = false;
+          wantPlayRef.current = false;
+          if (loadedFileRef.current === file) loadedFileRef.current = null;
+          pendingSeekRef.current = null;
+          void player.replaceAsync(null).catch(() => {});
+        });
     }
     return () => {
       cancelled = true;
@@ -174,7 +192,7 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     }
   });
 
-  // Advance past the active clip: next playable clip, or pause at the draft's end.
+  // Advance past the active clip: next playable clip, or park at the draft's end.
   const advance = () => {
     if (!active) return;
     advancingRef.current = true;
@@ -182,47 +200,73 @@ export function usePreview(segments: Segment[], anchorId: string | null) {
     if (next) {
       wantPlayRef.current = true;
       pendingSeekRef.current = null;
+      // Land the position on the incoming clip's start in the SAME render as the selection
+      // swap. Leaving the outgoing clip's near-end position in place made globalMs read as
+      // "that many ms into the NEXT clip" for a beat — the bar's knob visibly jumped into
+      // the next thumb, then slid back to its left edge once begin() reset the position.
+      setPositionMs(inMs(next));
       setSelectedId(next.id);
     } else {
+      // Draft finished — pause AT the end. Seeking to inMs here rewound the playhead to the
+      // START of the last clip while paused; togglePlay's end check handles the restart.
       player.pause();
-      player.currentTime = inMs(active) / 1000;
-      setPositionMs(inMs(active));
+      player.currentTime = outMs(active) / 1000;
+      setPositionMs(outMs(active));
     }
   };
 
-  // Track the playhead and auto-advance when the trim window's out-point is reached.
+  // Track the playhead. Advancing is playToEnd's job: under the destructive-edit model a
+  // clip's out-point IS its file's end, so playToEnd always fires — advancing here at an
+  // epsilon before the out-point only cut the last frames off every clip.
   useEventListener(player, 'timeUpdate', ({ currentTime }: { currentTime: number }) => {
     if (!active || swapInFlightRef.current || advancingRef.current) return;
-    const ms = Math.round(currentTime * 1000);
-    setPositionMs(ms);
-    if (!player.playing || ms < outMs(active) - END_EPSILON_MS) return;
-    advance();
+    setPositionMs(Math.round(currentTime * 1000));
   });
 
-  // Backstop for natural (untrimmed) clip ends: the 250ms ticks can miss the pre-end
-  // epsilon window entirely; playToEnd always fires when the item runs out.
+  // Clip ran out — move on (or park at the draft's end).
   useEventListener(player, 'playToEnd', () => {
     if (!active || swapInFlightRef.current || advancingRef.current) return;
     advance();
   });
 
-  /** Make a clip the active one (thumb tap while previewing); lands paused at its in-point. */
+  /** Make a clip the active one (thumb tap while previewing); plays from its in-point —
+   *  same as tapping a thumb from the recorder, so a tap ALWAYS means "play this clip". */
   const selectSegment = useCallback(
     (id: string) => {
-      wantPlayRef.current = false;
+      // Stale tap — the row vanished (e.g. deleted) between render and gesture delivery.
+      // Bail before touching any state: falling through would arm the play intent and
+      // setSelectedId(missing id), which resolveActiveIndex resolves to the FIRST clip —
+      // unexpectedly starting playback of a clip the user never tapped.
+      const target = segments.find((s) => s.id === id);
+      if (!target) return;
       pendingSeekRef.current = null;
       // Pausing also silences the outgoing clip's event stream during the swap.
       player.pause();
       if (id === activeId && active) {
-        // Same clip — the load effect won't re-run; seek in place.
+        // Same clip — the load effect won't re-run; restart from the in-point in place.
         advancingRef.current = false;
         player.currentTime = inMs(active) / 1000;
         setPositionMs(inMs(active));
+        // Arm the play intent and only play() when the item is actually playable — if the
+        // clip is mid-reload (its file changed after an edit, so a replaceAsync is in
+        // flight), play() on a loading item is dropped; begin()/statusChange consumes the
+        // armed intent once the reload is ready, same as the cross-clip path below.
+        wantPlayRef.current = true;
+        if (player.status === 'readyToPlay') {
+          wantPlayRef.current = false;
+          player.play();
+        }
         return;
       }
+      // Arm the same play intent the auto-advance uses; begin()/statusChange consumes it
+      // once the incoming clip is ready.
+      wantPlayRef.current = true;
+      // Land the position on the incoming clip's in-point in the same render as the
+      // selection (same stale-position jump as advance() otherwise).
+      setPositionMs(inMs(target));
       setSelectedId(id);
     },
-    [player, activeId, active],
+    [player, activeId, active, segments],
   );
 
   /** Pause playback without changing the selection (e.g. while the RNVT editor is open). */

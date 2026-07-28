@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const now = sql`(unixepoch('subsec') * 1000)`;
 
@@ -44,6 +44,10 @@ export const projects = sqliteTable('projects', {
   // merge output, the duration feeds the beat manifest). Null for segment-unit drafts.
   uploadMergedPath: text('upload_merged_path'),
   uploadMergedDurationMs: integer('upload_merged_duration_ms'),
+  // Monotonic badge counter: the highest clip number ever minted for this draft. Bumped on
+  // every clip added, never decremented — so deleting (or renaming) a clip can never cause
+  // its number to be reused.
+  lastClipNumber: integer('last_clip_number').notNull().default(0),
   createdAt: integer('created_at').notNull().default(now),
   lastModified: integer('last_modified').notNull().default(now),
 });
@@ -56,24 +60,36 @@ export const projects = sqliteTable('projects', {
  * the edited columns. The effective file is `editedFilename ?? originalFilename` and the
  * effective duration is `editedDurationMs ?? durationMs`.
  */
-export const segments = sqliteTable('segments', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  order: integer('sort_order').notNull(),
-  // Pristine source clip (relative path) — never mutated.
-  originalFilename: text('original_filename').notNull(),
-  durationMs: integer('duration_ms').notNull(),
-  // Re-encoded editor output (relative path) + its duration; null until edited.
-  editedFilename: text('edited_filename'),
-  editedDurationMs: integer('edited_duration_ms'),
-  // Dead under the destructive model (kept to avoid a destructive drop migration).
-  trimStartMs: integer('trim_start_ms'),
-  trimEndMs: integer('trim_end_ms'),
-  // Reserved; thumbnails are derived at runtime from the clip file.
-  thumbnail: text('thumbnail'),
-});
+export const segments = sqliteTable(
+  'segments',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    order: integer('sort_order').notNull(),
+    // Clip name shown on the thumb badge. Minted from the project's `lastClipNumber` counter
+    // at insert and NEVER renumbered — reorder mutates `order`, delete leaves gaps — so the
+    // badge stays a stable identity for the draft's lifetime; a future rename feature just
+    // overwrites it. Cosmetic metadata only — never part of the segment-set signature, so
+    // renaming can't invalidate a merged transcript.
+    label: text('label'),
+    // Pristine source clip (relative path) — never mutated.
+    originalFilename: text('original_filename').notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    // Re-encoded editor output (relative path) + its duration; null until edited.
+    editedFilename: text('edited_filename'),
+    editedDurationMs: integer('edited_duration_ms'),
+    // Dead under the destructive model (kept to avoid a destructive drop migration).
+    trimStartMs: integer('trim_start_ms'),
+    trimEndMs: integer('trim_end_ms'),
+    // Reserved; thumbnails are derived at runtime from the clip file.
+    thumbnail: text('thumbnail'),
+  },
+  // One slot per position: catches any regression of the order-assignment race at write time
+  // (addSegment computes order inside a transaction; reorder renumbers in two passes).
+  (t) => [uniqueIndex('segments_project_order_unique').on(t.projectId, t.order)],
+);
 
 /**
  * On-device speech-to-text for a draft's MERGED video (whisper.rn). One row per draft (project),
