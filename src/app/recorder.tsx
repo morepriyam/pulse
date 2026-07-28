@@ -145,10 +145,19 @@ export default function RecorderScreen() {
   useEffect(() => () => clearTimeout(recoverTimerRef.current ?? undefined), []);
   const onCameraError = useCallback(
     (e: unknown) => {
+      const hay = `${String((e as { message?: unknown })?.message ?? '')} ${String(e)}`;
+      // CameraX cancels control calls (zoom/torch) that land during session transitions with
+      // OperationCanceledException — benign on Android (the next applied value wins), so don't
+      // treat it as a real camera error.
+      if (
+        hay.includes('OperationCanceledException') ||
+        hay.includes('Camera is not active') ||
+        hay.includes('new enableTorch being set')
+      )
+        return;
       console.error('[Camera]', e);
       // VisionCamera wraps the native error; the AVFoundation domain/code and '!pri' four-char code
       // survive in the stringified message, so match on those rather than a brittle wrapper code.
-      const hay = `${String((e as { message?: unknown })?.message ?? '')} ${String(e)}`;
       if (!hay.includes('-11800') && !hay.includes('!pri') && !hay.includes('561017449')) return;
       reportMicPriorityError();
       // Clustered errors must not let an earlier timer flip `recovering` off mid-bounce — restart it.
@@ -172,6 +181,15 @@ export default function RecorderScreen() {
   // Only surfaced when the lens exists, so a single-lens front camera shows no chips.
   const { lensPresets, neutralZoom } = useMemo(() => {
     if (!device) return { lensPresets: [] as LensPreset[], neutralZoom: 1 };
+    if (__DEV__) {
+      // Lens-parity diagnostics: many Android devices expose only the wide-angle camera to
+      // third-party apps (aux macro/depth cams are invisible to CameraX), which legitimately
+      // hides the lens switcher. This log shows what the platform actually reported.
+      console.log(
+        `[recorder] device=${device.position} physical=[${device.physicalDevices.map((d) => d.type).join(', ')}] ` +
+          `minZoom=${device.minZoom} maxZoom=${device.maxZoom} switchFactors=[${device.zoomLensSwitchFactors.join(', ')}]`,
+      );
+    }
     const types = new Set(device.physicalDevices.map((d) => d.type));
     const order = [
       { type: 'ultra-wide-angle', label: '0.5x' },
@@ -179,6 +197,20 @@ export default function RecorderScreen() {
       { type: 'telephoto', label: 'Tele' },
     ] as const;
     const present = order.filter((o) => types.has(o.type));
+    if (present.length === 0) {
+      // Android: CameraX regularly reports no per-lens metadata even on multi-camera phones
+      // (physicalDevices comes back empty), so derive presets from the logical zoom bounds
+      // instead: a sub-1 minZoom means an ultra-wide is fused into the logical camera, and any
+      // switch factor above 1 marks where a telephoto engages. Single-lens devices
+      // (minZoom=1, no factors) produce <2 presets and correctly show no chips.
+      const derived: LensPreset[] = [];
+      if (device.minZoom < 0.95) derived.push({ label: '0.5x', zoom: device.minZoom });
+      derived.push({ label: DEFAULT_LENS_LABEL, zoom: 1 });
+      const tele = device.zoomLensSwitchFactors.find((f) => f > 1);
+      if (tele != null) derived.push({ label: 'Tele', zoom: tele });
+      if (derived.length < 2) return { lensPresets: [], neutralZoom: Math.max(1, device.minZoom) };
+      return { lensPresets: derived, neutralZoom: 1 };
+    }
     const boundaries = [device.minZoom, ...device.zoomLensSwitchFactors];
     const presets: LensPreset[] = present.map((o, i) => ({
       label: o.label,
@@ -307,8 +339,18 @@ export default function RecorderScreen() {
           device={device}
           isActive={cameraActive}
           outputs={outputs}
-          zoom={zoomSv}
-          torchMode={torch && !previewing ? 'on' : 'off'}
+          // Zoom/torch are gated until the session has started: CameraX rejects control calls on
+          // an inactive camera (OperationCanceledException) where iOS quietly tolerates them, so
+          // applying these props on mount — before `onStarted` — throws unhandled rejections on
+          // Android. `undefined` makes VisionCamera's updater hooks skip the native call; the
+          // shared-value binding still applies the current zoom the moment it attaches.
+          zoom={cameraReady ? zoomSv : undefined}
+          // ...and torch is additionally gated on hardware: writing any torchMode (even 'off') to
+          // a torch-less camera (typically the front one) throws IllegalStateException("No flash
+          // unit") on Android, while iOS silently ignores it.
+          torchMode={
+            cameraReady && device.hasTorch ? (torch && !previewing ? 'on' : 'off') : undefined
+          }
           constraints={constraints}
           // Smooth (rather than snapping) continuous-AF transitions — VisionCamera's recommended
           // setting for video, so refocus pulls look cinematic instead of "hunting". Gated on

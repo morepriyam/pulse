@@ -67,7 +67,8 @@ const WORD_PER_SEGMENT = 1;
  * Build a Whisper context, preferring on-device acceleration. `useGpu` runs inference on the
  * Metal GPU (iOS) — several times faster and far lighter on battery than the CPU path — with
  * Flash Attention on top. Older devices / simulators without a usable GPU throw on init, so we
- * fall back to the plain CPU context rather than failing transcription outright.
+ * fall back to the plain CPU context rather than failing transcription outright. Android has no
+ * GPU backend in whisper.rn (the flag is ignored there), so Android always runs on CPU.
  */
 async function initContext(filePath: string): Promise<WhisperContext> {
   try {

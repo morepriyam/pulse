@@ -574,7 +574,9 @@ class BackgroundUploadManager {
   private async uploadMerged(session: UploadSession, signal: AbortSignal): Promise<string> {
     const { draftId, destination, segments, merged } = session;
     if (!merged) throw new Error('Export is not ready yet');
-    const file = new File(merged.path);
+    // merged.path is a bare filesystem path on Android (RNVT) — normalize to a file:// URI or the
+    // File API rejects it outright ("URI is not absolute").
+    const file = new File(toFileUri(merged.path));
     // The merged output is a native cache file; if it was evicted (rare, but possible after a long
     // gap or an app kill) there's nothing to upload — surface a clear, actionable reason rather
     // than crashing in `bytes()`. Re-opening the draft re-exports and re-enqueues with a fresh path.

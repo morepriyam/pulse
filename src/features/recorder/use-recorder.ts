@@ -2,7 +2,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking } from 'react-native';
+import { Alert, AppState, Linking, Platform } from 'react-native';
 import { isValidFile, compress, deleteFile, probeVideo } from 'react-native-video-trim';
 import {
   type CameraRef,
@@ -33,8 +33,12 @@ import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 import CallDetector from '../../../modules/expo-call-detector/src/CallDetectorModule';
 import { useCallState } from './use-call-state';
 
-export const STABILIZATION_MODES = ['off', 'standard', 'cinematic', 'auto'] as const;
-export type StabilizationMode = (typeof STABILIZATION_MODES)[number];
+// 'cinematic' is an iOS-only AVCaptureVideoStabilizationMode — CameraX has no equivalent, so
+// Android only cycles through the modes it can actually honor. The union type keeps 'cinematic'
+// on both platforms so persisted iOS prefs and shared UI maps still typecheck.
+export const STABILIZATION_MODES: readonly StabilizationMode[] =
+  Platform.OS === 'ios' ? ['off', 'standard', 'cinematic', 'auto'] : ['off', 'standard', 'auto'];
+export type StabilizationMode = 'off' | 'standard' | 'cinematic' | 'auto';
 
 /** Which camera the recorder is pointed at. Mirrors VisionCamera's `CameraPosition`,
  * declared locally so the rest of the app doesn't import the camera SDK for a string union. */
@@ -433,6 +437,10 @@ export function useRecorder(initialDraftId?: string) {
   }
 
   function flipCamera() {
+    // Re-gate zoom/torch until the flipped session has started (`onStarted` refires per device
+    // bind). Without this, torchMode lands on the outgoing camera mid-rebind — on Android that
+    // throws IllegalStateException("No flash unit") when the front camera is still bound.
+    setCameraReady(false);
     setFacing((prev) => {
       const next = prev === 'back' ? 'front' : 'back';
       if (next === 'front') setTorch(false);
