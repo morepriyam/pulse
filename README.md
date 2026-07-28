@@ -74,7 +74,7 @@ flowchart TB
 
 - Multi-clip segmented recording with [VisionCamera](https://react-native-vision-camera.com) v5 — segments append to one draft with a live segment bar and drag-to-reorder
 - Front/back flip, torch, mic mute, tap-to-focus, pinch-to-zoom, lens selection, and stabilization modes (off / standard / cinematic / auto), all persisted across sessions
-- Call-aware capture: a custom native module (CallKit on iOS) gates the microphone during phone/VoIP calls so recordings don't silently freeze
+- Call-aware capture: a custom native module (CallKit on iOS, audio-mode detection on Android) gates the microphone during phone/VoIP calls so recordings don't silently freeze
 - Import existing videos from Photos instead of recording
 
 ### Editing & export
@@ -103,6 +103,17 @@ flowchart TB
 - TUS v1 resumable uploads with exponential backoff; interrupted uploads resume from the server's true byte offset, even after an app relaunch
 - Two upload strategies, negotiated per server: **merged** (one video + captions + beat-timecode manifest + thumbnail) or **segment** (per-segment clips + an ordering manifest)
 - Bearer tokens stored in the secure keychain, never in the database
+
+## Platform support
+
+Pulse runs on **iOS and Android** from a single codebase. iOS is the original platform; Android has been brought to parity and verified end-to-end on device — recording, editing, merge/export, on-device captions, `.pulse` sharing, pairing, and resumable uploads (including upload survival through backgrounding, Doze, and app kills via a foreground service).
+
+Platform notes:
+
+- **Cinematic stabilization** is iOS-only (VisionCamera exposes it via AVFoundation); Android offers off / standard / auto
+- **Whisper transcription** uses Metal GPU acceleration on iOS; Android runs on CPU, so larger models are noticeably slower — Base (en) is the recommended starting point
+- **Call-aware capture** uses CallKit on iOS and an audio-mode heuristic on Android (no extra permissions), so both platforms pause the mic during phone/VoIP calls
+- On Android, merged exports save through MediaStore into `DCIM/`, and uploads run as a `dataSync` foreground service with a progress notification
 
 ## How it works
 
