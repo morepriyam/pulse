@@ -437,6 +437,10 @@ export function useRecorder(initialDraftId?: string) {
   }
 
   function flipCamera() {
+    // Re-gate zoom/torch until the flipped session has started (`onStarted` refires per device
+    // bind). Without this, torchMode lands on the outgoing camera mid-rebind — on Android that
+    // throws IllegalStateException("No flash unit") when the front camera is still bound.
+    setCameraReady(false);
     setFacing((prev) => {
       const next = prev === 'back' ? 'front' : 'back';
       if (next === 'front') setTorch(false);
