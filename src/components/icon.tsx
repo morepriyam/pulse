@@ -68,6 +68,7 @@ const ANDROID_GLYPHS: Partial<Record<string, LucideIcon>> = {
   checkmark: Check,
   'checkmark.circle.fill': CircleCheck,
   'chevron.up': ChevronUp,
+  circle: Circle,
   'circle.slash': CircleSlash,
   ellipsis: Ellipsis,
   exclamationmark: CircleAlert,
