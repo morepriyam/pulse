@@ -9,10 +9,11 @@ import CallDetector from '../../../modules/expo-call-detector/src/CallDetectorMo
  * live during a call throws the AVFoundation -11800 / '!pri' error that freezes the capture session.
  *
  * Signals:
- *  - callActive: live from CallKit's CXCallObserver (our local expo-call-detector module). The
+ *  - callActive: on iOS live from CallKit's CXCallObserver; on Android from AudioManager's mode
+ *    (RINGTONE / IN_CALL / IN_COMMUNICATION) — both via our local expo-call-detector module. The
  *    native delegate does NOT fire while the app is suspended, so a call that *starts* while the
  *    app is backgrounded is invisible until resume — we therefore re-poll the live state on
- *    foreground (isCallActive() reads CXCallObserver.calls directly).
+ *    foreground (isCallActive() reads the native call state directly).
  *  - appActive: false while backgrounded. VisionCamera has no lifecycle handling of its own, so
  *    iOS auto-resumes the capture session on foreground with the mic still attached — straight into
  *    a call that began in the background. The recorder stops the session while backgrounded (via
