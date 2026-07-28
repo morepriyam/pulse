@@ -59,7 +59,14 @@ export const MODELS: WhisperModel[] = [
     name: 'large-v3-turbo · q5_0',
     filename: 'ggml-large-v3-turbo-q5_0.bin',
     approxBytes: 574 * 1024 * 1024,
-    note: 'Any language · best quality',
+    // whisper.rn has no GPU backend on Android (CPU-only inference), so the largest model is
+    // markedly slower there than on iOS (Metal) — the note steers Android users to Base/Small.
+    // `process.env.EXPO_OS` (inlined by babel-preset-expo) keeps this module free of react-native
+    // imports so the pure-Node jest suite can load it.
+    note:
+      process.env.EXPO_OS === 'android'
+        ? 'Any language · best quality · slow on Android'
+        : 'Any language · best quality',
     lang: 'auto',
   },
 ];

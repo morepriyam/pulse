@@ -1,5 +1,7 @@
-import { PermissionsAndroid, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import BackgroundService, { type BackgroundTaskOptions } from 'react-native-background-actions';
+
+import { uploadNotify } from './notify';
 
 let active = false;
 /** Resolves the current service task body, letting the service wind down — set per `begin()`. */
@@ -29,15 +31,6 @@ function idleUntilStopped(): Promise<void> {
   });
 }
 
-async function ensureNotificationPermission(): Promise<void> {
-  if (Platform.OS !== 'android' || (Platform.Version as number) < 33) return;
-  try {
-    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-  } catch {
-    // Denied → the service still runs, the ongoing notification just won't be visible.
-  }
-}
-
 /**
  * Keeps the JS runtime alive while uploads drain. ANDROID ONLY: wraps the drain in a `dataSync`
  * foreground service (react-native-background-actions) so the OS doesn't freeze/kill the process
@@ -55,7 +48,11 @@ export const keepAlive = {
   async begin(): Promise<void> {
     if (Platform.OS !== 'android' || active) return;
     active = true;
-    await ensureNotificationPermission();
+    // POST_NOTIFICATIONS for the service's required notification. MUST go through the same
+    // single-flight request `enqueue` already started (uploadNotify) — a second, concurrent native
+    // permission request for the same permission never settles its promise on Android, which
+    // deadlocked the drain loop right here (upload stuck at "Preparing…", service never started).
+    await uploadNotify.ensurePermission();
     try {
       await BackgroundService.start(idleUntilStopped, OPTIONS);
     } catch {
