@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { Platform } from 'react-native';
 
 // Type-only import — erased at runtime, so this does NOT create a circular dependency
 // with use-recorder.ts (which imports the value helpers below).
@@ -89,7 +90,7 @@ export type RecorderPrefs = {
   muted: boolean;
 };
 
-// Local validation list (kept in sync with STABILIZATION_MODES in use-recorder.ts) so we can
+// Local validation list (kept in sync with StabilizationMode in use-recorder.ts) so we can
 // reject corrupt/legacy stored values without a runtime import from the recorder module.
 const STABILIZATION_VALUES: readonly StabilizationMode[] = ['off', 'standard', 'cinematic', 'auto'];
 
@@ -100,11 +101,18 @@ export async function getRecorderPrefs(): Promise<RecorderPrefs> {
     getSetting(CAMERA_STABILIZATION_KEY),
     getSetting(CAMERA_MUTED_KEY),
   ]);
+  const storedStabilization = STABILIZATION_VALUES.includes(stabilization as StabilizationMode)
+    ? (stabilization as StabilizationMode)
+    : 'off';
   return {
     facing: facing === 'front' ? 'front' : 'back',
-    stabilization: STABILIZATION_VALUES.includes(stabilization as StabilizationMode)
-      ? (stabilization as StabilizationMode)
-      : 'off',
+    // 'cinematic' is an iOS-only AVCapture mode; if it was ever persisted on this device before
+    // the option was hidden on Android, degrade to 'standard' rather than feeding CameraX a mode
+    // it can't honor.
+    stabilization:
+      storedStabilization === 'cinematic' && Platform.OS !== 'ios'
+        ? 'standard'
+        : storedStabilization,
     muted: muted === 'true',
   };
 }
