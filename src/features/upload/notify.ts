@@ -3,17 +3,25 @@ import { AppState, Platform } from 'react-native';
 
 const CHANNEL_ID = 'uploads';
 
-let permissionRequested = false;
+let permissionFlow: Promise<void> | null = null;
 
 /**
  * Request notification permission once, in a foreground moment (called from `enqueue`, right after
  * the user taps Upload — the natural time to ask on iOS). Also creates the Android channel the
  * completion/failure banners post to. Best-effort: no-ops if the native module isn't in the build
  * yet (a dev client before `expo prebuild`), so uploads simply run without banners.
+ *
+ * Single-flight: concurrent callers share ONE promise. This matters on Android — `enqueue` fires
+ * this and the drain loop needs the same permission for the foreground-service notification
+ * (keep-alive.ts); two competing native permission requests over one system dialog leave the
+ * second promise unsettled forever, deadlocking the drain before the service ever starts.
  */
-async function ensurePermission(): Promise<void> {
-  if (permissionRequested) return;
-  permissionRequested = true;
+function ensurePermission(): Promise<void> {
+  permissionFlow ??= requestPermission();
+  return permissionFlow;
+}
+
+async function requestPermission(): Promise<void> {
   try {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
