@@ -102,7 +102,8 @@ export async function importTrimmedFile(
   segmentId: string,
 ): Promise<string> {
   const rev = Date.now();
-  await new File(srcUri).move(editedSegmentDest(draftId, segmentId, rev));
+  // RNVT's Android editor emits a bare path (iOS emits a file:// URI) — normalize for File.
+  await new File(toFileUri(srcUri)).move(editedSegmentDest(draftId, segmentId, rev));
   return editedSegmentRelPath(draftId, segmentId, rev);
 }
 
