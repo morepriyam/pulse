@@ -70,6 +70,22 @@ export function projectQuery(draftId: string) {
   return db.select().from(projects).where(eq(projects.id, draftId));
 }
 
+/**
+ * The draft's human-facing name (the title shown in the library / set via
+ * `renameDraft`), or `undefined` when it was never named — so it drops straight
+ * into an optional upload field without a `null` seam at the call site. Read
+ * fresh at upload time (like the transcript) so a rename right before upload
+ * wins over a value snapshotted at enqueue.
+ */
+export async function getDraftName(draftId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, draftId))
+    .limit(1);
+  return row?.name ?? undefined;
+}
+
 /** Every segment in the library — drives the global background transcription engine. */
 // Mutations — each is a single-row write that autosaves the draft (§3).
 

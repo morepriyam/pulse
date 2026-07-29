@@ -509,6 +509,89 @@ describe('uploadViaTus', () => {
     expect(metadata).toContain(`checksum ${btoa('sha256:deadbeef')}`);
   });
 
+  it('includes an ASCII name in Upload-Metadata, and omits it when unset', async () => {
+    const run = async (name?: string) => {
+      const { fetchImpl, calls } = createFetchStub({
+        POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+        HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '1' } })],
+      });
+      const { uploadChunk } = createChunkStub([]);
+      await uploadViaTus({
+        server: SERVER,
+        token: null,
+        artifactId: ARTIFACT_ID,
+        filename: 'clip.mp4',
+        kind: 'video',
+        name,
+        file: fakeFile(1) as never,
+        fetchImpl,
+        uploadChunk,
+      });
+      const createCall = calls.find((c) => c.init?.method === 'POST');
+      return (createCall?.init?.headers as Record<string, string>)['Upload-Metadata'];
+    };
+
+    expect(await run('Morning rounds')).toContain(`name ${btoa('Morning rounds')}`);
+    // Unset: no `name` key at all (so an un-renamed draft sends nothing). Check
+    // comma-parts precisely — a plain `.toContain('name ')` would false-match
+    // the `filename ` part.
+    const hasNameKey = (md: string) => md.split(',').some((p) => p.trim().startsWith('name '));
+    expect(hasNameKey(await run(undefined))).toBe(false);
+  });
+
+  it('encodes a non-ASCII name as UTF-8 base64 (btoa alone would corrupt it)', async () => {
+    const title = 'Café ☕ 🎥';
+    const { fetchImpl, calls } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '1' } })],
+    });
+    const { uploadChunk } = createChunkStub([]);
+    await uploadViaTus({
+      server: SERVER,
+      token: null,
+      artifactId: ARTIFACT_ID,
+      filename: 'clip.mp4',
+      kind: 'video',
+      name: title,
+      file: fakeFile(1) as never,
+      fetchImpl,
+      uploadChunk,
+    });
+    const createCall = calls.find((c) => c.init?.method === 'POST');
+    const metadata = (createCall?.init?.headers as Record<string, string>)['Upload-Metadata'];
+    const namePart = metadata.split(',').find((p) => p.trim().startsWith('name '));
+    if (!namePart) throw new Error('expected a `name` Upload-Metadata part');
+    const b64 = namePart.trim().slice('name '.length);
+    // The server decodes base64 as UTF-8; assert it recovers the exact title.
+    expect(Buffer.from(b64, 'base64').toString('utf8')).toBe(title);
+  });
+
+  it('omits the name (does not throw) when the title is a malformed surrogate', async () => {
+    const { fetchImpl, calls } = createFetchStub({
+      POST: [new Response(null, { status: 201, headers: { location: '/pulsevault/upload/abc' } })],
+      HEAD: [new Response(null, { status: 200, headers: { 'upload-offset': '1' } })],
+    });
+    const { uploadChunk } = createChunkStub([]);
+    // A lone high surrogate (e.g. a title pasted truncated mid-emoji) would make
+    // encodeURIComponent throw; the upload must still succeed, just without name.
+    await expect(
+      uploadViaTus({
+        server: SERVER,
+        token: null,
+        artifactId: ARTIFACT_ID,
+        filename: 'clip.mp4',
+        kind: 'video',
+        name: 'oops \uD83D',
+        file: fakeFile(1) as never,
+        fetchImpl,
+        uploadChunk,
+      }),
+    ).resolves.toBeDefined();
+    const createCall = calls.find((c) => c.init?.method === 'POST');
+    const metadata = (createCall?.init?.headers as Record<string, string>)['Upload-Metadata'];
+    expect(metadata.split(',').some((p) => p.trim().startsWith('name '))).toBe(false);
+  });
+
   it('rejects a Location header that redirects to a different origin than the paired server', async () => {
     // A malicious or compromised paired server could otherwise redirect every
     // subsequent HEAD/PATCH/DELETE (each carrying the bearer capability

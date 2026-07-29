@@ -77,6 +77,8 @@ export type UploadArtifactSpec = {
   kind: ArtifactKind;
   relatedTo?: string;
   checksum?: string;
+  /** Free-form display title (the draft name). Set only on the session anchor. */
+  name?: string;
   file: File;
   /** A previously-created resource URL to resume, or `null` to create fresh. */
   resourceUrl: string | null;

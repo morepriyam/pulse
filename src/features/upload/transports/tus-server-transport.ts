@@ -27,6 +27,7 @@ export const tusServerTransport: UploadTransport = {
       kind: artifact.kind,
       relatedTo: artifact.relatedTo,
       checksum: artifact.checksum,
+      name: artifact.name,
       file: artifact.file,
       resourceUrl: artifact.resourceUrl,
       onResourceCreated,

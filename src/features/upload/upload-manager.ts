@@ -4,6 +4,7 @@ import { getInfoAsync } from 'expo-file-system/legacy';
 
 import { deleteDestination, getDestinationIdByArtifactId } from '@/db/destinations';
 import {
+  getDraftName,
   getResumableDrafts,
   getUploadArtifact,
   projectQuery,
@@ -114,6 +115,8 @@ type ArtifactInput = {
   filename: string;
   kind: ArtifactKind;
   relatedTo?: string;
+  /** Free-form display title (the draft name). Set only on the session anchor. */
+  name?: string;
   file: File;
 };
 
@@ -504,6 +507,7 @@ class BackgroundUploadManager {
         kind: artifact.kind,
         relatedTo: artifact.relatedTo,
         checksum,
+        name: artifact.name,
         file: artifact.file,
         resourceUrl,
       },
@@ -577,6 +581,8 @@ class BackgroundUploadManager {
     // merged.path is a bare filesystem path on Android (RNVT) — normalize to a file:// URI or the
     // File API rejects it outright ("URI is not absolute").
     const file = new File(toFileUri(merged.path));
+    // The draft's title rides the video — the merged unit's session anchor.
+    const draftName = await getDraftName(draftId);
     // The merged output is a native cache file; if it was evicted (rare, but possible after a long
     // gap or an app kill) there's nothing to upload — surface a clear, actionable reason rather
     // than crashing in `bytes()`. Re-opening the draft re-exports and re-enqueues with a fresh path.
@@ -646,7 +652,7 @@ class BackgroundUploadManager {
     const result = await this.uploadOne(
       draftId,
       destination,
-      { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', file },
+      { artifactId: destination.artifactId, filename: `${draftId}.mp4`, kind: 'video', name: draftName, file },
       destination.resourceUrl,
       checksum,
       signal,
@@ -675,6 +681,8 @@ class BackgroundUploadManager {
   private async uploadSegments(session: UploadSession, signal: AbortSignal): Promise<string> {
     const { draftId, destination, segments } = session;
     const total = segments.length;
+    // The ordering manifest is this unit's session anchor — carry the name there.
+    const draftName = await getDraftName(draftId);
     // Per-clip phase: `current` is the 1-based clip in flight; `progress` counts clips
     // already landed, so the bar only advances on completions (no misleading 0%-per-clip).
     const reportClip = (current: number, completed: number) =>
@@ -717,6 +725,7 @@ class BackgroundUploadManager {
         artifactId: destination.artifactId,
         filename: `${draftId}-segments.pulse`,
         kind: 'project',
+        name: draftName,
         file: manifestFile,
       },
       destination.resourceUrl,
