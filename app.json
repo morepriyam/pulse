@@ -35,7 +35,8 @@
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
-      "package": "com.mieweb.pulse"
+      "package": "com.mieweb.pulse",
+      "versionCode": 20000
     },
     "web": {
       "output": "static",
@@ -101,7 +102,8 @@
       "expo-background-task",
       "./plugins/with-ios-local-notifications-only",
       "expo-notifications",
-      "./plugins/with-upload-foreground-service"
+      "./plugins/with-upload-foreground-service",
+      "./plugins/with-release-signing"
     ],
     "experiments": {
       "typedRoutes": true,
