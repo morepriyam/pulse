@@ -43,6 +43,13 @@ const PHYSICAL_DEVICES: PhysicalDeviceType[] = ['ultra-wide-angle', 'wide-angle'
 // Upper zoom cap (factor). Devices expose 100x+ of mostly-unusable digital zoom; cap so the
 // drag/pinch range stays useful. Tunable on-device.
 const MAX_ZOOM_FACTOR = 16;
+// A second -11800 landing this soon after a recovery bounce means the rebuilt session hit the
+// same wall (an undetected call still owns the mic) — stop bouncing and drop the mic instead.
+const SESSION_ERROR_ESCALATION_MS = 3000;
+// One beat for expo-video's post-unload audio-session writes (async, on its own queue) to flush
+// before the recording config is restored — restoring first would let a late `.playback` write
+// clobber it right back.
+const PREVIEW_CLOSE_SETTLE_MS = 50;
 
 export default function RecorderScreen() {
   const insets = useSafeAreaInsets();
@@ -135,13 +142,55 @@ export default function RecorderScreen() {
   }, [focused, appActive, muted, callActive, prefsReady, previewing, acquireFocus, releaseFocus]);
   useEffect(() => () => void releaseFocus(), [releaseFocus]);
 
-  // Prediction can lose a race: on a cold-open / resume into an in-progress call the call snapshot
-  // can read stale, the mic attaches, and AVFoundation throws -11800 / '!pri' — which leaves the
-  // capture session FROZEN (it doesn't self-recover). So we react to the error directly: drop the
-  // mic (reportMicPriorityError rebuilds the output video-only) AND bounce the session off→on for a
-  // tick to force a clean restart out of the failed state. `recovering` drives the bounce.
+  // Preview-close handoff: closing the preview hands the shared audio session back to the
+  // recorder, and the camera restart re-attaches the mic input (enableAudio keeps it on the
+  // main capture session). If the restart wins the race against the session-config restore —
+  // expo-video's post-unload writes and the acquire above are both async — the mic I/O unit
+  // starts under the preview's playback-only category and AVFoundation kills the session with
+  // -11800 (underlying -10868, kAudioUnitErr_FormatNotSupported). Sequence instead of race:
+  // hold the camera off (cameraActive below) for one settle beat + an acquire, then restart.
+  // Detected as a render-phase transition so the same commit that clears `previewing` already
+  // holds the camera off. Muted / in-call closes skip the hold — they restart video-only, and
+  // a category can't break a session with no mic input.
+  const [audioHandoff, setAudioHandoff] = useState(false);
+  const [wasPreviewing, setWasPreviewing] = useState(previewing);
+  if (wasPreviewing !== previewing) {
+    setWasPreviewing(previewing);
+    if (!previewing && !muted && !callActive) setAudioHandoff(true);
+  }
+  useEffect(() => {
+    if (!audioHandoff) return;
+    let stale = false;
+    const timer = setTimeout(() => {
+      // acquire never throws (documented in use-audio-focus) — .then always runs.
+      void acquireFocus().then(() => {
+        if (!stale) setAudioHandoff(false);
+      });
+    }, PREVIEW_CLOSE_SETTLE_MS);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [audioHandoff, acquireFocus]);
+
+  // An AVFoundation -11800 leaves the capture session FROZEN (it doesn't self-recover), so we
+  // react to the error directly and bounce the session off→on for a tick to force a clean restart
+  // out of the failed state (`recovering` drives the bounce). The -11800 family has two flavors
+  // needing different handling:
+  //  - '!pri' (561017449): telephony owns the mic — prediction lost the cold-open/resume race
+  //    against an in-progress call (the call snapshot read stale and the mic attached anyway).
+  //    Drop the mic until the next authoritative call event (reportMicPriorityError rebuilds the
+  //    output video-only); recording with it would just re-throw.
+  //  - plain -11800 (e.g. underlying -10868, kAudioUnitErr_FormatNotSupported): the session
+  //    (re)started while the shared AVAudioSession sat in a playback-only category — the
+  //    preview-close handoff race (see the preview handoff above). Transient: re-assert the
+  //    recording config and bounce; latching the mic here is issue #124's false "On call" state,
+  //    which silently records every later clip without audio. If the bounce lands on the same
+  //    wall (a second -11800 inside the escalation window — an undetected call), stop bouncing
+  //    and drop the mic after all, so an error can never flicker-loop the camera.
   const [recovering, setRecovering] = useState(false);
   const recoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSessionErrorRef = useRef(0);
   useEffect(() => () => clearTimeout(recoverTimerRef.current ?? undefined), []);
   const onCameraError = useCallback(
     (e: unknown) => {
@@ -155,11 +204,25 @@ export default function RecorderScreen() {
         hay.includes('new enableTorch being set')
       )
         return;
-      console.error('[Camera]', e);
       // VisionCamera wraps the native error; the AVFoundation domain/code and '!pri' four-char code
       // survive in the stringified message, so match on those rather than a brittle wrapper code.
-      if (!hay.includes('-11800') && !hay.includes('!pri') && !hay.includes('561017449')) return;
-      reportMicPriorityError();
+      const micPriority = hay.includes('!pri') || hay.includes('561017449');
+      if (!micPriority && !hay.includes('-11800')) {
+        console.error('[Camera]', e);
+        return;
+      }
+      // Recovered below — log without the dev red-box a console.error would raise.
+      console.warn('[Camera] capture session error, recovering:', e);
+      const now = Date.now();
+      const repeated = now - lastSessionErrorRef.current < SESSION_ERROR_ESCALATION_MS;
+      lastSessionErrorRef.current = now;
+      if (micPriority || repeated) {
+        reportMicPriorityError();
+      } else if (!muted && !callActive) {
+        // Restore `.playAndRecord` before the bounce restarts the session, so the retry can't
+        // trip over the same stale playback-only category that killed it.
+        void acquireFocus();
+      }
       // Clustered errors must not let an earlier timer flip `recovering` off mid-bounce — restart it.
       clearTimeout(recoverTimerRef.current ?? undefined);
       setRecovering(true);
@@ -168,7 +231,7 @@ export default function RecorderScreen() {
         setRecovering(false);
       }, 150);
     },
-    [reportMicPriorityError],
+    [reportMicPriorityError, muted, callActive, acquireFocus],
   );
 
   const device = useCameraDevice(facing, { physicalDevices: PHYSICAL_DEVICES });
@@ -181,15 +244,6 @@ export default function RecorderScreen() {
   // Only surfaced when the lens exists, so a single-lens front camera shows no chips.
   const { lensPresets, neutralZoom } = useMemo(() => {
     if (!device) return { lensPresets: [] as LensPreset[], neutralZoom: 1 };
-    if (__DEV__) {
-      // Lens-parity diagnostics: many Android devices expose only the wide-angle camera to
-      // third-party apps (aux macro/depth cams are invisible to CameraX), which legitimately
-      // hides the lens switcher. This log shows what the platform actually reported.
-      console.log(
-        `[recorder] device=${device.position} physical=[${device.physicalDevices.map((d) => d.type).join(', ')}] ` +
-          `minZoom=${device.minZoom} maxZoom=${device.maxZoom} switchFactors=[${device.zoomLensSwitchFactors.join(', ')}]`,
-      );
-    }
     const types = new Set(device.physicalDevices.map((d) => d.type));
     const order = [
       { type: 'ultra-wide-angle', label: '0.5x' },
@@ -323,8 +377,10 @@ export default function RecorderScreen() {
   // call that started in the background (the -11800 freeze below); waiting for `appActive` lets
   // call detection re-poll first. `|| isRecording` keeps the session up while a clip finalizes in
   // background, so the segment saves before we tear it down. `!recovering` drops it for one bounce
-  // after a mic-priority error so it rebuilds cleanly.
-  const cameraActive = !previewing && focused && (appActive || isRecording) && !recovering;
+  // after a mic-priority error so it rebuilds cleanly, and `!audioHandoff` holds the restart after
+  // a preview closes until the recording session config is back (see the handoff above).
+  const cameraActive =
+    !previewing && !audioHandoff && focused && (appActive || isRecording) && !recovering;
 
   // Close: finalize any in-flight clip (saving it into the draft) before navigating home, so the
   // segment isn't lost when the camera unmounts.
