@@ -114,17 +114,44 @@ export function useRecorder(initialDraftId?: string) {
   // bitrate path above. setOutputSettings preserves whatever compression settings are present
   // (it only swaps the codec key). Failure is non-fatal — worst case that clip records HEVC,
   // exactly today's behavior, and the merge engine still handles it.
+  // The ref is committed only when the native call RESOLVES: setOutputSettings runs on the
+  // output's own queue and throws while the rebuilt output is not yet connected — the session
+  // reconfigure that attaches it runs on a different queue, so on every enableAudio rebuild the
+  // first attempt can race it and reject. Committing eagerly would let that rejection
+  // permanently pin the instance to HEVC; instead a short bounded retry rides out the
+  // reconfigure window, and the effect cleanup cancels retries if a recording starts.
   // NOTE: raw per-clip files are still written moov-at-end — AVCaptureMovieFileOutput (what
   // createRecorder actually wraps) has no faststart API, so faststart for uploads is owned by
   // the merge/export layer (fork's +faststart), the upload gate (#142), and the server backstop.
   const h264OutputRef = useRef<unknown>(null);
   useEffect(() => {
     if (Platform.OS !== 'ios' || !cameraReady || isRecording) return;
-    if (h264OutputRef.current === videoOutput) return;
-    h264OutputRef.current = videoOutput;
-    videoOutput.setOutputSettings({ codec: 'h264' }).catch((e: unknown) => {
-      console.warn('Failed to force H.264 on the video output; clip may record as HEVC', e);
-    });
+    const output = videoOutput;
+    if (h264OutputRef.current === output) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = (retriesLeft: number) => {
+      output.setOutputSettings({ codec: 'h264' }).then(
+        () => {
+          if (!cancelled) h264OutputRef.current = output;
+        },
+        (e: unknown) => {
+          if (cancelled) return;
+          if (retriesLeft > 0) {
+            timer = setTimeout(() => {
+              if (!cancelled) attempt(retriesLeft - 1);
+            }, 250);
+          } else {
+            console.warn('Failed to force H.264 on the video output; clip may record as HEVC', e);
+          }
+        },
+      );
+    };
+    attempt(4);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [videoOutput, cameraReady, isRecording]);
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
