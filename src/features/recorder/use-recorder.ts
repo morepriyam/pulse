@@ -120,10 +120,15 @@ export function useRecorder(initialDraftId?: string) {
   // first attempt can race it and reject. Committing eagerly would let that rejection
   // permanently pin the instance to HEVC; instead a short bounded retry rides out the
   // reconfigure window, and the effect cleanup cancels retries if a recording starts.
+  // A pin that is still in flight when recording starts cannot corrupt the capture:
+  // setOutputSettings and createRecorder both run on the output's own serial queue
+  // (Promise.parallel(queue) in HybridCameraVideoOutput), so the mutation and the recorder
+  // creation are serialized natively — the codec lands either before or after the recorder
+  // exists, never mid-setup. Worst case remains a fail-open HEVC clip, never a crash.
   // NOTE: raw per-clip files are still written moov-at-end — AVCaptureMovieFileOutput (what
   // createRecorder actually wraps) has no faststart API, so faststart for uploads is owned by
   // the merge/export layer (fork's +faststart), the upload gate (#142), and the server backstop.
-  const h264OutputRef = useRef<unknown>(null);
+  const h264OutputRef = useRef<typeof videoOutput | null>(null);
   useEffect(() => {
     if (Platform.OS !== 'ios' || !cameraReady || isRecording) return;
     const output = videoOutput;
