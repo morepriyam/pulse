@@ -114,9 +114,7 @@ describe('decideImport against the wild-import fixture corpus', () => {
   it.each([
     'mono44k-portrait-1080p-30-h264',
     'ntsc-landscape-1080p-2997-h264',
-    'rot270-portrait-1080p-30-hevc',
     'square-720x720-30-h264',
-    'timelapse-landscape-1080p-30-hevc-noaudio',
     'whatsapp-848x464-30-h264-baseline',
   ])('%s passes through untouched', (name) => {
     expect(decideImport(FIXTURES[name])).toEqual({ action: 'passthrough' });
@@ -132,8 +130,10 @@ describe('decideImport against the wild-import fixture corpus', () => {
   });
 
   it.each([
-    ['hdr-hlg-portrait-1080p-30-hevc10', ['10-bit', 'HDR transfer arib-std-b67']],
-    ['hdr-pq-landscape-4k-30-hevc10', ['10-bit', 'HDR transfer smpte2084']],
+    ['hdr-hlg-portrait-1080p-30-hevc10', ['video codec hevc', '10-bit', 'HDR transfer arib-std-b67']],
+    ['hdr-pq-landscape-4k-30-hevc10', ['video codec hevc', '10-bit', 'HDR transfer smpte2084']],
+    ['rot270-portrait-1080p-30-hevc', ['video codec hevc']],
+    ['timelapse-landscape-1080p-30-hevc-noaudio', ['video codec hevc']],
     ['screenrec-portrait-886x1920-60-h264', ['60 fps']],
     ['slomo-portrait-1080p-120-h264', ['120 fps']],
     ['vfr-portrait-1080p-h264', ['40 fps']],

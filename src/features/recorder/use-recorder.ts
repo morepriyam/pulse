@@ -86,21 +86,46 @@ export function useRecorder(initialDraftId?: string) {
 
   // VisionCamera records to a file via a per-recording `Recorder` created from this output. The
   // output is also handed to `<Camera outputs={[videoOutput]}>` in recorder.tsx. Pinned to 1080p;
-  // the codec stays on VisionCamera's default (HEVC on modern devices) so every clip is
-  // format-uniform and exports on the merge engine's zero-re-encode fast path. `fileType: 'mp4'`
+  // the codec is forced to H.264 below (see the setOutputSettings effect) so every clip is
+  // format-uniform, exports on the merge engine's zero-re-encode fast path, AND plays in every
+  // browser — VisionCamera's device default is HEVC on modern iPhones, which Firefox never
+  // decodes and Chrome usually can't without hardware support. `fileType: 'mp4'`
   // makes iOS write a true MP4 container (Android always does) — segments are persisted and
   // uploaded as `{segmentId}.mp4`, so the bytes now match the extension end to end instead of
   // QuickTime bytes under an .mp4 name.
-  // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p (uploads shrink 2-5× vs the
-  // encoder's default, playback starts faster, rebuffers less) — and since export is
-  // passthrough, record-time bitrate IS upload bitrate. Set here at output creation, which is
-  // safe — unlike mutating a running session via setOutputSettings, which crashed the recorder.
+  // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p. CAVEAT (measured on-device,
+  // see PR #142): VisionCamera applies this inside the session-configuration batch, where it
+  // can silently fail to land — real 1080p clips have probed at ~8 Mbps (the encoder default
+  // scaled to the pixel count). The pin stays as intent, but nothing downstream may ASSUME it:
+  // the upload contract gate (#142) and the pulsevault web-ready backstop own the guarantee.
   const videoOutput = useVideoOutput({
     targetResolution: CommonResolutions.FHD_16_9,
     targetBitRate: 5_000_000,
     enableAudio: micEnabled,
     fileType: 'mp4',
   });
+
+  // Force H.264 (iOS only — Android's CameraX camcorder profiles are already AVC, and its
+  // setOutputSettings is a native no-op). Applied once per output *instance*: the enableAudio
+  // flip above rebuilds the output, silently reverting the codec to the HEVC default, so this
+  // re-applies whenever the identity changes. Gated on cameraReady && !isRecording because
+  // mutating the settings of a session that is actively capturing is what crashed the recorder
+  // historically; running post-ready also means the connection exists, unlike the configure-time
+  // bitrate path above. setOutputSettings preserves whatever compression settings are present
+  // (it only swaps the codec key). Failure is non-fatal — worst case that clip records HEVC,
+  // exactly today's behavior, and the merge engine still handles it.
+  // NOTE: raw per-clip files are still written moov-at-end — AVCaptureMovieFileOutput (what
+  // createRecorder actually wraps) has no faststart API, so faststart for uploads is owned by
+  // the merge/export layer (fork's +faststart), the upload gate (#142), and the server backstop.
+  const h264OutputRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !cameraReady || isRecording) return;
+    if (h264OutputRef.current === videoOutput) return;
+    h264OutputRef.current = videoOutput;
+    videoOutput.setOutputSettings({ codec: 'h264' }).catch((e: unknown) => {
+      console.warn('Failed to force H.264 on the video output; clip may record as HEVC', e);
+    });
+  }, [videoOutput, cameraReady, isRecording]);
 
   const { data: segments } = useLiveQuery(segmentsForDraft(draftId ?? ''), [draftId]);
 
