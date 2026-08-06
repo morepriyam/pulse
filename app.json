@@ -15,8 +15,8 @@
       "appleTeamId": "X5873NL7XM",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Pulse uses your camera to record videos.",
-        "NSMicrophoneUsageDescription": "Pulse uses your microphone to record audio with your videos."
+        "NSCameraUsageDescription": "Pulse needs camera access to record video clips for your drafts. For example, when you film a video note, the camera captures the footage that you can then trim, merge, and upload.",
+        "NSMicrophoneUsageDescription": "Pulse needs microphone access to record sound with your video clips. For example, when you narrate a video note, your voice is captured alongside the footage and saved with the clip."
       }
     },
     "android": {
@@ -81,7 +81,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false
+          "microphonePermission": "Pulse needs microphone access to record sound with your video clips. For example, when you narrate a video note, your voice is captured alongside the footage and saved with the clip.",
+          "enableBackgroundPlayback": false
         }
       ],
       "expo-asset",
