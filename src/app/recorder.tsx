@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -395,17 +395,24 @@ export default function RecorderScreen() {
           device={device}
           isActive={cameraActive}
           outputs={outputs}
-          // Zoom/torch are gated until the session has started: CameraX rejects control calls on
-          // an inactive camera (OperationCanceledException) where iOS quietly tolerates them, so
-          // applying these props on mount — before `onStarted` — throws unhandled rejections on
-          // Android. `undefined` makes VisionCamera's updater hooks skip the native call; the
-          // shared-value binding still applies the current zoom the moment it attaches.
-          zoom={cameraReady ? zoomSv : undefined}
+          // Zoom/torch are gated until the session has started — but only on Android: CameraX
+          // rejects control calls on an inactive camera (OperationCanceledException), so applying
+          // these props on mount — before `onStarted` — throws unhandled rejections there.
+          // `undefined` makes VisionCamera's updater hooks skip the native call; the shared-value
+          // binding still applies the current zoom the moment it attaches. iOS quietly tolerates
+          // early calls and NEEDS the immediate binding: without it the session opens on the
+          // native default lens (ultra-wide on fused multi-cam iPhones — dark preview) and then
+          // visibly snaps to 1x when the gate opens at `onStarted`.
+          zoom={Platform.OS === 'ios' || cameraReady ? zoomSv : undefined}
           // ...and torch is additionally gated on hardware: writing any torchMode (even 'off') to
           // a torch-less camera (typically the front one) throws IllegalStateException("No flash
           // unit") on Android, while iOS silently ignores it.
           torchMode={
-            cameraReady && device.hasTorch ? (torch && !previewing ? 'on' : 'off') : undefined
+            (Platform.OS === 'ios' || cameraReady) && device.hasTorch
+              ? torch && !previewing
+                ? 'on'
+                : 'off'
+              : undefined
           }
           constraints={constraints}
           // Smooth (rather than snapping) continuous-AF transitions — VisionCamera's recommended

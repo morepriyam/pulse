@@ -8,7 +8,12 @@ import type { CompressOptions, VideoProbeResult } from 'react-native-video-trim'
  * every import (slow, lossy, usually pointless), only inputs that are *hostile* to the
  * FFmpeg merge/upload pipeline are normalized:
  *
- * - exotic video codecs (not H.264/HEVC) — no hardware decode guarantee, merge fallback only
+ * - non-H.264 video codecs — HEVC included: iPhone Photos imports are HEVC, which Firefox
+ *   never decodes and Chrome usually can't, and letting them pass through means an
+ *   HEVC-dominated draft merges back to HEVC on iOS. The one-time re-encode here (inside
+ *   the existing import progress UI) is what guarantees every uploaded artifact is H.264.
+ *   It also makes imports signature-match the H.264 recorder clips, so mixed drafts hit
+ *   the merge engine's zero-re-encode fast path instead of a selective conform.
  * - 10-bit / HDR (HLG, PQ) — hardware H.264 encoders reject 10-bit input; SDR displays
  *   need the tone cast anyway once clips are mixed with SDR recordings
  * - display long edge > 1920 — 4K imports inflate every downstream artifact (merge output,
@@ -35,8 +40,10 @@ export const NORMALIZE_TARGET_BITRATE = 5_000_000;
 /** Sources above this keep their size advantage from a re-encode; ~1.6x recorder rate. */
 export const NORMALIZE_MAX_BITRATE = 8_000_000;
 
-/** Video codecs the merge pipeline handles natively (hardware decode on both platforms). */
-const NATIVE_VIDEO_CODECS = new Set(['h264', 'hevc']);
+/** Video codecs allowed through untouched. H.264 only: the whole pipeline (recorder, merge
+ * output, uploads) is standardized on H.264 for universal browser playback — HEVC imports
+ * are re-encoded once at import time rather than leaking into merged artifacts. */
+const NATIVE_VIDEO_CODECS = new Set(['h264']);
 /** HDR transfer functions: HLG (iPhone camera default) and PQ (HDR10 / Dolby Vision 8.x). */
 const HDR_TRANSFERS = new Set(['arib-std-b67', 'smpte2084']);
 
@@ -124,6 +131,9 @@ export function decideImport(probe: VideoProbeResult): ImportDecision {
   }
 
   const options: Partial<CompressOptions> = {
+    // Explicit h264: never rely on the native default staying H.264 — this is the
+    // pipeline-wide codec guarantee for everything that gets re-encoded.
+    codec: 'h264',
     bitrate: NORMALIZE_TARGET_BITRATE,
     frameRate: NORMALIZE_TARGET_FPS,
   };

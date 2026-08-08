@@ -290,15 +290,15 @@ function durationSec(file: string): number {
 const EXPECTED: Record<string, 'passthrough' | 'audio-only' | 're-encode'> = {
   'hdr-hlg-portrait-1080p-30-hevc10.mp4': 're-encode',
   'hdr-pq-landscape-4k-30-hevc10.mp4': 're-encode',
+  'rot270-portrait-1080p-30-hevc.mp4': 're-encode',
+  'timelapse-landscape-1080p-30-hevc-noaudio.mp4': 're-encode',
   'slomo-portrait-1080p-120-h264.mp4': 're-encode',
   'screenrec-portrait-886x1920-60-h264.mp4': 're-encode',
   'vfr-portrait-1080p-h264.mp4': 're-encode',
   'opus-landscape-1080p-30-h264.mp4': 'audio-only',
   'whatsapp-848x464-30-h264-baseline.mp4': 'passthrough',
   'ntsc-landscape-1080p-2997-h264.mp4': 'passthrough',
-  'rot270-portrait-1080p-30-hevc.mp4': 'passthrough',
   'square-720x720-30-h264.mp4': 'passthrough',
-  'timelapse-landscape-1080p-30-hevc-noaudio.mp4': 'passthrough',
   'mono44k-portrait-1080p-30-h264.mp4': 'passthrough',
 };
 
@@ -337,8 +337,9 @@ e2e('import pipeline e2e (probe → decide → normalize)', () => {
         normalizedOutputs.set(name, output);
 
         // Output invariants: what the merge/upload pipeline is promised downstream.
+        // Audio-less sources stay audio-less — `-c:a aac` is a no-op with no input stream.
         const out = probeLikeNative(output);
-        expect(out.audioCodec).toBe('aac');
+        expect(out.audioCodec).toBe(probe.hasAudio ? 'aac' : '');
         if (expected === 'audio-only') {
           // Video track stream-copied byte-for-byte: same codec, geometry, timing.
           expect(out.videoCodec).toBe(probe.videoCodec);
