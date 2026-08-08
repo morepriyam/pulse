@@ -1,5 +1,6 @@
 import { useEvent } from 'expo';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/icon';
@@ -27,6 +28,7 @@ import { useSaveToPhotos } from '@/features/export/use-save-to-photos';
 import { CaptionOverlay } from '@/features/transcription/caption-overlay';
 import { ModelSwitcherModal } from '@/features/transcription/model-switcher-modal';
 import type { TranscriptLine } from '@/features/transcription/whisper';
+import { useToast } from '@/features/toast/toast-provider';
 import { DestinationSelector } from '@/features/upload/destination-selector';
 import { uploadPhaseLabel } from '@/features/upload/phase-label';
 import { useUpload } from '@/features/upload/use-upload';
@@ -89,6 +91,7 @@ export default function ExportScreen() {
   const photos = useSaveToPhotos();
   const docs = useSaveToDocuments();
   const theme = useTheme();
+  const { showToast } = useToast();
 
   // Open the merged-video caption editor (only meaningful once the merge is done).
   const openCaptionEditor = () => {
@@ -120,6 +123,8 @@ export default function ExportScreen() {
   // only occurs for a run completed this session (see `useUpload`), so this can't fire for a
   // draft that was uploaded some other time. Segmented sessions have no single watchable video (the
   // anchor artifact is the ordering manifest), so they get a plain confirmation instead.
+  // "Copy link" puts the same watch URL on the clipboard for sharing into chats/notes —
+  // previously the URL was reachable only by opening the browser (#69's missing-watch-link gap).
   const acknowledgeDone = upload.acknowledgeDone;
   useEffect(() => {
     if (upload.state.status !== 'done') return;
@@ -129,6 +134,17 @@ export default function ExportScreen() {
         'Watch the video in your browser?',
         [
           { text: 'Cancel', style: 'cancel', onPress: acknowledgeDone },
+          {
+            text: 'Copy link',
+            onPress: () => {
+              // setStringAsync resolves true on success; failure (rare) still acknowledges so
+              // the alert never re-fires — the toast is only shown for a real copy.
+              void Clipboard.setStringAsync(watchUrl).then((ok) => {
+                if (ok) showToast('Link copied');
+              });
+              acknowledgeDone();
+            },
+          },
           {
             text: 'Watch',
             onPress: () => {
@@ -144,7 +160,7 @@ export default function ExportScreen() {
         { text: 'OK', onPress: acknowledgeDone },
       ]);
     }
-  }, [upload.state.status, watchUrl, acknowledgeDone]);
+  }, [upload.state.status, watchUrl, acknowledgeDone, showToast]);
 
   const runShare = async () => {
     if (state.status !== 'done' || busy) return;
