@@ -515,7 +515,9 @@ export function useRecorder(initialDraftId?: string) {
     // gestures. (Before the mic un-gating in #150 this was masked: the flip rebuilt the video
     // output via micWanted, which restarted the session and re-armed the gate by accident.)
     // iOS also doesn't need the gate: its zoom/torch props bind ungated (see recorder.tsx).
-    if (Platform.OS !== 'ios') setCameraReady(false);
+    // Matched to 'android' explicitly (not "everything but iOS") — the guard exists for
+    // CameraX, and any other platform would inherit iOS's stuck-gate failure mode instead.
+    if (Platform.OS === 'android') setCameraReady(false);
     setFacing((prev) => {
       const next = prev === 'back' ? 'front' : 'back';
       if (next === 'front') setTorch(false);
