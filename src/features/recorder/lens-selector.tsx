@@ -1,4 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
+
+import { GlassPill } from '@/components/glass-pill';
 
 /**
  * A selectable lens, expressed as a zoom factor on the (possibly multi-camera) device.
@@ -30,7 +32,7 @@ export function LensSelector({
   const active = selected ?? DEFAULT_LENS_LABEL;
 
   return (
-    <View style={styles.row}>
+    <GlassPill style={styles.row}>
       {presets.map((preset) => (
         <Pressable
           key={preset.label}
@@ -49,7 +51,7 @@ export function LensSelector({
           </Text>
         </Pressable>
       ))}
-    </View>
+    </GlassPill>
   );
 }
 
@@ -59,7 +61,6 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 4,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   chip: {
     minWidth: 36,
