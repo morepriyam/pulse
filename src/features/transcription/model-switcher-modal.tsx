@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,6 +65,14 @@ export function ModelSwitcherModal({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  // The native sheet imposes NO width constraint on hosted RN content (RNHostView's
+  // matchContents sizes the host to the content's intrinsic size, and RN flex content has no
+  // intrinsic width) — without an explicit width everything collapses to one character per
+  // line. Pin to the window width minus the sheet's own built-in 16pt side padding (see
+  // @expo/ui universal/BottomSheet: iOS `padding({leading:16, trailing:16})`, Android
+  // `padding(16, …, 16, …)` on the content wrapper).
+  const { width: windowWidth } = useWindowDimensions();
+  const sheetWidth = windowWidth - 32;
   const { data } = useLiveQuery(selectedModelQuery, []);
   const selectedId = data[0]?.value ?? null;
   const status = useTranscriptionStatus();
@@ -108,7 +117,11 @@ export function ModelSwitcherModal({
           : [background(theme.background)]
       }>
       <RNHostView matchContents>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.three }]}>
+        <View
+          style={[
+            styles.sheet,
+            { width: sheetWidth, paddingBottom: insets.bottom + Spacing.three },
+          ]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
               <ThemedText type="subtitle">On-device AI</ThemedText>
@@ -207,8 +220,10 @@ export function ModelSwitcherModal({
 const styles = StyleSheet.create({
   // Backdrop, slide animation, and top rounding are the native sheet's job now — the RN
   // content only owns its internal layout (the sheet already pads its top edge).
+  // Horizontal padding is 8 (not the modal-era 24): the native sheet contributes 16pt per
+  // side itself, so 16 + 8 = the original 24pt visual gutter.
   sheet: {
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.two,
     gap: Spacing.three,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
