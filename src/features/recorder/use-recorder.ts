@@ -72,10 +72,16 @@ export function useRecorder(initialDraftId?: string) {
   // the mic into a call that began in the background.
   const { callActive, appActive, reportMicPriorityError } = useCallState();
 
-  // The mic config the session SHOULD have. `cameraReady` gates it so a cold open comes up
-  // video-only first (call detection lands before the mic is ever requested); dropped while a call
-  // holds the mic (`callActive`) or the user muted, so that clip has no audio track.
-  const micWanted = cameraReady && !muted && !callActive;
+  // The mic config the session SHOULD have: dropped while a call holds the mic (`callActive`)
+  // or the user muted, so that clip has no audio track. Deliberately NOT gated on cameraReady:
+  // call state is read synchronously at first render (useCallState's initializer), so the mic
+  // can attach from the session's FIRST configure. Gating on cameraReady made every cold open
+  // come up video-only and then rebuild the output audio-ful at `onStarted` — a second full
+  // session reconfigure ~25ms after the first preview frame, i.e. a visible flash on every
+  // open (and two extra rebuilds on every camera flip). The '!pri' -11800 recovery path
+  // (reportMicPriorityError) remains the backstop for the rare cold open that races an
+  // in-progress call the synchronous snapshot missed.
+  const micWanted = !muted && !callActive;
   // Freeze the mic config for the duration of a recording: an enableAudio change rebuilds the video
   // output, which tears down the in-flight recorder before it can finalize — dropping the clip. We
   // hold the value captured while idle and only let it change once recording stops, so a call
