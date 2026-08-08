@@ -15,8 +15,9 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
+import { currentDeviceProfile } from './device-profile';
 import { applyModelSelection, isModelReady } from './model-manager';
-import { getModel, LARGE_MODEL_BYTES, MODELS } from './models';
+import { getModel, LARGE_MODEL_BYTES, modelCaveat, MODELS } from './models';
 import { useTranscriptionStatus } from './transcription-status';
 
 const sizeMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
@@ -137,6 +138,9 @@ export function ModelSwitcherModal({
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {MODELS.map((model) => {
               const active = model.id === selectedId;
+              // Device-aware caveat (RAM floor / Android CPU-only inference) appended to the
+              // model's base note — computed here, not in the catalog, so models.ts stays pure.
+              const caveat = modelCaveat(model, currentDeviceProfile());
               return (
                 <Pressable
                   key={model.id}
@@ -154,7 +158,8 @@ export function ModelSwitcherModal({
                       </ThemedText>
                     </View>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {model.note} · {sizeMb(model.approxBytes)}
+                      {model.note}
+                      {caveat ? ` · ${caveat}` : ''} · {sizeMb(model.approxBytes)}
                     </ThemedText>
                   </View>
                   {active && (
