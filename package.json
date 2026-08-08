@@ -4,6 +4,7 @@
   "version": "2.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.9",
+    "buffer": "^6.0.3",
     "drizzle-orm": "^0.45.2",
     "expo": "~57.0.11",
     "expo-asset": "~57.0.3",
