@@ -1,8 +1,11 @@
+import { BottomSheet, RNHostView } from '@expo/ui';
+import { background } from '@expo/ui/jetpack-compose/modifiers';
+import { presentationBackground } from '@expo/ui/swift-ui/modifiers';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -44,6 +47,13 @@ function statusLine(status: ReturnType<typeof useTranscriptionStatus>): string |
  * choice and frees the previous model's weights/contexts (`applyModelSelection`); the new model
  * is downloaded lazily the next time a draft is exported, not here — so selecting records intent
  * without blocking on a download. The active model can be removed here to free disk.
+ *
+ * Presented as a NATIVE bottom sheet (@expo/ui — SwiftUI sheet on iOS, Material 3
+ * ModalBottomSheet on Android): system drag indicator, swipe-to-dismiss, and real detent
+ * physics replace the previous hand-rolled RN Modal + backdrop. The RN content renders inside
+ * the sheet via RNHostView (the documented RN-inside-native interop); the sheet surface is
+ * pinned to the app theme — presentationBackground on iOS, a background modifier on Android —
+ * so a manual light/dark override can't mismatch a system-schemed sheet behind themed content.
  */
 export function ModelSwitcherModal({
   visible,
@@ -89,14 +99,16 @@ export function ModelSwitcherModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View
-          style={[
-            styles.sheet,
-            { backgroundColor: theme.background, paddingBottom: insets.bottom + Spacing.three },
-          ]}>
+    <BottomSheet
+      isPresented={visible}
+      onDismiss={onClose}
+      modifiers={
+        Platform.OS === 'ios'
+          ? [presentationBackground(theme.background)]
+          : [background(theme.background)]
+      }>
+      <RNHostView matchContents>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.three }]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
               <ThemedText type="subtitle">On-device AI</ThemedText>
@@ -187,17 +199,15 @@ export function ModelSwitcherModal({
             </Pressable>
           )}
         </View>
-      </View>
-    </Modal>
+      </RNHostView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  // Backdrop, slide animation, and top rounding are the native sheet's job now — the RN
+  // content only owns its internal layout (the sheet already pads its top edge).
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: Spacing.four,
     paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
