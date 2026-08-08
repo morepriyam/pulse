@@ -72,6 +72,7 @@ export default function RecorderScreen() {
     appActive,
     reportMicPriorityError,
     onCameraReady,
+    onSessionConfigured,
     toggleRecording,
     finalizeRecording,
     importClip,
@@ -419,6 +420,7 @@ export default function RecorderScreen() {
           // setting for video, so refocus pulls look cinematic instead of "hunting". Gated on
           // device support so it never throws; tap-to-focus stays snappy via `responsiveness`.
           enableSmoothAutoFocus={device?.supportsSmoothAutoFocus ?? false}
+          onConfigured={onSessionConfigured}
           onStarted={onCameraReady}
           onError={onCameraError}
         />
