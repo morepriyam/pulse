@@ -68,9 +68,12 @@ export function ModelSwitcherModal({
   // intrinsic width) — without an explicit width everything collapses to one character per
   // line. Pin to the window width minus the sheet's own built-in 16pt side padding (see
   // @expo/ui universal/BottomSheet: iOS `padding({leading:16, trailing:16})`, Android
-  // `padding(16, …, 16, …)` on the content wrapper).
+  // `padding(16, …, 16, …)` on the content wrapper). Capped at 500pt because on tablets the
+  // sheet is NARROWER than the window (iPad page/form sheets ~540pt+, M3 caps 640dp) —
+  // window-derived width would overflow the sheet edge there; 500 fits the narrowest
+  // presentation and no phone window reaches the cap.
   const { width: windowWidth } = useWindowDimensions();
-  const sheetWidth = windowWidth - 32;
+  const sheetWidth = Math.min(windowWidth - 32, 500);
   const { data } = useLiveQuery(selectedModelQuery, []);
   const selectedId = data[0]?.value ?? null;
   const status = useTranscriptionStatus();
