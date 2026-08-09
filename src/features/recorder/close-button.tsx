@@ -1,5 +1,5 @@
 import { Icon } from '@/components/icon';
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { GlassPill } from '@/components/glass-pill';
 import { closeToHome } from '@/utils/navigation';
@@ -7,10 +7,19 @@ import { closeToHome } from '@/utils/navigation';
 export function CloseButton({
   onPress,
   style,
+  overVideo = false,
 }: {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
+  /**
+   * True when the button floats over live/video content (the recorder) — renders the Liquid
+   * Glass pill there. On themed screens (export, caption editor, permission gate) glass is
+   * wrong: dark-pinned glass over a light background turns nearly transparent, leaving a
+   * white ✕ invisible in light mode — those keep the opaque scrim.
+   */
+  overVideo?: boolean;
 }) {
+  const inner = <Icon name="xmark" size={22} weight="semibold" tintColor="#fff" />;
   return (
     <Pressable
       onPress={onPress ?? closeToHome}
@@ -18,9 +27,11 @@ export function CloseButton({
       accessibilityRole="button"
       accessibilityLabel="Close"
       style={style}>
-      <GlassPill style={styles.button}>
-        <Icon name="xmark" size={22} weight="semibold" tintColor="#fff" />
-      </GlassPill>
+      {overVideo ? (
+        <GlassPill style={styles.button}>{inner}</GlassPill>
+      ) : (
+        <View style={[styles.button, styles.scrim]}>{inner}</View>
+      )}
     </Pressable>
   );
 }
@@ -33,4 +44,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 20,
   },
+  scrim: { backgroundColor: 'rgba(0,0,0,0.35)' },
 });
