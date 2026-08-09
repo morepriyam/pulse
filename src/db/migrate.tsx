@@ -9,26 +9,22 @@ import migrations from '../../drizzle/migrations';
 import { db } from './client';
 import { runDataMigrations, type DataMigration } from './data-migrations';
 import { getResumableDrafts } from './drafts';
+import { legacyDraftsImport } from './legacy-migration';
 
 /**
  * All one-shot data migrations, in execution order. APPEND new tasks at the end — never
  * remove, rename, or reorder shipped entries (see data-migrations.ts for the task rules).
- *
- * Currently empty: the only shipped task was 'legacy-drafts-import' (drafts from the original
- * Pulse app ≤ 1.2.x, read out of AsyncStorage), retired in 2.x after the replacement rollout
- * (#86) completed. Its id must never be reused — installs that ran it still hold its
- * completion key.
  */
-const DATA_MIGRATIONS: readonly DataMigration[] = [];
+const DATA_MIGRATIONS: readonly DataMigration[] = [legacyDraftsImport];
 
 const centered = { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 } as const;
 
 export function MigrationGate({ children }: { children: React.ReactNode }) {
   const { success, error } = useMigrations(db, migrations);
 
-  // One-shot data migrations (file moves, transforms) run after the schema migrations and
-  // before the library renders, so an updating user's first frame already reflects them.
-  // Completed tasks are skipped instantly.
+  // One-shot data migrations (file moves, transforms — e.g. the legacy Pulse ≤1.2.x draft
+  // import) run after the schema migrations and before the library renders, so an updating
+  // user's first frame already shows their drafts. Completed tasks are skipped instantly.
   const [dataDone, setDataDone] = useState(false);
   useEffect(() => {
     if (!success) return;
