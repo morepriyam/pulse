@@ -137,11 +137,15 @@ export default function ExportScreen() {
           {
             text: 'Copy link',
             onPress: () => {
-              // setStringAsync resolves true on success; failure (rare) still acknowledges so
-              // the alert never re-fires — the toast is only shown for a real copy.
-              void Clipboard.setStringAsync(watchUrl).then((ok) => {
-                if (ok) showToast('Link copied');
-              });
+              // setStringAsync resolves boolean (true on success); failure/rejection (rare)
+              // still acknowledges so the alert never re-fires — the toast only confirms a
+              // real copy.
+              Clipboard.setStringAsync(watchUrl).then(
+                (ok) => {
+                  if (ok) showToast('Link copied');
+                },
+                () => {},
+              );
               acknowledgeDone();
             },
           },

@@ -1,11 +1,8 @@
 import { BottomSheet, RNHostView } from '@expo/ui';
-import { background } from '@expo/ui/jetpack-compose/modifiers';
-import { presentationBackground } from '@expo/ui/swift-ui/modifiers';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +19,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { currentDeviceProfile } from './device-profile';
 import { applyModelSelection, isModelReady } from './model-manager';
 import { getModel, LARGE_MODEL_BYTES, modelCaveat, MODELS } from './models';
+import { sheetBackgroundModifiers } from './sheet-background';
 import { useTranscriptionStatus } from './transcription-status';
 
 const sizeMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
@@ -111,11 +109,7 @@ export function ModelSwitcherModal({
     <BottomSheet
       isPresented={visible}
       onDismiss={onClose}
-      modifiers={
-        Platform.OS === 'ios'
-          ? [presentationBackground(theme.background)]
-          : [background(theme.background)]
-      }>
+      modifiers={sheetBackgroundModifiers(theme.background)}>
       <RNHostView matchContents>
         <View
           style={[
