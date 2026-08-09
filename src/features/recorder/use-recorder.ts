@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { launchImageLibraryAsync, VideoExportPreset } from 'expo-image-picker';
+import { launchImageLibraryAsync, UIImagePickerPreferredAssetRepresentationMode } from 'expo-image-picker';
 import { usePermissions } from 'expo-media-library';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking, Platform } from 'react-native';
@@ -409,7 +409,10 @@ export function useRecorder(initialDraftId?: string) {
     try {
       const result = await launchImageLibraryAsync({
         mediaTypes: ['videos'],
-        videoExportPreset: VideoExportPreset.Passthrough,
+        // Ask PHPicker for the ORIGINAL representation (no transcode) — the documented
+        // replacement for the deprecated `videoExportPreset: Passthrough`. Our own
+        // decideImport owns normalization, so the picker must not re-encode first.
+        preferredAssetRepresentationMode: UIImagePickerPreferredAssetRepresentationMode.Current,
       });
       const picked = result.assets?.[0];
       if (result.canceled || !picked) return;
