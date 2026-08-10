@@ -21,7 +21,6 @@ For every media segment, reports:
 
 Usage: python3 scripts/analyze-draft-audio.py <draft.pulse | directory-with-media/>
 """
-import io
 import json
 import re
 import struct
@@ -103,7 +102,6 @@ def first_audio_sample(data, trak_s, trak_e):
     for stbl_s, stbl_e in find(data, trak_s, trak_e, ["mdia", "minf", "stbl"]):
         sizes = None
         chunk_offsets = None
-        stsc = []
         for typ, cs, ce in boxes_in(data, stbl_s, stbl_e):
             if typ == "stsz":
                 ss, n = struct.unpack(">II", data[cs + 4 : cs + 12])
@@ -135,10 +133,16 @@ def device_strings(data):
 
 
 def analyze_file(name, data):
-    (fsize,) = struct.unpack(">I", data[:4])
-    brand = data[8:12].decode("latin1").strip() if data[4:8] == b"ftyp" else "?"
-    vcodec = video_codec(data)
-    a = audio_track_info(data)
+    # Fail gracefully per-file: a truncated/corrupt segment (or a stray non-media
+    # file swept up by directory mode) shouldn't abort the whole triage run.
+    if len(data) < 12 or data[4:8] != b"ftyp":
+        return {"file": name, "brand": "?", "video": "?", "verdict": "NOT AN MP4/MOV (no ftyp header)"}
+    try:
+        brand = data[8:12].decode("latin1").strip()
+        vcodec = video_codec(data)
+        a = audio_track_info(data)
+    except (struct.error, IndexError, UnicodeDecodeError) as e:
+        return {"file": name, "brand": "?", "video": "?", "verdict": f"UNPARSEABLE ({e.__class__.__name__}: truncated or corrupt)"}
     row = {"file": name, "brand": brand, "video": vcodec}
     if a is None:
         row.update(audio="NONE", verdict="NO AUDIO TRACK AT ALL (capture-level loss)")
@@ -165,7 +169,7 @@ def main(path):
     p = Path(path)
     entries = []
     if p.is_dir():
-        for f in sorted(p.glob("**/*.mp4")):
+        for f in sorted(q for ext in ("*.mp4", "*.mov", "*.m4v") for q in p.glob(f"**/{ext}")):
             entries.append((str(f.relative_to(p)), f.read_bytes()))
     else:
         with zipfile.ZipFile(p) as z:
@@ -173,7 +177,7 @@ def main(path):
             for n in z.namelist():
                 if n == "manifest.json":
                     manifest = json.loads(z.read(n))
-                elif n.endswith(".mp4"):
+                elif n.endswith((".mp4", ".mov", ".m4v")):
                     entries.append((n, z.read(n)))
             if manifest:
                 d = manifest["drafts"][0]
@@ -190,7 +194,8 @@ def main(path):
     for name, data in entries:
         devices.update(device_strings(data))
         row = analyze_file(name, data)
-        mark = "❌" if "SILENT" in row["verdict"] or "NO AUDIO" in row["verdict"] else "✅"
+        ok = row["verdict"].startswith("OK")
+        mark = "✅" if ok else "❌"
         print(
             f"{mark} {row['file']:26s} brand={row['brand']:4s} video={row['video']} "
             f"audio={row.get('audio', '?'):24s} style={row.get('entry_style', '-'):11s} "
