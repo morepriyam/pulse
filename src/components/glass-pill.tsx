@@ -8,9 +8,14 @@ import { StyleSheet, View, type ViewProps } from 'react-native';
  * the flat dark scrim these controls have always used. Callers pass shape styles (size, radius,
  * layout) and NO backgroundColor: the pill owns its surface so the two paths stay consistent.
  *
- * `colorScheme="dark"` is pinned (not 'auto'): this chrome sits on live camera video, where
- * dark glass stays legible on bright scenes and matches the fallback scrim — the app-wide
- * light/dark toggle deliberately doesn't apply here.
+ * `clear` glass, not `regular`: regular's luminance adaptation flips the pill between light
+ * and dark variants as the camera pans across bright/dark scenes (colorScheme pins the theme
+ * trait, NOT that flip), which reads as the chrome flashing. Clear is the HIG variant for
+ * controls over media — no adaptive flip — and the dark `tintColor` is its dimming layer,
+ * keeping the white glyphs legible on bright scenes and matching the fallback scrim.
+ *
+ * `colorScheme="dark"` is still pinned (not 'auto') so the app-wide light/dark toggle
+ * deliberately doesn't restyle chrome that sits on live camera video.
  *
  * `isLiquidGlassAvailable()` is a static capability (device iOS version + build SDK), so it's
  * read once at module load, per the official expo-glass-effect usage.
@@ -20,7 +25,12 @@ const LIQUID_GLASS = isLiquidGlassAvailable();
 export function GlassPill({ style, children, ...rest }: ViewProps) {
   if (LIQUID_GLASS) {
     return (
-      <GlassView glassEffectStyle="regular" colorScheme="dark" style={style} {...rest}>
+      <GlassView
+        glassEffectStyle="clear"
+        tintColor="rgba(0,0,0,0.35)"
+        colorScheme="dark"
+        style={style}
+        {...rest}>
         {children}
       </GlassView>
     );
