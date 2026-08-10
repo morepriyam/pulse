@@ -95,10 +95,11 @@ export function useRecorder(initialDraftId?: string) {
   // the codec is forced to H.264 below (see the setOutputSettings effect) so every clip is
   // format-uniform, exports on the merge engine's zero-re-encode fast path, AND plays in every
   // browser — VisionCamera's device default is HEVC on modern iPhones, which Firefox never
-  // decodes and Chrome usually can't without hardware support. `fileType: 'mp4'`
-  // makes iOS write a true MP4 container (Android always does) — segments are persisted and
-  // uploaded as `{segmentId}.mp4`, so the bytes now match the extension end to end instead of
-  // QuickTime bytes under an .mp4 name.
+  // decodes and Chrome usually can't without hardware support.
+  // fileType 'mov' on iOS: a `.mp4`-named output arms Apple's movieFragmentInterval bug — clips
+  // >10s consolidate with an audio sample entry AVFoundation refuses to read back, playing back
+  // SILENT in preview/merge/transcription. Full RCA in #157. Android ignores fileType (CameraX
+  // always writes a real MP4). Segments are persisted and uploaded as `{segmentId}.mp4` either way.
   // targetBitRate ~5 Mbps: the mobile-feed sweet spot for 1080p. CAVEAT (measured on-device,
   // see PR #142): VisionCamera applies this inside the session-configuration batch, where it
   // can silently fail to land — real 1080p clips have probed at ~8 Mbps (the encoder default
@@ -108,7 +109,7 @@ export function useRecorder(initialDraftId?: string) {
     targetResolution: CommonResolutions.FHD_16_9,
     targetBitRate: 5_000_000,
     enableAudio: micEnabled,
-    fileType: 'mp4',
+    fileType: Platform.OS === 'ios' ? 'mov' : 'mp4',
   });
 
   // Force H.264 (iOS only — Android's CameraX camcorder profiles are already AVC, and its
