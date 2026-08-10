@@ -14,9 +14,10 @@ while trimming.
 **Portrait** is the primary surface (short-form — the recorder & iPhone Camera). iPhone stores
 portrait as a **coded-landscape buffer + 90° rotation matrix**, _not_ baked-portrait pixels — these
 fixtures replicate that exactly (so the rotation/normalization path is actually tested). The
-recorder writes a true **MP4** container; the iPhone Camera app writes **QuickTime**, which reaches
-the app via Photos imports — the portrait fixtures keep QuickTime bytes under a `.mp4` name so that
-import surface stays covered (the container is not part of the merge signature). The **landscape**
+recorder and the iPhone Camera app both write **QuickTime** bytes (on iOS the recorder records
+`.mov` — a `.mp4`-named output triggers AVFoundation's movieFragmentInterval silent-audio bug on
+clips >10s — and persists under a `.mp4` name); the portrait fixtures keep QuickTime bytes under a
+`.mp4` name so that surface stays covered (the container is not part of the merge signature). The **landscape**
 clips stand in for video added later from the Photos app that must be normalized into the portrait
 timeline.
 
@@ -30,7 +31,7 @@ timeline.
 | `landscape-4k-30fps-hevc.mp4`    | 3840×2160 | 3840×2160 | —   | 30  | HEVC  | QuickTime | 14s |
 
 The `portrait-1080p-30fps-h264` clip mirrors **the recorder's stream format** (H.264/AAC 1080p30
-portrait; the recorder itself now writes a true MP4 container). All have AAC audio and are ~12–24s
+portrait; on iOS the container is QuickTime under a `.mp4` name). All have AAC audio and are ~12–24s
 so there's room to trim.
 Regenerate with [`scripts/make-dev-fixtures.sh`](../../scripts/make-dev-fixtures.sh).
 
