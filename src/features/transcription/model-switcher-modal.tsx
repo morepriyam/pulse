@@ -1,11 +1,12 @@
+import { BottomSheet, RNHostView } from '@expo/ui';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,9 +15,11 @@ import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useThemeMode } from '@/hooks/use-theme';
+import { currentDeviceProfile } from './device-profile';
 import { applyModelSelection, isModelReady } from './model-manager';
-import { getModel, LARGE_MODEL_BYTES, MODELS } from './models';
+import { getModel, LARGE_MODEL_BYTES, modelCaveat, MODELS } from './models';
+import { sheetBackgroundModifiers } from './sheet-background';
 import { useTranscriptionStatus } from './transcription-status';
 
 const sizeMb = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
@@ -43,6 +46,13 @@ function statusLine(status: ReturnType<typeof useTranscriptionStatus>): string |
  * choice and frees the previous model's weights/contexts (`applyModelSelection`); the new model
  * is downloaded lazily the next time a draft is exported, not here — so selecting records intent
  * without blocking on a download. The active model can be removed here to free disk.
+ *
+ * Presented as a NATIVE bottom sheet (@expo/ui — SwiftUI sheet on iOS, Material 3
+ * ModalBottomSheet on Android): system drag indicator, swipe-to-dismiss, and real detent
+ * physics replace the previous hand-rolled RN Modal + backdrop. The RN content renders inside
+ * the sheet via RNHostView (the documented RN-inside-native interop); the sheet surface is
+ * pinned to the app theme — presentationBackground on iOS, a background modifier on Android —
+ * so a manual light/dark override can't mismatch a system-schemed sheet behind themed content.
  */
 export function ModelSwitcherModal({
   visible,
@@ -52,7 +62,28 @@ export function ModelSwitcherModal({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const mode = useThemeMode();
+  // Dark mode pins the sheet to the ELEVATED surface (secondarySystemBackground), not the pure
+  // black primary background: a black sheet over a dimmed black screen has zero separation.
+  // This mirrors what iOS itself does (elevated dark modals) and M3's tonal elevation; a drawn
+  // border isn't an option — SwiftUI/M3 own the presentation surface. Light mode keeps the
+  // primary background (the dimmed backdrop separates it fine there).
+  const sheetSurface = mode === 'dark' ? theme.backgroundElement : theme.background;
+  // Elements sitting ON the sheet step up one more elevation level in dark so they don't
+  // blend into the elevated surface (light mode keeps the usual secondary background).
+  const onSheetSurface = mode === 'dark' ? theme.backgroundSelected : theme.backgroundElement;
   const insets = useSafeAreaInsets();
+  // The native sheet imposes NO width constraint on hosted RN content (RNHostView's
+  // matchContents sizes the host to the content's intrinsic size, and RN flex content has no
+  // intrinsic width) — without an explicit width everything collapses to one character per
+  // line. Pin to the window width minus the sheet's own built-in 16pt side padding (see
+  // @expo/ui universal/BottomSheet: iOS `padding({leading:16, trailing:16})`, Android
+  // `padding(16, …, 16, …)` on the content wrapper). Capped at 500pt because on tablets the
+  // sheet is NARROWER than the window (iPad page/form sheets ~540pt+, M3 caps 640dp) —
+  // window-derived width would overflow the sheet edge there; 500 fits the narrowest
+  // presentation and no phone window reaches the cap.
+  const { width: windowWidth } = useWindowDimensions();
+  const sheetWidth = Math.min(windowWidth - 32, 500);
   const { data } = useLiveQuery(selectedModelQuery, []);
   const selectedId = data[0]?.value ?? null;
   const status = useTranscriptionStatus();
@@ -88,13 +119,15 @@ export function ModelSwitcherModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+    <BottomSheet
+      isPresented={visible}
+      onDismiss={onClose}
+      modifiers={sheetBackgroundModifiers(sheetSurface)}>
+      <RNHostView matchContents>
         <View
           style={[
             styles.sheet,
-            { backgroundColor: theme.background, paddingBottom: insets.bottom + Spacing.three },
+            { width: sheetWidth, paddingBottom: insets.bottom + Spacing.three },
           ]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
@@ -110,7 +143,7 @@ export function ModelSwitcherModal({
           </View>
 
           {busy && (
-            <View style={[styles.status, { backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.status, { backgroundColor: onSheetSurface }]}>
               <ActivityIndicator size="small" color={theme.accent} />
               <ThemedText type="small" themeColor="textSecondary">
                 {busy}
@@ -137,13 +170,16 @@ export function ModelSwitcherModal({
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {MODELS.map((model) => {
               const active = model.id === selectedId;
+              // Device-aware caveat (RAM floor / Android CPU-only inference) appended to the
+              // model's base note — computed here, not in the catalog, so models.ts stays pure.
+              const caveat = modelCaveat(model, currentDeviceProfile());
               return (
                 <Pressable
                   key={model.id}
                   onPress={() => choose(model.id)}
                   style={[
                     styles.row,
-                    { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                    { borderColor: theme.border, backgroundColor: onSheetSurface },
                     active && { borderColor: theme.accent },
                   ]}>
                   <View style={styles.rowText}>
@@ -154,7 +190,8 @@ export function ModelSwitcherModal({
                       </ThemedText>
                     </View>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {model.note} · {sizeMb(model.approxBytes)}
+                      {model.note}
+                      {caveat ? ` · ${caveat}` : ''} · {sizeMb(model.approxBytes)}
                     </ThemedText>
                   </View>
                   {active && (
@@ -182,18 +219,18 @@ export function ModelSwitcherModal({
             </Pressable>
           )}
         </View>
-      </View>
-    </Modal>
+      </RNHostView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  // Backdrop, slide animation, and top rounding are the native sheet's job now — the RN
+  // content only owns its internal layout (the sheet already pads its top edge).
+  // Horizontal padding is 8 (not the modal-era 24): the native sheet contributes 16pt per
+  // side itself, so 16 + 8 = the original 24pt visual gutter.
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: Spacing.four,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.two,
     gap: Spacing.three,
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },

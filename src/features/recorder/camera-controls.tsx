@@ -2,6 +2,7 @@ import type { SymbolViewProps } from 'expo-symbols';
 import { Icon } from '@/components/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { GlassPill } from '@/components/glass-pill';
 import { Accent, Spacing } from '@/constants/theme';
 import type { CameraFacing, StabilizationMode } from './use-recorder';
 
@@ -113,9 +114,9 @@ function ControlButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       style={({ pressed }) => [styles.wrap, { opacity: disabled ? 0.35 : pressed ? 0.7 : 1 }]}>
-      <View style={styles.button}>
+      <GlassPill style={styles.button}>
         <Icon name={icon} size={24} weight="medium" tintColor={tint} />
-      </View>
+      </GlassPill>
       {caption && <Text style={[styles.caption, { color: tint }]}>{caption}</Text>}
     </Pressable>
   );
@@ -141,7 +142,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   caption: { fontSize: 10, fontWeight: '600' },
 });

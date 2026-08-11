@@ -59,20 +59,52 @@ export const MODELS: WhisperModel[] = [
     name: 'large-v3-turbo · q5_0',
     filename: 'ggml-large-v3-turbo-q5_0.bin',
     approxBytes: 574 * 1024 * 1024,
-    // whisper.rn has no GPU backend on Android (CPU-only inference), so the largest model is
-    // markedly slower there than on iOS (Metal) — the note steers Android users to Base/Small.
-    // `process.env.EXPO_OS` (inlined by babel-preset-expo) keeps this module free of react-native
-    // imports so the pure-Node jest suite can load it.
-    note:
-      process.env.EXPO_OS === 'android'
-        ? 'Any language · best quality · slow on Android'
-        : 'Any language · best quality',
+    // Platform/device caveats are NOT baked in here — the picker appends `modelCaveat(...)`
+    // (pure, fed by the expo-device profile at the UI layer) so this module stays free of
+    // react-native imports for the pure-Node jest suite.
+    note: 'Any language · best quality',
     lang: 'auto',
   },
 ];
 
 /** Models at/above this on-disk size prompt for confirmation before downloading (cellular/data). */
 export const LARGE_MODEL_BYTES = 300 * 1024 * 1024;
+
+/**
+ * Device RAM floor for the large model. Its q5_0 weights are ~574 MB and whisper.cpp's runtime
+ * working set is a multiple of that — on phones under this floor (budget Androids, older
+ * iPhones) inference is memory-starved: heavy swapping at best, an OOM kill at worst.
+ */
+export const LARGE_MODEL_MIN_MEMORY_BYTES = 4 * 1024 * 1024 * 1024;
+
+/**
+ * The device signals the caveat logic needs. Kept as a plain data shape (not read from
+ * expo-device here) so this module stays pure-Node loadable for jest; the UI layer feeds it
+ * from `currentDeviceProfile()` (device-profile.ts).
+ */
+export type DeviceProfile = {
+  /** `Platform.OS` — 'ios' | 'android' (other values behave like iOS: no Android caveat). */
+  os: string;
+  /** `Device.totalMemory` — physical RAM in bytes, or null when unknown (e.g. web/tests). */
+  totalMemoryBytes: number | null;
+};
+
+/**
+ * Device-specific warning for a model, appended to its base `note` in the picker — or null when
+ * the model runs well on this device. Two independent signals, worst first:
+ *  - low RAM (`LARGE_MODEL_MIN_MEMORY_BYTES`): the large model's working set doesn't fit —
+ *    warn regardless of platform.
+ *  - Android: whisper.rn has no GPU backend there (CPU-only inference, no Metal), so the
+ *    large model is markedly slower than on iOS even with plenty of RAM.
+ */
+export function modelCaveat(model: WhisperModel, profile: DeviceProfile): string | null {
+  if (model.approxBytes < LARGE_MODEL_BYTES) return null;
+  if (profile.totalMemoryBytes != null && profile.totalMemoryBytes < LARGE_MODEL_MIN_MEMORY_BYTES) {
+    return 'may be unstable on this device';
+  }
+  if (profile.os === 'android') return 'slow on Android';
+  return null;
+}
 
 export const getModel = (id: string | null | undefined): WhisperModel | null =>
   MODELS.find((m) => m.id === id) ?? null;

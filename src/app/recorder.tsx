@@ -442,7 +442,7 @@ export default function RecorderScreen() {
             styles.topBar,
             { paddingTop: insets.top + Spacing.two, paddingHorizontal: Spacing.three },
           ]}>
-          <CloseButton onPress={handleClose} />
+          <CloseButton onPress={handleClose} overVideo />
           <Text style={styles.timerText}>{formatDurationPadded(totalMs)}</Text>
           {/* Mirrors the CloseButton's width so the timer stays optically centered. */}
           <View style={styles.topBarSpacer} />
