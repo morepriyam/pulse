@@ -5,8 +5,8 @@ import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { shareAsync } from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -118,53 +118,39 @@ export default function ExportScreen() {
         }`
       : null;
 
-  // A finished upload is surfaced exactly once — a prompt to watch the video in the browser —
-  // then acknowledged so no "uploaded" button lingers in the draft (§ post-upload UX). `done`
-  // only occurs for a run completed this session (see `useUpload`), so this can't fire for a
-  // draft that was uploaded some other time. Segmented sessions have no single watchable video (the
-  // anchor artifact is the ordering manifest), so they get a plain confirmation instead.
-  // "Copy link" puts the same watch URL on the clipboard for sharing into chats/notes —
-  // previously the URL was reachable only by opening the browser (#69's missing-watch-link gap).
+  // A finished upload is surfaced exactly once — a themed prompt (see the modal in the JSX
+  // below) offering to watch the video in the browser — then acknowledged so no "uploaded"
+  // button lingers in the draft (§ post-upload UX). `done` only occurs for a run completed this
+  // session (see `useUpload`), so this can't fire for a draft that was uploaded some other time.
+  // Segmented sessions have no single watchable video (the anchor artifact is the ordering
+  // manifest), so they keep a plain native confirmation instead.
+  // "Copy link" puts the watch URL on the clipboard for sharing into chats/notes — previously
+  // the URL was reachable only by opening the browser (#69's missing-watch-link gap). A custom
+  // modal, not Alert.alert: an alert's Cancel row renders identically to the real actions,
+  // reading as a third action — the modal dismisses via an explicit ✕ instead.
   const acknowledgeDone = upload.acknowledgeDone;
-  useEffect(() => {
-    if (upload.state.status !== 'done') return;
-    if (watchUrl) {
-      Alert.alert(
-        'Upload complete',
-        'Watch the video in your browser?',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: acknowledgeDone },
-          {
-            text: 'Copy link',
-            onPress: () => {
-              // setStringAsync resolves boolean (true on success); failure/rejection (rare)
-              // still acknowledges so the alert never re-fires — the toast only confirms a
-              // real copy.
-              Clipboard.setStringAsync(watchUrl).then(
-                (ok) => {
-                  if (ok) showToast('Link copied');
-                },
-                () => {},
-              );
-              acknowledgeDone();
-            },
-          },
-          {
-            text: 'Watch',
-            onPress: () => {
-              void Linking.openURL(watchUrl);
-              acknowledgeDone();
-            },
-          },
-        ],
-        { cancelable: true, onDismiss: acknowledgeDone },
+  // setStringAsync resolves boolean (true on success); the toast only confirms a real copy.
+  const copyLink = useCallback(
+    (url: string) => {
+      Clipboard.setStringAsync(url).then(
+        (ok) => {
+          if (ok) showToast('Link copied');
+        },
+        () => {},
       );
-    } else {
-      Alert.alert('Upload complete', 'Your pulse was uploaded.', [
-        { text: 'OK', onPress: acknowledgeDone },
-      ]);
-    }
-  }, [upload.state.status, watchUrl, acknowledgeDone, showToast]);
+    },
+    [showToast],
+  );
+
+  // Every path out of the prompt acknowledges, which flips status off 'done' and hides it.
+  const uploadPromptVisible = upload.state.status === 'done' && watchUrl != null;
+
+  useEffect(() => {
+    if (upload.state.status !== 'done' || watchUrl) return;
+    Alert.alert('Upload complete', 'Your pulse was uploaded.', [
+      { text: 'OK', onPress: acknowledgeDone },
+    ]);
+  }, [upload.state.status, watchUrl, acknowledgeDone]);
 
   const runShare = async () => {
     if (state.status !== 'done' || busy) return;
@@ -495,6 +481,70 @@ export default function ExportScreen() {
         visible={modelSheetVisible}
         onClose={() => setModelSheetVisible(false)}
       />
+
+      {/* Upload-complete prompt — see the comment block above `acknowledgeDone`. The
+          `watchUrl` guard narrows it to a string for the handlers; `visible` still gates
+          presentation on `status === 'done'`. */}
+      {watchUrl != null && (
+        <Modal
+          visible={uploadPromptVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={acknowledgeDone}>
+          <View style={styles.promptBackdrop}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={acknowledgeDone}
+              accessibilityLabel="Close"
+            />
+            <View
+              style={[
+                styles.promptCard,
+                { backgroundColor: theme.background, borderColor: theme.border },
+              ]}>
+              <View style={styles.promptHeader}>
+                <ThemedText type="subtitle" style={styles.promptTitle}>
+                  Upload complete
+                </ThemedText>
+                <CloseButton onPress={acknowledgeDone} />
+              </View>
+              <ThemedText themeColor="textSecondary">Watch the video in your browser?</ThemedText>
+              <View style={styles.promptActions}>
+                <Pressable
+                  onPress={() => {
+                    copyLink(watchUrl);
+                    acknowledgeDone();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy link"
+                  style={({ pressed }) => [
+                    styles.promptButton,
+                    { backgroundColor: theme.backgroundElement },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Icon name="link" size={16} tintColor={theme.text} />
+                  <ThemedText>Copy link</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    void Linking.openURL(watchUrl);
+                    acknowledgeDone();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Watch"
+                  style={({ pressed }) => [
+                    styles.promptButton,
+                    { backgroundColor: theme.accent },
+                    pressed && styles.pressed,
+                  ]}>
+                  <Icon name="play.fill" size={16} tintColor={theme.onAccent} />
+                  <ThemedText style={{ color: theme.onAccent }}>Watch</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </ThemedView>
   );
 }
@@ -696,4 +746,40 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
+  // Upload-complete prompt (the custom modal replacing the old Alert).
+  promptBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.four,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  promptCard: {
+    borderRadius: 20,
+    // Hairline outline + shadow (the action-menu card treatment): in dark mode the themed
+    // surface is pure black on a dimmed-black backdrop — without the outline there's no
+    // separation at all.
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    padding: Spacing.four,
+    gap: Spacing.three,
+    maxWidth: 420,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  promptHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  promptTitle: { flex: 1 },
+  promptActions: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.one },
+  promptButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    height: 44,
+    borderRadius: 14,
+  },
 });

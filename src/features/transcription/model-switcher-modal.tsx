@@ -15,7 +15,7 @@ import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { selectedModelQuery, setSelectedModel } from '@/db/settings';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useThemeMode } from '@/hooks/use-theme';
 import { currentDeviceProfile } from './device-profile';
 import { applyModelSelection, isModelReady } from './model-manager';
 import { getModel, LARGE_MODEL_BYTES, modelCaveat, MODELS } from './models';
@@ -62,6 +62,16 @@ export function ModelSwitcherModal({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const mode = useThemeMode();
+  // Dark mode pins the sheet to the ELEVATED surface (secondarySystemBackground), not the pure
+  // black primary background: a black sheet over a dimmed black screen has zero separation.
+  // This mirrors what iOS itself does (elevated dark modals) and M3's tonal elevation; a drawn
+  // border isn't an option — SwiftUI/M3 own the presentation surface. Light mode keeps the
+  // primary background (the dimmed backdrop separates it fine there).
+  const sheetSurface = mode === 'dark' ? theme.backgroundElement : theme.background;
+  // Elements sitting ON the sheet step up one more elevation level in dark so they don't
+  // blend into the elevated surface (light mode keeps the usual secondary background).
+  const onSheetSurface = mode === 'dark' ? theme.backgroundSelected : theme.backgroundElement;
   const insets = useSafeAreaInsets();
   // The native sheet imposes NO width constraint on hosted RN content (RNHostView's
   // matchContents sizes the host to the content's intrinsic size, and RN flex content has no
@@ -112,7 +122,7 @@ export function ModelSwitcherModal({
     <BottomSheet
       isPresented={visible}
       onDismiss={onClose}
-      modifiers={sheetBackgroundModifiers(theme.background)}>
+      modifiers={sheetBackgroundModifiers(sheetSurface)}>
       <RNHostView matchContents>
         <View
           style={[
@@ -133,7 +143,7 @@ export function ModelSwitcherModal({
           </View>
 
           {busy && (
-            <View style={[styles.status, { backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.status, { backgroundColor: onSheetSurface }]}>
               <ActivityIndicator size="small" color={theme.accent} />
               <ThemedText type="small" themeColor="textSecondary">
                 {busy}
@@ -169,7 +179,7 @@ export function ModelSwitcherModal({
                   onPress={() => choose(model.id)}
                   style={[
                     styles.row,
-                    { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                    { borderColor: theme.border, backgroundColor: onSheetSurface },
                     active && { borderColor: theme.accent },
                   ]}>
                   <View style={styles.rowText}>
