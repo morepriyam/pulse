@@ -1,5 +1,7 @@
 export type CallStateChangePayload = {
-  /** True while a phone / VoIP call is active (ringing, dialing, or connected). */
+  /** True while the mic is unavailable because the session is interrupted. On iOS that can flip
+   * as soon as the ringtone interrupts an open recorder session, or later when the call is
+   * actually answered if no ringtone was audible. */
   isActive: boolean;
 };
 

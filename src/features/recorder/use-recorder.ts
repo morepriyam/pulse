@@ -79,8 +79,8 @@ export function useRecorder(initialDraftId?: string) {
   // come up video-only and then rebuild the output audio-ful at `onStarted` — a second full
   // session reconfigure ~25ms after the first preview frame, i.e. a visible flash on every
   // open (and two extra rebuilds on every camera flip). The '!pri' -11800 recovery path
-  // (reportMicPriorityError) remains the backstop for the rare cold open that races an
-  // in-progress call the synchronous snapshot missed.
+  // (reportMicPriorityError) remains the backstop for a cold open into an in-progress call,
+  // which the interruption latch cannot see (nothing of ours was active to be interrupted).
   const micWanted = !muted && !callActive;
   // Freeze the mic config for the duration of a recording: an enableAudio change rebuilds the video
   // output, which tears down the in-flight recorder before it can finalize — dropping the clip. We
@@ -350,11 +350,27 @@ export function useRecorder(initialDraftId?: string) {
       // honored as soon as the recorder exists.
       const recorder = await videoOutput.createRecorder({});
       recorderRef.current = recorder;
+      // The temp file the recorder writes to, captured up front for the salvage path below.
+      const recordingPath = recorder.filePath;
       const filePath = await new Promise<string>((resolve, reject) => {
         recorder
           .startRecording(
             (path) => resolve(path),
-            (err) => reject(err),
+            (err) => {
+              // An audio-session interruption mid-write (alarm / timer / a call seizing the mic)
+              // ends the recording with an error — but AVFoundation finalizes the movie on disk
+              // first, so the file is usually complete up to the cut. VisionCamera surfaces every
+              // such stop as an error; probe the file and treat a playable clip as a successful
+              // stop instead of dropping it. A dead / zero-length file still rejects as before.
+              const recordingUri = recordingPath.startsWith('file://')
+                ? recordingPath
+                : `file://${recordingPath}`;
+              void isValidFile(recordingUri).then(
+                (info) =>
+                  info.isValid && info.duration > 0 ? resolve(recordingPath) : reject(err),
+                () => reject(err),
+              );
+            },
           )
           .then(() => {
             // Capture has actually started — honor a stop requested while we were preparing
@@ -373,7 +389,8 @@ export function useRecorder(initialDraftId?: string) {
       const durationMs = await getDurationMs(absolutize(originalFilename));
       await persistSegment(id, segmentId, originalFilename, durationMs);
     } catch {
-      // interrupted mid-record — drop the clip
+      // Recording died with no salvageable file (see the error probe above), or the persist
+      // itself failed — nothing to keep.
     } finally {
       recorderRef.current = null;
       stopRequestedRef.current = false;

@@ -178,8 +178,9 @@ export default function RecorderScreen() {
   // react to the error directly and bounce the session off→on for a tick to force a clean restart
   // out of the failed state (`recovering` drives the bounce). The -11800 family has two flavors
   // needing different handling:
-  //  - '!pri' (561017449): telephony owns the mic — prediction lost the cold-open/resume race
-  //    against an in-progress call (the call snapshot read stale and the mic attached anyway).
+  //  - '!pri' (561017449): telephony owns the mic — a call the interruption latch couldn't see
+  //    (already in progress at cold open / resume, so none of our audio was active to be
+  //    interrupted; the snapshot read "no call" and the mic attached anyway).
   //    Drop the mic until the next authoritative call event (reportMicPriorityError rebuilds the
   //    output video-only); recording with it would just re-throw.
   //  - plain -11800 (e.g. underlying -10868, kAudioUnitErr_FormatNotSupported): the session
