@@ -38,12 +38,13 @@ Instead, report it privately using one of these channels:
 ## Supported Versions
 
 Pulse follows a rolling-release model — only the latest published release
-is actively supported with security fixes.
+is actively supported with security fixes; fixes are not backported to
+older releases.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.x     | :white_check_mark: |
-| < 2.0   | :x:                |
+| Version      | Supported          |
+| ------------ | ------------------ |
+| 2.x (latest) | :white_check_mark: |
+| < 2.0        | :x:                |
 
 ## Scope
 
