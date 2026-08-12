@@ -27,7 +27,6 @@ export type BundleSegment = {
 /** One draft. Carries display metadata but no DB id — the importer mints a fresh one. */
 export type BundleDraft = {
   name: string | null;
-  mode: 'camera' | 'upload';
   createdAt: number;
   segments: BundleSegment[];
 };

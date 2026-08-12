@@ -5,7 +5,7 @@ import { absolutize, thumbRelPath, toFileUri } from '@/utils/file-store';
 import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 import { db } from './client';
 import type { DataMigration } from './data-migrations';
-import { projects, segments } from './schema';
+import { drafts, segments } from './schema';
 
 /**
  * One-shot migration of drafts created by the ORIGINAL Pulse app (mieweb/pulse, ≤ 1.2.x,
@@ -21,7 +21,7 @@ import { projects, segments } from './schema';
  *   - Files: `Documents/pulse/drafts/{draftId}/segments/*` + `thumbs/`.
  *
  * Mapping into this app's model:
- *   - Each old draft → a `projects` row (id / name / mode / timestamps preserved).
+ *   - Each old draft → a `drafts` row (id / name / mode / timestamps preserved).
  *   - Each old segment → a `segments` row + its clip file MOVED from `Documents/pulse/…`
  *     into `Documents/drafts/{draftId}/segments/{segmentId}.{ext}` (real extension kept —
  *     old iOS recordings are .mov). A fresh thumbnail is generated.
@@ -83,7 +83,7 @@ function extensionOf(uri: string): string {
   return /^[a-z0-9]+$/.test(ext) && ext.length > 0 ? ext : 'mp4';
 }
 
-/** Import one legacy draft; returns true if it produced a usable project. */
+/** Import one legacy draft; returns true if it produced a usable draft. */
 async function migrateDraft(draft: LegacyDraft): Promise<boolean> {
   const draftId = draft.id;
   if (!draftId) return false;
@@ -126,11 +126,10 @@ async function migrateDraft(draft: LegacyDraft): Promise<boolean> {
   const nowMs = Date.now();
   const createdAt = parseTimestamp(draft.createdAt, nowMs);
   await db
-    .insert(projects)
+    .insert(drafts)
     .values({
       id: draftId,
       name: draft.name?.trim() || null,
-      mode: draft.mode === 'upload' ? 'upload' : 'camera',
       // Seed the badge counter past the labels assigned below (1..n).
       lastClipNumber: imported.length,
       createdAt,
@@ -146,7 +145,7 @@ async function migrateDraft(draft: LegacyDraft): Promise<boolean> {
       .insert(segments)
       .values({
         id: clip.id,
-        projectId: draftId,
+        draftId,
         order: i,
         label: String(i + 1),
         originalFilename: clip.relPath,

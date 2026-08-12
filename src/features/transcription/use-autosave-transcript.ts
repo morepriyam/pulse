@@ -15,13 +15,13 @@ const DEBOUNCE_MS = 700;
  * never touched (`savedJson == null` and never dirty) must therefore never be persisted.
  */
 export function useAutosaveTranscript({
-  projectId,
+  draftId,
   signature,
   lines,
   dirty,
   savedJson,
 }: {
-  projectId: string;
+  draftId: string;
   signature: string;
   /** Current editor lines — memoize at the call site so identity only changes on real edits. */
   lines: TranscriptLine[];
@@ -44,10 +44,10 @@ export function useAutosaveTranscript({
     const json = JSON.stringify(pending);
     if (json === lastSavedRef.current) return;
     lastSavedRef.current = json;
-    saveEditedTranscript(projectId, signature, pending, Date.now()).catch((err) =>
+    saveEditedTranscript(draftId, signature, pending).catch((err) =>
       console.warn('[autosave] failed to persist captions', err),
     );
-  }, [projectId, signature]);
+  }, [draftId, signature]);
   const commitRef = useRef(commit);
   useEffect(() => {
     commitRef.current = commit;

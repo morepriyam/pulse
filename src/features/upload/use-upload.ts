@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { projectQuery, setUploadDestination } from '@/db/drafts';
+import { draftQuery, setUploadDestination } from '@/db/drafts';
 import { getDraftToken } from '@/db/secure-token';
 import type { Segment } from '@/db/schema';
 import { useNow } from '@/hooks/use-now';
@@ -23,7 +23,7 @@ import { useDraftUploadState } from './use-uploads';
  *
  * `state` is the manager's LIVE per-draft state (uploading/done/error, this
  * session only) via `useSyncExternalStore`; durable status lives in the drizzle
- * `project` row. `mergedRef` is read only at enqueue time — the merge is done by
+ * `draft` row. `mergedRef` is read only at enqueue time — the merge is done by
  * the time Upload is tappable — and captured into the session the manager runs.
  */
 export function useUpload(
@@ -31,8 +31,8 @@ export function useUpload(
   segments: Segment[],
   mergedRef: RefObject<{ path: string; durationMs: number } | null>,
 ) {
-  const { data: projectRows } = useLiveQuery(projectQuery(draftId), [draftId]);
-  const project = projectRows[0];
+  const { data: draftRows } = useLiveQuery(draftQuery(draftId), [draftId]);
+  const draft = draftRows[0];
   // The device-wide pool of paired-but-unconsumed destinations (non-expired only).
   const { destinations } = useDestinations();
 
@@ -45,10 +45,7 @@ export function useUpload(
   const consumedIdRef = useRef<string | null>(null);
 
   const hasDestination =
-    project?.mode === 'upload' &&
-    !!project.uploadServer &&
-    !!project.uploadArtifactId &&
-    !!project.uploadUnit;
+    !!draft?.uploadServer && !!draft.uploadArtifactId && !!draft.uploadUnit;
 
   // The bearer token lives in expo-secure-store, not the (reactive) drizzle row — loaded into
   // local state keyed off which draft is showing, and set directly in `claim` so the first upload
@@ -69,14 +66,14 @@ export function useUpload(
     () =>
       hasDestination
         ? {
-            server: project!.uploadServer!,
+            server: draft!.uploadServer!,
             token: draftToken,
-            artifactId: project!.uploadArtifactId!,
-            uploadUnit: project!.uploadUnit!,
-            resourceUrl: project!.uploadResourceUrl,
+            artifactId: draft!.uploadArtifactId!,
+            uploadUnit: draft!.uploadUnit!,
+            resourceUrl: draft!.uploadResourceUrl,
           }
         : null,
-    [hasDestination, project, draftToken],
+    [hasDestination, draft, draftToken],
   );
   const destinationExpired = destination !== null && isTokenExpired(destination.token, now);
 

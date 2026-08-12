@@ -98,7 +98,7 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
 
         segmentRows.push({
           id: segmentId,
-          projectId: draftId,
+          draftId,
           order: typeof seg.order === 'number' ? seg.order : segIndex,
           label: '', // set below once the rows are sorted
           originalFilename,
@@ -115,7 +115,7 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
       }
 
       // Honor the bundle's declared ordering, then renumber sequentially: duplicate/holey
-      // `order` values in a foreign bundle would trip the unique (projectId, order) index and
+      // `order` values in a foreign bundle would trip the unique (draftId, order) index and
       // abort the import. The label (thumb badge) restarts fresh — import order IS this
       // device's creation order for the draft.
       segmentRows.sort((a, b) => a.order - b.order);
@@ -128,7 +128,6 @@ export async function importPulseFile(fileUri: string): Promise<ImportResult> {
         {
           id: draftId,
           name: draft.name ?? null,
-          mode: draft.mode === 'upload' ? 'upload' : 'camera',
           // Seed the badge counter past the labels minted above so later recordings continue
           // from n+1 instead of reusing numbers.
           lastClipNumber: segmentRows.length,

@@ -3,7 +3,7 @@ import { Asset } from 'expo-asset';
 
 import { db } from '@/db/client';
 import { addSegment } from '@/db/drafts';
-import { projects } from '@/db/schema';
+import { drafts } from '@/db/schema';
 import { absolutize, copyIntoSegments, deleteDraftDir, thumbRelPath } from '@/utils/file-store';
 import { generateThumbnailFile, getDurationMs } from '@/utils/video';
 
@@ -174,12 +174,12 @@ async function seedModules(
   }
 
   const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.id, draftId));
+    .select({ id: drafts.id })
+    .from(drafts)
+    .where(eq(drafts.id, draftId));
   if (existing.length > 0) return draftId;
 
-  await db.insert(projects).values({ id: draftId, name });
+  await db.insert(drafts).values({ id: draftId, name });
 
   for (let i = 0; i < modules.length; i++) {
     const asset = Asset.fromModule(modules[i]);
@@ -236,7 +236,7 @@ export function seedWildImports(): Promise<string | undefined> {
 
 /** Wipe all drafts (metadata) and the seed drafts' clip dirs, so a re-seed starts clean. */
 export async function clearDrafts(): Promise<void> {
-  await db.delete(projects);
+  await db.delete(drafts);
   deleteDraftDir(SEED_DRAFT_ID);
   deleteDraftDir(SPEED_UNIFORM_DRAFT_ID);
   deleteDraftDir(SPEED_MIXED_DRAFT_ID);

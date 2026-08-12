@@ -7,7 +7,7 @@ import {
   getDraftName,
   getResumableDrafts,
   getUploadArtifact,
-  projectQuery,
+  draftQuery,
   segmentsForDraft,
   setCaptionsUploadStatus,
   setUploadMerged,
@@ -15,7 +15,7 @@ import {
   type UploadArtifactKey,
   upsertUploadArtifact,
 } from '@/db/drafts';
-import type { Project } from '@/db/schema';
+import type { Draft } from '@/db/schema';
 import { getDraftToken } from '@/db/secure-token';
 import { getDraftTranscriptRow } from '@/db/transcripts';
 import { linesToVtt } from '@/features/transcription/vtt';
@@ -241,7 +241,7 @@ class BackgroundUploadManager {
     if (this.controllers.has(draftId)) return;
     let session = this.sessions.get(draftId);
     if (!session) {
-      const [row] = await projectQuery(draftId);
+      const [row] = await draftQuery(draftId);
       if (!row) return;
       const result = await this.reconstructSession(row);
       if (!result.ok) {
@@ -378,7 +378,7 @@ class BackgroundUploadManager {
    * expired token, or a merged run whose native export file is gone.
    */
   private async reconstructSession(
-    row: Project,
+    row: Draft,
   ): Promise<{ ok: true; session: UploadSession } | { ok: false; reason: string }> {
     if (!row.uploadServer || !row.uploadArtifactId || !row.uploadUnit) {
       return { ok: false, reason: 'Upload destination is missing — re-pair to upload.' };
@@ -668,7 +668,7 @@ class BackgroundUploadManager {
         });
       },
       // Persist the video's resource URL the moment it's created (the merged anchor lives on the
-      // project row) so an app kill DURING the video transfer resumes via HEAD+PATCH rather than
+      // draft row) so an app kill DURING the video transfer resumes via HEAD+PATCH rather than
       // re-creating the upload — which the server rejects as a duplicate reserve (409).
       (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
     );
@@ -732,7 +732,7 @@ class BackgroundUploadManager {
       undefined,
       signal,
       undefined,
-      // The segment anchor is the ordering manifest; persist its URL on the project row at creation
+      // The segment anchor is the ordering manifest; persist its URL on the draft row at creation
       // so a kill mid-manifest resumes via HEAD instead of a 409-ing re-create.
       (url) => void setUploadProgress(draftId, { status: 'uploading', resourceUrl: url }),
     );

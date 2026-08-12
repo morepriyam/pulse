@@ -11,7 +11,7 @@ import {
 
 /**
  * A server the device has paired with (via a `pulsecam://` deep link) but no draft has
- * consumed yet. Device-wide, not per-draft — unlike `projects.upload*` (drafts.ts), this
+ * consumed yet. Device-wide, not per-draft — unlike `drafts.upload*` (drafts.ts), this
  * lives independently of any one draft so the user can pick *which* draft to send, and to
  * *which* destination, at upload time. A destination is single-use: uploading a draft to it
  * (and the upload finishing), or the user deleting it, removes it here.
