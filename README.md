@@ -74,7 +74,7 @@ flowchart TB
 
 - Multi-clip segmented recording with [VisionCamera](https://react-native-vision-camera.com) v5 — segments append to one draft with a live segment bar and drag-to-reorder
 - Front/back flip, torch, mic mute, tap-to-focus, pinch-to-zoom, lens selection, and stabilization modes (off / standard / cinematic / auto), all persisted across sessions
-- Call-aware capture: a custom native module (CallKit on iOS, audio-mode detection on Android) gates the microphone during phone/VoIP calls so recordings don't silently freeze
+- Call-aware capture: a custom native module (audio-interruption detection on iOS, audio-mode detection on Android) gates the microphone when the audio session is interrupted so recordings don't silently freeze
 - Import existing videos from Photos instead of recording
 
 ### Editing & export
@@ -112,7 +112,7 @@ Platform notes:
 
 - **Cinematic stabilization** is iOS-only (VisionCamera exposes it via AVFoundation); Android offers off / standard / auto
 - **Whisper transcription** uses Metal GPU acceleration on iOS; Android runs on CPU, so larger models are noticeably slower — Base (en) is the recommended starting point
-- **Call-aware capture** uses CallKit on iOS and an audio-mode heuristic on Android (no extra permissions), so both platforms pause the mic during phone/VoIP calls
+- **Call-aware capture** uses AVAudioSession interruptions on iOS (no CallKit — it must stay out of the binary for China App Store distribution) and an audio-mode heuristic on Android (no extra permissions), so both platforms pause the mic when the session is interrupted
 - On Android, merged exports save through MediaStore into `DCIM/`, and uploads run as a `dataSync` foreground service with a progress notification
 
 ## How it works

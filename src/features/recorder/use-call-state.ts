@@ -9,23 +9,28 @@ import CallDetector from '../../../modules/expo-call-detector/src/CallDetectorMo
  * live during a call throws the AVFoundation -11800 / '!pri' error that freezes the capture session.
  *
  * Signals:
- *  - callActive: on iOS live from CallKit's CXCallObserver; on Android from AudioManager's mode
- *    (RINGTONE / IN_CALL / IN_COMMUNICATION) — both via our local expo-call-detector module. The
- *    native delegate does NOT fire while the app is suspended, so a call that *starts* while the
- *    app is backgrounded is invisible until resume — we therefore re-poll the live state on
- *    foreground (isCallActive() reads the native call state directly).
+ *  - callActive: on iOS from an AVAudioSession-interruption latch (deliberately NO CallKit — the
+ *    framework must stay out of the binary for China App Store distribution, see issue #146); on
+ *    Android from AudioManager's mode (RINGTONE / IN_CALL / IN_COMMUNICATION) — both via our local
+ *    expo-call-detector module. The native side does NOT fire while the app is suspended, so a
+ *    call that *starts* while the app is backgrounded is invisible until resume — we therefore
+ *    re-poll the live state on foreground (isCallActive() reads the native latch directly; the iOS
+ *    module also force-clears a possibly-stale latch on every foreground and emits, since a
+ *    `.began` interruption has no guaranteed matching `.ended`).
  *  - appActive: false while backgrounded. VisionCamera has no lifecycle handling of its own, so
  *    iOS auto-resumes the capture session on foreground with the mic still attached — straight into
  *    a call that began in the background. The recorder stops the session while backgrounded (via
  *    `isActive`) and only restarts it once foreground, by which point callActive has been re-polled,
  *    so the mic is never resumed into an in-progress call.
- *  - micBlocked: the prediction above can still lose a race — on a cold-open / resume into an
- *    *in-progress* call, CXCallObserver.calls may not have synced on the first foreground frame, so
- *    the snapshot reads "no call" and the mic attaches → -11800. We can't out-predict the OS here,
- *    so we react to ground truth: when the capture session reports the '!pri' error (see
- *    reportMicPriorityError), force the mic off until the next authoritative call-state event proves
- *    it safe. That event fires reliably when the call ends, and an isActive=true correction keeps
- *    the mic gated anyway — so clearing on ANY event is safe.
+ *  - micBlocked: the latch above cannot know about a call already in progress at a cold open /
+ *    resume (on iOS none of our audio was active to be interrupted), so the snapshot reads "no
+ *    call" and the mic attaches → -11800 '!pri'. We can't out-predict the OS here, so we react to
+ *    ground truth: when the capture session reports the '!pri' error (see reportMicPriorityError),
+ *    force the mic off until the next authoritative call-state event proves it safe. On iOS that
+ *    event arrives from the interruption `.ended` or the module's foreground force-clear — a call
+ *    that ends while the app stays foreground the whole time (cold-opened into it) un-gates only
+ *    on the next foreground transition; an isActive=true correction keeps the mic gated anyway —
+ *    so clearing on ANY event is safe.
  */
 export function useCallState() {
   const [rawCallActive, setRawCallActive] = useState(() => CallDetector.isCallActive());

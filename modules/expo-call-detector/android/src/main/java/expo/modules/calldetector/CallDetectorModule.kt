@@ -28,9 +28,9 @@ private class ModeChangeObserver(onChange: () -> Unit) {
 }
 
 /**
- * Android counterpart of the iOS CallKit-based detector, built on `AudioManager.getMode()` —
- * telephony/VoIP flips the global audio mode to RINGTONE / IN_CALL / IN_COMMUNICATION, which
- * mirrors CXCallObserver's "ringing, dialing, or connected" semantics without needing the
+ * Android counterpart of the iOS detector (an AVAudioSession-interruption latch), built on
+ * `AudioManager.getMode()` — telephony/VoIP flips the global audio mode to RINGTONE / IN_CALL /
+ * IN_COMMUNICATION, giving "a call holds the audio" semantics without needing the
  * READ_PHONE_STATE permission (and unlike TelephonyCallback it also covers VoIP apps).
  *
  * Change delivery: API 31+ uses `addOnModeChangedListener`; older releases have no
