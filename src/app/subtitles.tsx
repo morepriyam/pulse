@@ -149,7 +149,7 @@ function Editor({
   const { toLines } = editor;
   const lines = useMemo(() => toLines(), [toLines]);
   const { markCleared } = useAutosaveTranscript({
-    projectId: draftId,
+    draftId,
     signature,
     lines,
     dirty: editor.dirty,

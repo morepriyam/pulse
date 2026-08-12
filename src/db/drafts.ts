@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as Crypto from 'expo-crypto';
 
 import {
@@ -10,8 +10,8 @@ import {
 } from '@/utils/file-store';
 import { generateThumbnailFile } from '@/utils/video';
 import { db } from './client';
-import type { Project, Segment } from './schema';
-import { projects, segments, uploadArtifacts } from './schema';
+import type { Draft, Segment } from './schema';
+import { drafts, segments, uploadArtifacts } from './schema';
 import { deleteDraftToken, setDraftToken } from './secure-token';
 
 const now = sql`(unixepoch('subsec') * 1000)`;
@@ -30,44 +30,44 @@ type UploadDestination = {
   server: string;
   token: string | null;
   artifactId: string;
-  uploadUnit: NonNullable<Project['uploadUnit']>;
+  uploadUnit: NonNullable<Draft['uploadUnit']>;
 };
 
 /** One row per draft with its segment count, trim-aware duration, and cover clip. */
 export const draftListQuery = db
   .select({
-    id: projects.id,
-    name: projects.name,
-    lastModified: projects.lastModified,
+    id: drafts.id,
+    name: drafts.name,
+    lastModified: drafts.lastModified,
     // Persisted upload status, so a draft card can show its own upload state on the home screen.
-    uploadStatus: projects.uploadStatus,
+    uploadStatus: drafts.uploadStatus,
     segmentCount: count(segments.id),
     // Effective duration = sum of each clip's edited duration (if edited) else its original.
     durationMs: sql<number>`coalesce(sum(coalesce(${segments.editedDurationMs}, ${segments.durationMs})), 0)`,
     // Cover frame: the first clip's persisted thumbnail (+ its effective file as a legacy fallback).
     firstSegmentFilename: sql<
       string | null
-    >`(select coalesce(edited_filename, original_filename) from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
+    >`(select coalesce(edited_filename, original_filename) from ${segments} where ${segments.draftId} = ${drafts.id} order by sort_order limit 1)`,
     firstSegmentThumbnail: sql<
       string | null
-    >`(select thumbnail from ${segments} where ${segments.projectId} = ${projects.id} order by sort_order limit 1)`,
+    >`(select thumbnail from ${segments} where ${segments.draftId} = ${drafts.id} order by sort_order limit 1)`,
   })
-  .from(projects)
-  .leftJoin(segments, eq(segments.projectId, projects.id))
-  .groupBy(projects.id)
-  .orderBy(desc(projects.lastModified));
+  .from(drafts)
+  .leftJoin(segments, eq(segments.draftId, drafts.id))
+  .groupBy(drafts.id)
+  .orderBy(desc(drafts.lastModified));
 
-export function segmentsForDraft(projectId: string) {
+export function segmentsForDraft(draftId: string) {
   return db
     .select()
     .from(segments)
-    .where(eq(segments.projectId, projectId))
+    .where(eq(segments.draftId, draftId))
     .orderBy(asc(segments.order));
 }
 
-/** Reactive single-row query for a draft's `projects` row (upload destination/status live here). */
-export function projectQuery(draftId: string) {
-  return db.select().from(projects).where(eq(projects.id, draftId));
+/** Reactive single-row query for a draft's `drafts` row (upload destination/status live here). */
+export function draftQuery(draftId: string) {
+  return db.select().from(drafts).where(eq(drafts.id, draftId));
 }
 
 /**
@@ -79,9 +79,9 @@ export function projectQuery(draftId: string) {
  */
 export async function getDraftName(draftId: string): Promise<string | undefined> {
   const [row] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.id, draftId))
+    .select({ name: drafts.name })
+    .from(drafts)
+    .where(eq(drafts.id, draftId))
     .limit(1);
   return row?.name ?? undefined;
 }
@@ -91,32 +91,32 @@ export async function getDraftName(draftId: string): Promise<string | undefined>
 
 export async function createDraft(): Promise<string> {
   const id = Crypto.randomUUID();
-  await db.insert(projects).values({ id, mode: 'camera' });
+  await db.insert(drafts).values({ id });
   return id;
 }
 
 export async function addSegment(draftId: string, segment: NewSegment): Promise<void> {
   // Everything is read-then-write, so it all runs inside one transaction: the badge number
-  // comes from the project's monotonic `lastClipNumber` counter (bump + read back atomically;
+  // comes from the draft's monotonic `lastClipNumber` counter (bump + read back atomically;
   // never decremented, so deletes/renames can't cause reuse), and `order` is the next free
-  // slot (max + 1, race-safe and hole-tolerant after deletes — the unique (projectId, order)
+  // slot (max + 1, race-safe and hole-tolerant after deletes — the unique (draftId, order)
   // index backstops any regression).
   await db.transaction(async (tx) => {
     const [counter] = await tx
-      .update(projects)
-      .set({ lastClipNumber: sql`${projects.lastClipNumber} + 1`, lastModified: now })
-      .where(eq(projects.id, draftId))
-      .returning({ clipNumber: projects.lastClipNumber });
+      .update(drafts)
+      .set({ lastClipNumber: sql`${drafts.lastClipNumber} + 1`, lastModified: now })
+      .where(eq(drafts.id, draftId))
+      .returning({ clipNumber: drafts.lastClipNumber });
     if (!counter) throw new Error(`addSegment: draft ${draftId} not found`);
 
     const [{ maxOrder }] = await tx
       .select({ maxOrder: sql<number | null>`max(${segments.order})` })
       .from(segments)
-      .where(eq(segments.projectId, draftId));
+      .where(eq(segments.draftId, draftId));
 
     await tx.insert(segments).values({
       id: segment.id,
-      projectId: draftId,
+      draftId,
       order: (maxOrder ?? -1) + 1,
       label: String(counter.clipNumber),
       originalFilename: segment.originalFilename,
@@ -143,12 +143,12 @@ export async function deleteSegment(segmentId: string): Promise<void> {
     deleteSegmentFile(seg.editedFilename);
     deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
   }
-  deleteSegmentFile(thumbRelPath(seg.projectId, segmentId));
+  deleteSegmentFile(thumbRelPath(seg.draftId, segmentId));
   // The row's cover may not match either derived path (e.g. a prior revision's thumb kept as a
   // fallback after a failed regeneration) — delete whatever the row actually references too.
   if (seg.thumbnail) deleteSegmentFile(seg.thumbnail);
 
-  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
+  await db.update(drafts).set({ lastModified: now }).where(eq(drafts.id, seg.draftId));
 }
 
 /** Apply a destructive edit: point the segment at its new re-encoded file + duration. */
@@ -174,7 +174,7 @@ export async function setEdited(
     deleteSegmentFile(seg.editedFilename);
     if (ok) deleteSegmentFile(editedThumbRelPath(seg.editedFilename));
   }
-  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
+  await db.update(drafts).set({ lastModified: now }).where(eq(drafts.id, seg.draftId));
 }
 
 /** Reset a segment back to its pristine original — delete the edited file, clear the columns. */
@@ -182,7 +182,7 @@ export async function resetEdit(segmentId: string): Promise<void> {
   const [seg] = await db.select().from(segments).where(eq(segments.id, segmentId));
   if (!seg) return;
   // Revert the cover to the pristine original's thumbnail.
-  const thumbRel = thumbRelPath(seg.projectId, segmentId);
+  const thumbRel = thumbRelPath(seg.draftId, segmentId);
   const ok = await generateThumbnailFile(absolutize(seg.originalFilename), absolutize(thumbRel));
   await db
     .update(segments)
@@ -196,7 +196,7 @@ export async function resetEdit(segmentId: string): Promise<void> {
   // The prior cover may be from an older revision than `editedFilename` (kept as a fallback
   // after a failed re-edit thumb generation) — drop it too, but never the fresh `thumbRel`.
   if (seg.thumbnail && seg.thumbnail !== thumbRel) deleteSegmentFile(seg.thumbnail);
-  await db.update(projects).set({ lastModified: now }).where(eq(projects.id, seg.projectId));
+  await db.update(drafts).set({ lastModified: now }).where(eq(drafts.id, seg.draftId));
 }
 
 /** Persist a new clip ordering (ids in target order) for a single draft. */
@@ -220,18 +220,18 @@ export async function reorderSegments(orderedIds: string[]): Promise<void> {
       .where(inArray(segments.id, orderedIds));
     const [first] = await tx.select().from(segments).where(eq(segments.id, orderedIds[0]));
     if (first) {
-      await tx.update(projects).set({ lastModified: now }).where(eq(projects.id, first.projectId));
+      await tx.update(drafts).set({ lastModified: now }).where(eq(drafts.id, first.draftId));
     }
   });
 }
 
 export async function renameDraft(draftId: string, name: string | null): Promise<void> {
-  await db.update(projects).set({ name, lastModified: now }).where(eq(projects.id, draftId));
+  await db.update(drafts).set({ name, lastModified: now }).where(eq(drafts.id, draftId));
 }
 
 /** Delete a draft (segments cascade) and remove its on-disk clip directory. */
 export async function deleteDraft(draftId: string): Promise<void> {
-  await db.delete(projects).where(eq(projects.id, draftId));
+  await db.delete(drafts).where(eq(drafts.id, draftId));
   deleteDraftDir(draftId);
   await deleteDraftToken(draftId);
 }
@@ -240,8 +240,9 @@ export async function deleteDraft(draftId: string): Promise<void> {
 
 /**
  * Pair a draft with an upload destination (from a validated deep link +
- * `/capabilities` lookup) and flip its mode to `'upload'`. Resets any prior
- * upload progress (`uploadResourceUrl`/`uploadStatus`/`captionsUploadStatus`)
+ * `/capabilities` lookup) — a draft counts as paired once `uploadServer`/
+ * `uploadArtifactId`/`uploadUnit` are set. Resets any prior upload progress
+ * (`uploadResourceUrl`/`uploadStatus`/`captionsUploadStatus`)
  * since a new destination invalidates an in-flight upload to the old one.
  * The bearer token is written to expo-secure-store, not this row (§ token security).
  */
@@ -250,9 +251,8 @@ export async function setUploadDestination(
   destination: UploadDestination,
 ): Promise<void> {
   await db
-    .update(projects)
+    .update(drafts)
     .set({
-      mode: 'upload',
       uploadServer: destination.server,
       uploadArtifactId: destination.artifactId,
       uploadUnit: destination.uploadUnit,
@@ -261,26 +261,26 @@ export async function setUploadDestination(
       captionsUploadStatus: null,
       lastModified: now,
     })
-    .where(eq(projects.id, draftId));
+    .where(eq(drafts.id, draftId));
   await setDraftToken(draftId, destination.token);
   // A new destination invalidates any sub-artifacts (segment videos, merged captions/
   // manifest/thumbnail) uploaded to the old one — they'd resume against the wrong server otherwise.
-  await db.delete(uploadArtifacts).where(eq(uploadArtifacts.projectId, draftId));
+  await db.delete(uploadArtifacts).where(eq(uploadArtifacts.draftId, draftId));
 }
 
 /** Persist upload progress so a killed app can resume via `HEAD` on `resourceUrl` rather than restarting. */
 export async function setUploadProgress(
   draftId: string,
-  progress: { status: NonNullable<Project['uploadStatus']>; resourceUrl?: string | null },
+  progress: { status: NonNullable<Draft['uploadStatus']>; resourceUrl?: string | null },
 ): Promise<void> {
   await db
-    .update(projects)
+    .update(drafts)
     .set({
       uploadStatus: progress.status,
       ...(progress.resourceUrl !== undefined ? { uploadResourceUrl: progress.resourceUrl } : {}),
       lastModified: now,
     })
-    .where(eq(projects.id, draftId));
+    .where(eq(drafts.id, draftId));
 }
 
 /**
@@ -292,13 +292,13 @@ export async function setUploadMerged(
   merged: { path: string; durationMs: number },
 ): Promise<void> {
   await db
-    .update(projects)
+    .update(drafts)
     .set({
       uploadMergedPath: merged.path,
       uploadMergedDurationMs: merged.durationMs,
       lastModified: now,
     })
-    .where(eq(projects.id, draftId));
+    .where(eq(drafts.id, draftId));
 }
 
 /**
@@ -306,22 +306,19 @@ export async function setUploadMerged(
  * kill). The background manager re-drives exactly these on launch/foreground. Explicitly `'failed'`
  * runs are excluded: they wait for a deliberate retry rather than auto-retrying every launch.
  */
-export async function getResumableDrafts(): Promise<Project[]> {
-  return db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.mode, 'upload'), eq(projects.uploadStatus, 'uploading')));
+export async function getResumableDrafts(): Promise<Draft[]> {
+  return db.select().from(drafts).where(eq(drafts.uploadStatus, 'uploading'));
 }
 
 /** Persist captions-upload progress independently of the video upload (so a captions-only retry doesn't redo the video). */
 export async function setCaptionsUploadStatus(
   draftId: string,
-  status: NonNullable<Project['captionsUploadStatus']>,
+  status: NonNullable<Draft['captionsUploadStatus']>,
 ): Promise<void> {
   await db
-    .update(projects)
+    .update(drafts)
     .set({ captionsUploadStatus: status, lastModified: now })
-    .where(eq(projects.id, draftId));
+    .where(eq(drafts.id, draftId));
 }
 
 // Upload sub-artifacts (segment/captions/manifest/thumbnail resume identity) ----------------
@@ -357,7 +354,7 @@ export async function upsertUploadArtifact(
     .insert(uploadArtifacts)
     .values({
       id,
-      projectId: draftId,
+      draftId,
       localKey,
       artifactId: data.artifactId,
       resourceUrl: data.resourceUrl ?? null,
@@ -373,14 +370,14 @@ export async function upsertUploadArtifact(
 
 // Draft transfer (.pulse export/import) ----------------------------------------------------
 
-/** Load a draft's project row + ordered segments for packing into a `.pulse` bundle. */
+/** Load a draft's draft row + ordered segments for packing into a `.pulse` bundle. */
 export async function getDraftForExport(
   draftId: string,
-): Promise<{ project: Project; segments: Segment[] } | null> {
-  const [project] = await db.select().from(projects).where(eq(projects.id, draftId));
-  if (!project) return null;
+): Promise<{ draft: Draft; segments: Segment[] } | null> {
+  const [draft] = await db.select().from(drafts).where(eq(drafts.id, draftId));
+  if (!draft) return null;
   const rows = await segmentsForDraft(draftId);
-  return { project, segments: rows };
+  return { draft, segments: rows };
 }
 
 /**
@@ -388,11 +385,11 @@ export async function getDraftForExport(
  * writes the clip files first; this only commits the rows once the media is on disk.
  */
 export async function insertImportedDraft(
-  project: typeof projects.$inferInsert,
+  draft: typeof drafts.$inferInsert,
   segmentRows: (typeof segments.$inferInsert)[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.insert(projects).values(project);
+    await tx.insert(drafts).values(draft);
     if (segmentRows.length > 0) await tx.insert(segments).values(segmentRows);
   });
 }

@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 /**
  * Upload capability tokens are live bearer credentials (§ pulsevault protocol) — kept in
- * the Keychain/Keystore via expo-secure-store instead of the plain-SQLite `projects`/
+ * the Keychain/Keystore via expo-secure-store instead of the plain-SQLite `drafts`/
  * `settings` tables, which are unencrypted at rest and readable from an unencrypted device
  * backup or a rooted/jailbroken device.
  */

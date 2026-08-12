@@ -43,7 +43,7 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
   for (let draftIndex = 0; draftIndex < draftIds.length; draftIndex++) {
     const loaded = await getDraftForExport(draftIds[draftIndex]);
     if (!loaded) continue;
-    const { project, segments } = loaded;
+    const { draft, segments } = loaded;
     const bundleSegments: BundleSegment[] = [];
 
     for (let segIndex = 0; segIndex < segments.length; segIndex++) {
@@ -74,11 +74,10 @@ export async function exportDrafts(draftIds: string[], now: number): Promise<str
     }
 
     if (bundleSegments.length === 0) continue; // nothing to carry for this draft
-    if (bundleDrafts.length === 0) singleExportName = project.name;
+    if (bundleDrafts.length === 0) singleExportName = draft.name;
     bundleDrafts.push({
-      name: project.name,
-      mode: project.mode,
-      createdAt: project.createdAt,
+      name: draft.name,
+      createdAt: draft.createdAt,
       segments: bundleSegments,
     });
   }

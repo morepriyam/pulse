@@ -10,16 +10,12 @@ type UploadUnit = 'segment' | 'merged';
 /** Lifecycle of a single upload (video or captions), tracked independently per artifact. */
 type UploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
 
-/** A draft project — an ordered set of segments, plus its upload destination. */
-export const projects = sqliteTable('projects', {
+/** A draft — an ordered set of segments, plus its upload destination. */
+export const drafts = sqliteTable('drafts', {
   id: text('id').primaryKey(),
   name: text('name'),
-  mode: text('mode', { enum: ['camera', 'upload'] })
-    .notNull()
-    .default('camera'),
-  // Reserved cover frame; currently thumbnails are derived at runtime from the first clip.
-  thumbnail: text('thumbnail'),
-  // Per-draft upload destination (§4). `uploadArtifactId` is the session-anchor artifact id
+  // Per-draft upload destination (§4). A draft is "paired" when these are set (via
+  // `setUploadDestination`); there is no separate mode flag. `uploadArtifactId` is the session-anchor artifact id
   // from the pairing deep link, used as the TUS artifactId directly (merged) or as `relatedTo`
   // (segment). `uploadUnit` is resolved once from the server's `/capabilities` at pairing time and
   // cached here so later upload runs don't re-fetch it.
@@ -64,11 +60,11 @@ export const segments = sqliteTable(
   'segments',
   {
     id: text('id').primaryKey(),
-    projectId: text('project_id')
+    draftId: text('draft_id')
       .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+      .references(() => drafts.id, { onDelete: 'cascade' }),
     order: integer('sort_order').notNull(),
-    // Clip name shown on the thumb badge. Minted from the project's `lastClipNumber` counter
+    // Clip name shown on the thumb badge. Minted from the draft's `lastClipNumber` counter
     // at insert and NEVER renumbered — reorder mutates `order`, delete leaves gaps — so the
     // badge stays a stable identity for the draft's lifetime; a future rename feature just
     // overwrites it. Cosmetic metadata only — never part of the segment-set signature, so
@@ -80,19 +76,18 @@ export const segments = sqliteTable(
     // Re-encoded editor output (relative path) + its duration; null until edited.
     editedFilename: text('edited_filename'),
     editedDurationMs: integer('edited_duration_ms'),
-    // Dead under the destructive model (kept to avoid a destructive drop migration).
-    trimStartMs: integer('trim_start_ms'),
-    trimEndMs: integer('trim_end_ms'),
-    // Reserved; thumbnails are derived at runtime from the clip file.
+    // First-frame jpeg cover (relative path), written by the recorder/importer/editor.
+    // Shown on segment-bar thumbs and draft cards (the draft cover is the first clip's
+    // thumbnail) and uploaded as the merged session's thumbnail artifact.
     thumbnail: text('thumbnail'),
   },
   // One slot per position: catches any regression of the order-assignment race at write time
   // (addSegment computes order inside a transaction; reorder renumbers in two passes).
-  (t) => [uniqueIndex('segments_project_order_unique').on(t.projectId, t.order)],
+  (t) => [uniqueIndex('segments_draft_order_unique').on(t.draftId, t.order)],
 );
 
 /**
- * On-device speech-to-text for a draft's MERGED video (whisper.rn). One row per draft (project),
+ * On-device speech-to-text for a draft's MERGED video (whisper.rn). One row per draft,
  * produced once at export time from the concatenated timeline — NOT per segment. `signature`
  * is the effective-file signature of the segment set the transcript was cut against
  * (`segments.map(effFile).join('|')`, the same string `useExport` keys its merge on); when the
@@ -104,9 +99,9 @@ export const segments = sqliteTable(
  * duration this transcript was cut against (used to reconcile the beat manifest timecodes).
  */
 export const draftTranscripts = sqliteTable('draft_transcripts', {
-  projectId: text('project_id')
+  draftId: text('draft_id')
     .primaryKey()
-    .references(() => projects.id, { onDelete: 'cascade' }),
+    .references(() => drafts.id, { onDelete: 'cascade' }),
   // Effective-file signature of the segment set this transcript was produced from. A change
   // (add/remove/reorder/destructive-edit) invalidates the merged transcript incl. hand-edits.
   signature: text('signature').notNull(),
@@ -115,13 +110,10 @@ export const draftTranscripts = sqliteTable('draft_transcripts', {
   status: text('status', { enum: ['processing', 'done', 'error'] })
     .notNull()
     .default('processing'),
-  language: text('language'),
-  text: text('text'),
   lines: text('lines'),
   // User-edited captions (JSON, same shape as `lines`). Null = no manual edit. Effective only
   // while `signature` still matches the current segment set; a change clears it (timings stale).
   editedLines: text('edited_lines'),
-  editedAt: integer('edited_at'),
   // True merged duration (ms) this transcript was cut against — from the native MergeResult.
   durationMs: integer('duration_ms'),
   createdAt: integer('created_at').notNull().default(now),
@@ -140,10 +132,10 @@ export const settings = sqliteTable('settings', {
  * `"thumbnail"`, or `` `${segmentId}:video` `` for a segmented-mode clip.
  */
 export const uploadArtifacts = sqliteTable('upload_artifacts', {
-  id: text('id').primaryKey(), // `${projectId}:${localKey}`
-  projectId: text('project_id')
+  id: text('id').primaryKey(), // `${draftId}:${localKey}`
+  draftId: text('draft_id')
     .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
+    .references(() => drafts.id, { onDelete: 'cascade' }),
   localKey: text('local_key').notNull(),
   artifactId: text('artifact_id').notNull(),
   // Null until the first PATCH round succeeds — see `tus-client.ts`'s `createUpload`.
@@ -152,7 +144,7 @@ export const uploadArtifacts = sqliteTable('upload_artifacts', {
 
 /**
  * The pool of upload destinations the device has paired with (via `pulsecam://` deep links)
- * but not yet consumed. Unlike a draft's `projects.upload*` columns (which record where a
+ * but not yet consumed. Unlike a draft's `drafts.upload*` columns (which record where a
  * specific draft is being/has been sent), this is a device-wide list any draft can pick from
  * at upload time. Each row is single-use — its server-minted `artifactId` anchors exactly one
  * upload session, so the row is deleted once that upload finishes (or the user deletes it).
@@ -169,7 +161,7 @@ export const uploadDestinations = sqliteTable('upload_destinations', {
   createdAt: integer('created_at').notNull().default(now),
 });
 
-export type Project = typeof projects.$inferSelect;
+export type Draft = typeof drafts.$inferSelect;
 export type Segment = typeof segments.$inferSelect;
 export type DraftTranscript = typeof draftTranscripts.$inferSelect;
 export type UploadArtifact = typeof uploadArtifacts.$inferSelect;

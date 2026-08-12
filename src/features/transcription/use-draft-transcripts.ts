@@ -7,7 +7,6 @@ import { parseTranscriptLines, type TranscriptLine } from './whisper';
 /** Parsed merged transcript for a draft, ready for display/export. */
 export type DraftTranscript = {
   status: 'processing' | 'done' | 'error';
-  text: string | null;
   /** Effective captions on the merged timeline: the user's edit if present, else the auto lines. */
   lines: TranscriptLine[];
   /** The segment-set signature this transcript was cut against (for staleness checks). */
@@ -32,7 +31,6 @@ export function useDraftTranscript(draftId: string | null): DraftTranscript | nu
     const edited = row.editedLines != null;
     return {
       status: row.status,
-      text: row.text,
       lines: edited ? parseTranscriptLines(row.editedLines) : parseTranscriptLines(row.lines),
       signature: row.signature,
       durationMs: row.durationMs,
